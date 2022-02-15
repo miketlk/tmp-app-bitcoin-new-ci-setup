@@ -33,3 +33,9 @@ __pycache__/
 # Doxygen
 doc/html
 doc/latex
+
+# Python virtual environment
+.venv*
+
+# Mac directory metadata
+.DS_Store
