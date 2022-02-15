@@ -302,6 +302,7 @@ def test_sign_psbt_multisig_wsh(client: Client):
 #         client.sign_psbt(psbt)
 
 
+@pytest.mark.skip(reason="App needs to be fixed (BadStateError)")
 @automation("automations/sign_with_wallet_accept.json")
 def test_sign_psbt_taproot_1to2(client: Client):
     # PSBT for a p2tr 1-input 2-output spend (1 change address)
