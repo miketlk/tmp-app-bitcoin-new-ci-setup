@@ -29,6 +29,7 @@ __pycache__/
 *.egg-info/
 .eggs/
 .python-version
+.pytest_cache
 
 # Doxygen
 doc/html
