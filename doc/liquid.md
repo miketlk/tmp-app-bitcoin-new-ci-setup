@@ -17,6 +17,7 @@ The main commands use `CLA = 0xE1`, unlike the legacy Bitcoin application that u
 |  E1 |  02 | REGISTER_WALLET         | Registers a wallet on the device (with user's approval) |
 |  E1 |  03 | GET_WALLET_ADDRESS      | Return and show on screen an address for a registered or default wallet |
 |  E1 |  04 | SIGN_PSBT               | Signs a PSET with a registered or default wallet |
+|  E1 |  05 | GET_MASTER_FINGERPRINT  | Return the master public key fingerprint |
 |  E1 |  10 | SIGN_MESSAGE            | Sign a message with a key from a BIP32 path (Bitcoin Message Signing) |
 |  E1 |  E1 | GET_MASTER_BLINDING_KEY | Return master private blinding key (with user's approval) |
 |  E1 |  E3 | GET_BLINDING_KEY        | Return private blinding key depending on scriptPubKey |
