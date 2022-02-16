@@ -15,6 +15,10 @@
  *  limitations under the License.
  *****************************************************************************/
 
+#ifdef HAVE_LIQUID
+  #error Liquid support not implemented
+#endif
+
 #include <stdint.h>  // uint*_t
 #include <string.h>  // memset, explicit_bzero
 
