@@ -41,7 +41,7 @@ The specs for the client commands are detailed below.
 The Bitcoin app uses a language similar to [output script descriptors](https://github.com/bitcoin/bitcoin/blob/master/doc/descriptors.md) in order to represent the wallets that can be used to sign transactions.
 Wallet policies need to be registered on the device, with an interactive process that requires user's approval.
 
-See [here](wallet.md) for detailed information on the wallet policy language.
+See [here](liquid_wallet.md) for detailed information on the wallet policy language.
 
 ## Wallet registration flow
 
@@ -127,9 +127,8 @@ Registers a wallet policy on the device, after validating it with the user.
 |-----------------|-----------------|-------------|
 | `<variable>`    | `policy_length` | The length of the policy (unsigned varint) |
 | `policy_length` | `policy`        | The serialized wallet policy |
-| `32`            | `blinding_key`  | Private blinding key associated with the wallet |
 
-The `policy` is serialized as described [here](wallet.md). At this time, no policy can be longer than 220 bytes, therefore the `policy_length` field is always encoded as 1 byte.
+The `policy` is serialized as described [here](liquid_wallet.md). At this time, no policy can be longer than 220 bytes, therefore the `policy_length` field is always encoded as 1 byte.
 
 **Output data**
 
