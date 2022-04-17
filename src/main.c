@@ -15,10 +15,6 @@
  *  limitations under the License.
  *****************************************************************************/
 
-#ifdef HAVE_LIQUID
-  #error Liquid support not implemented
-#endif
-
 #include <stdint.h>  // uint*_t
 #include <string.h>  // memset, explicit_bzero
 
@@ -125,6 +121,18 @@ const command_descriptor_t COMMAND_DESCRIPTORS[] = {
         .ins = SIGN_MESSAGE,
         .handler = (command_handler_t)handler_sign_message
     },
+#ifdef HAVE_LIQUID
+    {
+        .cla = CLA_APP,
+        .ins = LIQUID_GET_MASTER_BLINDING_KEY,
+        .handler = (command_handler_t)handler_liquid_get_master_blinding_key
+    },
+    {
+        .cla = CLA_APP,
+        .ins = LIQUID_GET_BLINDING_KEY,
+        .handler = (command_handler_t)handler_liquid_get_blinding_key
+    },
+#endif // HAVE_LIQUID
 };
 // clang-format on
 

@@ -247,3 +247,30 @@ class Client:
         :return: The signature
         """
         raise NotImplementedError
+
+    def liquid_get_master_blinding_key(self) -> bytes:
+        """Gets master private blinding key with user's approval.
+
+        Returns
+        -------
+        bytes
+            The master private blinding key, as an array of 32 bytes.
+        """
+
+        raise NotImplementedError
+
+    def liquid_get_blinding_key(self, script: bytes) -> bytes:
+        """Gets a private blinding key for the given scriptPubKey.
+
+        Parameters
+        ----------
+        script : bytes
+            The scriptPubKey used to derive blinding key.
+
+        Returns
+        -------
+        bytes
+            The private blinding key, as an array of 32 bytes.
+        """
+
+        raise NotImplementedError

@@ -214,7 +214,7 @@ class NewClient(Client):
         sw, response = self._make_request(self.builder.get_master_fingerprint())
 
         if sw != 0x9000:
-            raise DeviceException(error_code=sw, ins=BitcoinInsType.GET_EXTENDED_PUBKEY)
+            raise DeviceException(error_code=sw, ins=BitcoinInsType.GET_MASTER_FINGERPRINT)
 
         return response
 
@@ -232,9 +232,25 @@ class NewClient(Client):
         sw, response = self._make_request(self.builder.sign_message(message_bytes, bip32_path), client_intepreter)
 
         if sw != 0x9000:
-            raise DeviceException(error_code=sw, ins=BitcoinInsType.GET_EXTENDED_PUBKEY)
+            raise DeviceException(error_code=sw, ins=BitcoinInsType.SIGN_MESSAGE)
 
         return base64.b64encode(response).decode('utf-8')
+
+    def liquid_get_master_blinding_key(self) -> bytes:
+        sw, response = self._make_request(self.builder.liquid_get_master_blinding_key())
+
+        if sw != 0x9000:
+            raise DeviceException(error_code=sw, ins=BitcoinInsType.LIQUID_GET_MASTER_BLINDING_KEY)
+
+        return response
+
+    def liquid_get_blinding_key(self, script: bytes) -> bytes:
+        sw, response = self._make_request(self.builder.liquid_get_blinding_key(script))
+
+        if sw != 0x9000:
+            raise DeviceException(error_code=sw, ins=BitcoinInsType.LIQUID_GET_BLINDING_KEY)
+
+        return response
 
 
 def createClient(comm_client: Optional[TransportClient] = None, chain: Chain = Chain.MAIN, debug: bool = False) -> Union[LegacyClient, NewClient]:

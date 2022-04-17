@@ -17,12 +17,20 @@
 /**
  * Maximum supported number of keys for a policy map.
  */
+#ifdef HAVE_LIQUID
+#define MAX_POLICY_MAP_COSIGNERS 15
+#else
 #define MAX_POLICY_MAP_COSIGNERS 5
+#endif
 
 /**
  * Maximum supported number of keys for a policy map.
  */
+#ifdef HAVE_LIQUID
+#define MAX_POLICY_MAP_KEYS 15
+#else
 #define MAX_POLICY_MAP_KEYS 5
+#endif
 
 // The string describing a pubkey can contain:
 // - (optional) the key origin info, which we limit to 46 bytes (2 + 8 + 3*12 = 46 bytes)
@@ -31,8 +39,13 @@
 // Therefore, the total length of the key info string is at most 162 bytes.
 #define MAX_POLICY_KEY_INFO_LEN (46 + MAX_SERIALIZED_PUBKEY_LENGTH + 3)
 
+#ifdef HAVE_LIQUID
+// Enough to store "blinded(slip77(<54 bytes>),sh(wsh(sortedmulti(15,@0,@1,...,@14))))"
+#define MAX_POLICY_MAP_STR_LENGTH (72+74)
+#else
 // Enough to store "sh(wsh(sortedmulti(15,@0,@1,@2,@3,@4,@5,@6,@7,@8,@9,@10,@11,@12,@13,@14)))"
 #define MAX_POLICY_MAP_STR_LENGTH 74
+#endif
 
 #define MAX_POLICY_MAP_NAME_LENGTH 16
 

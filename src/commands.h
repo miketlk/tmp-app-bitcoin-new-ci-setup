@@ -8,6 +8,10 @@
 #include "handler/register_wallet.h"
 #include "handler/sign_psbt.h"
 #include "handler/sign_message.h"
+#ifdef HAVE_LIQUID
+#include "handler/liquid_get_master_blinding_key.h"
+#include "handler/liquid_get_blinding_key.h"
+#endif // HAVE_LIQUID
 
 /**
  * Enumeration with expected INS of APDU commands.
@@ -19,6 +23,10 @@ typedef enum {
     SIGN_PSBT = 0x04,
     GET_MASTER_FINGERPRINT = 0x05,
     SIGN_MESSAGE = 0x10,
+#ifdef HAVE_LIQUID
+    LIQUID_GET_MASTER_BLINDING_KEY = 0xE1,
+    LIQUID_GET_BLINDING_KEY = 0xE3,
+#endif // HAVE_LIQUID
 } command_e;
 
 /**
@@ -31,6 +39,10 @@ typedef union {
     get_wallet_address_state_t get_wallet_address_state;
     sign_psbt_state_t sign_psbt_state;
     sign_message_state_t sign_message_state;
+#ifdef HAVE_LIQUID
+    liquid_get_master_blinding_key_t liquid_get_master_blinding_key;
+    liquid_get_blinding_key_t liquid_get_blinding_key;
+#endif // HAVE_LIQUID
 } command_state_t;
 
 /**

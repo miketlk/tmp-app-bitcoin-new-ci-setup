@@ -35,6 +35,8 @@ class BitcoinInsType(enum.IntEnum):
     SIGN_PSBT = 0x04
     GET_MASTER_FINGERPRINT = 0x05
     SIGN_MESSAGE = 0x10
+    LIQUID_GET_MASTER_BLINDING_KEY = 0xE1
+    LIQUID_GET_BLINDING_KEY = 0xE3
 
 class FrameworkInsType(enum.IntEnum):
     CONTINUE_INTERRUPTED = 0x01
@@ -188,6 +190,24 @@ class BitcoinCommandBuilder:
             cla=self.CLA_BITCOIN,
             ins=BitcoinInsType.SIGN_MESSAGE,
             cdata=bytes(cdata)
+        )
+
+    def liquid_get_master_blinding_key(self):
+        return self.serialize(
+            cla=self.CLA_BITCOIN,
+            ins=BitcoinInsType.LIQUID_GET_MASTER_BLINDING_KEY
+        )
+
+    def liquid_get_blinding_key(self, script: bytes):
+        cdata: bytes = b"".join([
+            len(script).to_bytes(1, byteorder="big"),
+            script
+        ])
+
+        return self.serialize(
+            cla=self.CLA_BITCOIN,
+            ins=BitcoinInsType.LIQUID_GET_BLINDING_KEY,
+            cdata=cdata,
         )
 
     def continue_interrupted(self, cdata: bytes):

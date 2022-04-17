@@ -11,16 +11,16 @@ The messaging format of the app is compatible with the [APDU protocol](https://d
 
 The main commands use `CLA = 0xE1`, unlike the legacy Bitcoin application that used `CLA = 0xE0`.
 
-| CLA | INS | COMMAND NAME            | DESCRIPTION |
-|-----|-----|-------------------------|-------------|
-|  E1 |  00 | GET_EXTENDED_PUBKEY     | Return (and optionally show on screen) extended pubkey |
-|  E1 |  02 | REGISTER_WALLET         | Registers a wallet on the device (with user's approval) |
-|  E1 |  03 | GET_WALLET_ADDRESS      | Return and show on screen an address for a registered or default wallet |
-|  E1 |  04 | SIGN_PSBT               | Signs a PSET with a registered or default wallet |
-|  E1 |  05 | GET_MASTER_FINGERPRINT  | Return the master public key fingerprint |
-|  E1 |  10 | SIGN_MESSAGE            | Sign a message with a key from a BIP32 path (Bitcoin Message Signing) |
-|  E1 |  E1 | GET_MASTER_BLINDING_KEY | Return master private blinding key (with user's approval) |
-|  E1 |  E3 | GET_BLINDING_KEY        | Return private blinding key depending on scriptPubKey |
+| CLA | INS | COMMAND NAME                   | DESCRIPTION |
+|-----|-----|--------------------------------|-------------|
+|  E1 |  00 | GET_EXTENDED_PUBKEY            | Return (and optionally show on screen) extended pubkey |
+|  E1 |  02 | REGISTER_WALLET                | Registers a wallet on the device (with user's approval) |
+|  E1 |  03 | GET_WALLET_ADDRESS             | Return and show on screen an address for a registered or default wallet |
+|  E1 |  04 | SIGN_PSBT                      | Signs a PSET with a registered or default wallet |
+|  E1 |  05 | GET_MASTER_FINGERPRINT         | Return the master public key fingerprint |
+|  E1 |  10 | SIGN_MESSAGE                   | Sign a message with a key from a BIP32 path (Bitcoin Message Signing) |
+|  E1 |  E1 | LIQUID_GET_MASTER_BLINDING_KEY | Return master private blinding key (with user's approval) |
+|  E1 |  E3 | LIQUID_GET_BLINDING_KEY        | Return private blinding key depending on scriptPubKey |
 
 The `CLA = 0xF8` is used for framework-specific (rather than app-specific) APDUs; at this time, only one command is present.
 
@@ -321,7 +321,7 @@ The digest being signed is the double-SHA256 of the message, after prefixing the
 
 The client must respond to the `GET_PREIMAGE`, `GET_MERKLE_LEAF_PROOF` and `GET_MERKLE_LEAF_INDEX` queries for the Merkle tree of the list of chunks in the message.
 
-### GET_MASTER_BLINDING_KEY
+### LIQUID_GET_MASTER_BLINDING_KEY
 
 Get master private blinding key with user's approval.
 
@@ -349,7 +349,7 @@ The master private blinding key is derived from the seed using the method descri
 
 The user needs to confirm this command on a secure device; otherwise, the request will be rejected.
 
-### GET_BLINDING_KEY
+### LIQUID_GET_BLINDING_KEY
 
 Get a private blinding key for the given scriptPubKey.
 

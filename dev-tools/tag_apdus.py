@@ -259,6 +259,28 @@ class SignMessageCommandFormatter(BitcoinCommandFormatter):
         print(
             f"=> SIGN_MESSAGE(path=\"{format_bip32_path(bip32_path)}\",message_length={message_length},message_tree_hash={format_merkle_root(message_merkle_root, context)})")
 
+class LiquidGetMasterBlindingKeyFormatter(BitcoinCommandFormatter):
+    ins_type = BitcoinInsType.LIQUID_GET_MASTER_BLINDING_KEY
+
+    @staticmethod
+    def format_request(apdu: APDU, stream: ByteStreamParser, context: CommandContext):
+        assert len(apdu.data) == 0
+        print("=> LIQUID_GET_MASTER_BLINDING_KEY()")
+
+class LiquidGetBlindingKeyFormatter(BitcoinCommandFormatter):
+    ins_type = BitcoinInsType.LIQUID_GET_BLINDING_KEY
+
+    @staticmethod
+    def format_request(apdu: APDU, stream: ByteStreamParser, context: CommandContext):
+        assert len(apdu.data) >= 2
+        assert apdu.p1 == 0 and apdu.p2 == 0
+
+        script_length = apdu.data[0]
+        assert len(apdu.data) == 1 + script_length
+
+        print(
+            f"=> LIQUID_GET_BLINDING_KEY(script={apdu.data[1:].hex()})")
+
 
 bitcoin_command_formatters: List[BitcoinCommandFormatter] = [GetExtendedPubkeyCommandFormatter, RegisterWalletCommandFormatter,
                                                              GetWalletAddressCommandFormatter, SignPsbtCommandFormatter, GetMasterFingerprintCommandFormatter, SignMessageCommandFormatter]
