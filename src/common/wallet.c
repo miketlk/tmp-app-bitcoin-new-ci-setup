@@ -16,6 +16,8 @@
 #define PIC(x) (x)
 #endif
 
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wcomment"
 /*
 Currently supported policies for singlesig:
 
@@ -38,6 +40,7 @@ Currently supported wallet policies for multisig:
   sh(wsh(multi(...)))
   sh(wsh(sortedmulti(...)))
 */
+#pragma GCC diagnostic pop
 
 // TODO: add unit tests to this module
 
