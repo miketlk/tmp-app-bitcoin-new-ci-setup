@@ -58,8 +58,9 @@
 // n_keys (1 byte)
 // keys_merkle_root (32 bytes)
 #define MAX_POLICY_MAP_SERIALIZED_LENGTH \
-    (1 + MAX_POLICY_MAP_NAME_LENGTH + 1 + MAX_POLICY_MAP_STR_LENGTH + 32)
+    (1 + 1 + MAX_POLICY_MAP_NAME_LENGTH + 1 + MAX_POLICY_MAP_STR_LENGTH + 1 + 32)
 
+// TODO: verify
 // Maximum size of a parsed policy map in memory
 #define MAX_POLICY_MAP_BYTES 128
 
@@ -97,6 +98,8 @@ typedef enum {
     TOKEN_TR,
     // TOKEN_ADDR,     // unsupported
     // TOKEN_RAW,      // unsupported
+    TOKEN_BLINDED,
+    TOKEN_SLIP77,
 } PolicyNodeType;
 
 // TODO: the following structures are using size_t for all integers to avoid alignment problems;
@@ -125,6 +128,18 @@ typedef struct {
     size_t n;             // number of keys
     size_t *key_indexes;  // pointer to array of exactly n key indexes
 } policy_node_multisig_t;
+
+typedef struct {
+    PolicyNodeType type;        // == TOKEN_BLINDED
+    policy_node_t *mbk_script;  // master blinding key script, typically slip77()
+    policy_node_t *script;      // inner script
+} policy_node_blinded_t;
+
+typedef struct {
+    PolicyNodeType type;  // == TOKEN_SLIP77
+    const char *key_str;  // key data, a string w/o terminating null character
+    size_t key_str_len;   // size of key data string
+} policy_node_blinding_key_t;
 
 typedef enum {
     SCRIPT_TYPE_P2PKH = 0x00,

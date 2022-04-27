@@ -20,7 +20,7 @@ unsigned int pic(unsigned int linked_address) {
 
 // in unit tests, size_t integers are currently 8 compiled as 8 bytes; therefore, in the app
 // about half of the memory would be needed
-#define MAX_POLICY_MAP_MEMORY_SIZE 256
+#define MAX_POLICY_MAP_MEMORY_SIZE 512
 
 static void test_parse_policy_map_singlesig_1(void **state) {
     (void) state;
@@ -161,6 +161,36 @@ static void test_parse_policy_map_multisig_3(void **state) {
     for (int i = 0; i < 5; i++) assert_int_equal(inner->key_indexes[i], i);
 }
 
+static void test_parse_policy_map_blinded_singlesig_1(void **state) {
+    (void) state;
+
+    uint8_t out[MAX_POLICY_MAP_MEMORY_SIZE];
+
+    int res;
+
+    char *policy = "blinded(slip77(L24LLSbccJ52ESXkRvnKxYik3iBJvH2uQHf6X3xnsKZ3sw8RHMmA),wpkh(@0))";
+    buffer_t policy_buf = buffer_create((void *) policy, strlen(policy));
+
+    res = parse_policy_map(&policy_buf, out, sizeof(out));
+    assert_int_equal(res, 0);
+
+    policy_node_blinded_t *root = (policy_node_blinded_t *)out;
+    assert_non_null(root);
+    assert_int_equal(root->type, TOKEN_BLINDED);
+    assert_non_null(root->mbk_script);
+    assert_non_null(root->script);
+
+    policy_node_blinding_key_t *mbk = (policy_node_blinding_key_t*) root->mbk_script;
+    assert_int_equal(mbk->type, TOKEN_SLIP77);
+    static const char ref_mbk[] = "L24LLSbccJ52ESXkRvnKxYik3iBJvH2uQHf6X3xnsKZ3sw8RHMmA";
+    assert_int_equal(mbk->key_str_len, sizeof(ref_mbk) - 1);
+    assert_memory_equal(mbk->key_str, ref_mbk, mbk->key_str_len);
+
+    policy_node_with_key_t *inner = (policy_node_with_key_t *) root->script;
+    assert_int_equal(inner->type, TOKEN_WPKH);
+    assert_int_equal(inner->key_index, 0);
+}
+
 // convenience function to parse as one liners
 
 static int parse_policy(char *policy, size_t policy_len, uint8_t *out, size_t out_len) {
@@ -217,6 +247,7 @@ int main() {
         cmocka_unit_test(test_parse_policy_map_multisig_1),
         cmocka_unit_test(test_parse_policy_map_multisig_2),
         cmocka_unit_test(test_parse_policy_map_multisig_3),
+        cmocka_unit_test(test_parse_policy_map_blinded_singlesig_1),
         cmocka_unit_test(test_failures),
     };
 

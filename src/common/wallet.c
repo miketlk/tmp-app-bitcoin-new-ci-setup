@@ -1,5 +1,6 @@
 #include <stdint.h>
 #include <limits.h>
+#include <string.h>
 
 #include "../common/bip32.h"
 #include "../common/buffer.h"
@@ -56,7 +57,12 @@ static const token_descriptor_t KNOWN_TOKENS[] = {
     {.type = TOKEN_WPKH, .name = "wpkh"},
     {.type = TOKEN_MULTI, .name = "multi"},
     {.type = TOKEN_SORTEDMULTI, .name = "sortedmulti"},
-    {.type = TOKEN_TR, .name = "tr"}};
+    {.type = TOKEN_TR, .name = "tr"},
+#ifdef HAVE_LIQUID
+    {.type = TOKEN_BLINDED, .name = "blinded"},
+    {.type = TOKEN_SLIP77, .name = "slip77"},
+#endif
+};
 
 /**
  * Length of the longest token in the policy wallet descriptor language (not including the
@@ -153,13 +159,32 @@ static size_t read_word(buffer_t *buffer, char *out, size_t out_len) {
 }
 
 /**
+ * Read up to out_len characters from buffer, until either:
+ * - the buffer is exhausted
+ * - out_len characters are read
+ * - the next character is _not_ in [a-zAZ], [0-9]
+ */
+static size_t read_tag(buffer_t *buffer, char *out, size_t out_len) {
+    size_t tag_len = 0;
+    while (tag_len < out_len && buffer_can_read(buffer, 1)) {
+        char c = buffer->ptr[buffer->offset];
+        if (!is_alphanumeric(c)) {
+            break;
+        }
+        out[tag_len++] = c;
+        buffer_seek_cur(buffer, 1);
+    }
+    return tag_len;
+}
+
+/**
  * Read the next word from buffer (or up to MAX_TOKEN_LENGTH characters), and
  * returns the index of this word in KNOWN_TOKENS if found; -1 otherwise.
  */
 static int parse_token(buffer_t *buffer) {
     char word[MAX_TOKEN_LENGTH + 1];
 
-    size_t word_len = read_word(buffer, word, MAX_TOKEN_LENGTH);
+    size_t word_len = read_tag(buffer, word, MAX_TOKEN_LENGTH);
     word[word_len] = '\0';
 
     for (unsigned int i = 0; i < sizeof(KNOWN_TOKENS) / sizeof(KNOWN_TOKENS[0]); i++) {
@@ -329,7 +354,8 @@ static size_t parse_key_index(buffer_t *in_buf) {
     return k;
 }
 
-#define CONTEXT_WITHIN_SH 1
+#define CONTEXT_WITHIN_SH      (1U << 0)
+#define CONTEXT_WITHIN_BLINDED (1U << 1)
 
 /**
  * Parses a SCRIPT expression from the in_buf buffer, allocating the nodes and variables in out_buf.
@@ -465,6 +491,86 @@ static int parse_script(buffer_t *in_buf,
 
             break;
         }
+#ifdef HAVE_LIQUID
+        case TOKEN_BLINDED: {
+            if (depth != 0) {
+                return -14;  // can only be top-level
+            }
+
+            policy_node_blinded_t *node =
+                (policy_node_blinded_t *) buffer_alloc(out_buf,
+                                                       sizeof(policy_node_blinded_t),
+                                                       true);
+            if (node == NULL) {
+                return -15;
+            }
+            node->type = token;
+
+            unsigned int inner_context_flags = context_flags | CONTEXT_WITHIN_BLINDED;
+
+            // the master blinding key script is recursively parsed (if successful) in the current
+            // location of the output buffer
+            node->mbk_script = (policy_node_t *) (out_buf->ptr + out_buf->offset);
+            int res2;
+            if ((res2 = parse_script(in_buf, out_buf, depth + 1, inner_context_flags)) < 0) {
+                // failed while parsing internal script
+                return res2 * 100 - 16;
+            }
+
+            if(node->mbk_script->type != TOKEN_SLIP77) {
+                // only slip77() is supported currently
+                return -17;
+            }
+
+            // scripts must be separated by comma
+            if (!buffer_read_u8(in_buf, (uint8_t *) &c) || c != ',') {
+                PRINTF("Unexpected char: %c. Was expecting: ,\n", c);
+                return -18;
+            }
+
+            // the internal script is recursively parsed (if successful) in the current location of
+            // the output buffer
+            node->script = (policy_node_t *) (out_buf->ptr + out_buf->offset);
+            if ((res2 = parse_script(in_buf, out_buf, depth + 1, inner_context_flags)) < 0) {
+                // failed while parsing internal script
+                return res2 * 100 - 19;
+            }
+            break;
+        }
+        case TOKEN_SLIP77: {
+            policy_node_blinding_key_t *node =
+                (policy_node_blinding_key_t *) buffer_alloc(out_buf,
+                                                          sizeof(policy_node_blinding_key_t),
+                                                          true);
+            if (node == NULL) {
+                return -20;
+            }
+            node->type = token;
+            node->key_str = (const char *)(out_buf->ptr + out_buf->offset);
+            node->key_str_len = 0;
+
+            while (true) {
+                // If the next character is a ')', we exit and leave it in the buffer
+                if (buffer_can_read(in_buf, 1) && in_buf->ptr[in_buf->offset] == ')') {
+                    break;
+                }
+
+                // otherwise, there must be an alphanumeric character
+                if (!buffer_read_u8(in_buf, (uint8_t *) &c) || !is_alphanumeric(c)) {
+                    PRINTF("Unexpected char: %c\n", c);
+                    return -21;
+                }
+
+                char *p_key_chr = (char *) buffer_alloc(out_buf, sizeof(char), false);
+                if (p_key_chr == NULL) {
+                    return -22;
+                }
+                *p_key_chr = c;
+                ++node->key_str_len;
+            }
+            break;
+        }
+#endif // HAVE_LIQUID
         default:
             PRINTF("Unknown token\n");
             return -14;

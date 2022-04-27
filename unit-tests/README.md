@@ -25,6 +25,12 @@ In `unit-tests` folder, compile with
 cmake -Bbuild -H. && make -C build
 ```
 
+If Liquid support needs to be disabled, run with `-DHAVE_LIQUID=0`:
+
+```
+cmake -DHAVE_LIQUID=0 -Bbuild -H. && make -C build
+```
+
 and run tests with
 
 ```
