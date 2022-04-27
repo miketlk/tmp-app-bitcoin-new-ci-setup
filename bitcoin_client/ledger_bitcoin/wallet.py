@@ -94,3 +94,27 @@ class MultisigWallet(PolicyMapWallet):
         super().__init__(name, policy_map, keys_info)
 
         self.threshold = threshold
+
+
+def wrap_blinded_slip77(policy_map: str, mbk: str = ""):
+    """Add top level blinded() descriptor to wallet policy with SLIP-0077 derivation"""
+
+    if not mbk:
+        raise ValueError(f"Invalid master blinding key: '{mbk}'")
+
+    return "".join([f"blinded(slip77({mbk}),", policy_map, ")"])
+
+
+class BlindedWallet(PolicyMapWallet):
+    """Blinded wallet for Liquid application"""
+
+    def __init__(self, name: str, blinding_key: str, policy_map: str, keys_info: List[str]):
+        super().__init__(name, wrap_blinded_slip77(policy_map, blinding_key), keys_info)
+
+
+class BlindedMultisigWallet(MultisigWallet):
+    """Blinded multisig wallet for Liquid application"""
+
+    def __init__(self, name: str, blinding_key: str, address_type: AddressType, threshold: int, keys_info: List[str], sorted: bool = True) -> None:
+        super().__init__(name, address_type, threshold, keys_info, sorted)
+        self.policy_map = wrap_blinded_slip77(self.policy_map, blinding_key)
