@@ -1,20 +1,3 @@
-/*****************************************************************************
- *   Ledger App Boilerplate.
- *   (c) 2020 Ledger SAS.
- *
- *  Licensed under the Apache License, Version 2.0 (the "License");
- *  you may not use this file except in compliance with the License.
- *  You may obtain a copy of the License at
- *
- *      http://www.apache.org/licenses/LICENSE-2.0
- *
- *  Unless required by applicable law or agreed to in writing, software
- *  distributed under the License is distributed on an "AS IS" BASIS,
- *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- *  See the License for the specific language governing permissions and
- *  limitations under the License.
- *****************************************************************************/
-
 #pragma GCC diagnostic ignored "-Wformat-invalid-specifier"  // snprintf
 #pragma GCC diagnostic ignored "-Wformat-extra-args"         // snprintf
 
@@ -26,24 +9,22 @@
 #include "os.h"
 #include "ux.h"
 
-#include "display.h"
-#include "constants.h"
+#include "./display.h"
+#include "./display_utils.h"
+#include "../constants.h"
 #include "../globals.h"
 #include "../boilerplate/io.h"
 #include "../boilerplate/sw.h"
 #include "../common/bip32.h"
 #include "../common/format.h"
+#include "../common/script.h"
 #include "../constants.h"
-
-#define MAX_BASE58_PUBKEY_LENGTH 112
-#define MAX_ADDRESS_LENGTH       35
-
-// up to 5 chars for ticker, 1 space, up to 20 digits (20 = digits of 2^64), + 1 decimal separator
-#define MAX_AMOUNT_LENGTH (5 + 1 + 20 + 1)
 
 // These globals are a workaround for a limitation of the UX library that
 // does not allow to pass proper callbacks and context.
-static action_validate_cb g_validate_callback;
+
+// the processor to call after the user approval, for UI flows that require it
+static command_processor_t g_next_processor;
 
 extern dispatcher_context_t G_dispatcher_context;
 
@@ -82,7 +63,7 @@ typedef struct {
 
 typedef struct {
     char index[sizeof("output #999")];
-    char address[MAX_ADDRESS_LENGTH_STR + 1];
+    char address_or_description[MAX(MAX_ADDRESS_LENGTH_STR + 1, MAX_OPRETURN_OUTPUT_DESC_SIZE)];
     char amount[MAX_AMOUNT_LENGTH + 1];
 } ui_validate_output_state_t;
 
@@ -109,6 +90,19 @@ ui_state_t __attribute__((section(".new_globals"))) g_ui_state;
 ui_state_t g_ui_state;
 #endif
 
+void send_deny_sw(dispatcher_context_t *dc) {
+    SEND_SW(dc, SW_DENY);
+}
+
+void continue_after_approval(bool approved) {
+    if (approved) {
+        G_dispatcher_context.next(g_next_processor);
+    } else {
+        G_dispatcher_context.next(send_deny_sw);
+    }
+    G_dispatcher_context.run();
+}
+
 /*
     STATELESS STEPS
     As these steps do not access per-step globals (except possibly a callback), they can be used in
@@ -133,7 +127,7 @@ UX_STEP_NOCB(ux_display_unusual_derivation_path_step,
 // Step with icon and text to caution the user to reject if unsure
 UX_STEP_CB(ux_display_reject_if_not_sure_step,
            pnn,
-           (*g_validate_callback)(&G_dispatcher_context, false),
+           continue_after_approval(false),
            {
                &C_icon_crossmark,
                "Reject if you're",
@@ -143,16 +137,16 @@ UX_STEP_CB(ux_display_reject_if_not_sure_step,
 // Step with approve button
 UX_STEP_CB(ux_display_approve_step,
            pb,
-           (*g_validate_callback)(&G_dispatcher_context, true),
+           continue_after_approval(true),
            {
                &C_icon_validate_14,
                "Approve",
            });
 
-// Step with approve button
+// Step with continue button
 UX_STEP_CB(ux_display_continue_step,
            pb,
-           (*g_validate_callback)(&G_dispatcher_context, true),
+           continue_after_approval(true),
            {
                &C_icon_validate_14,
                "Continue",
@@ -161,7 +155,7 @@ UX_STEP_CB(ux_display_continue_step,
 // Step with reject button
 UX_STEP_CB(ux_display_reject_step,
            pb,
-           (*g_validate_callback)(&G_dispatcher_context, false),
+           continue_after_approval(false),
            {
                &C_icon_crossmark,
                "Reject",
@@ -281,7 +275,7 @@ UX_STEP_NOCB(ux_validate_address_step,
              bnnn_paging,
              {
                  .title = "Address",
-                 .text = g_ui_state.validate_output.address,
+                 .text = g_ui_state.validate_output.address_or_description,
              });
 
 UX_STEP_NOCB(ux_confirm_transaction_step, pnn, {&C_icon_eye, "Confirm", "transaction"});
@@ -293,7 +287,7 @@ UX_STEP_NOCB(ux_confirm_transaction_fees_step,
              });
 UX_STEP_CB(ux_accept_and_send_step,
            pbb,
-           (*g_validate_callback)(&G_dispatcher_context, true),
+           continue_after_approval(true),
            {&C_icon_validate_14, "Accept", "and send"});
 
 //////////////////////////////////////////////////////////////////////
@@ -319,9 +313,9 @@ UX_STEP_NOCB(ux_message_hash_step,
                  .text = g_ui_state.path_and_hash.hash_hex,
              });
 
-UX_STEP_CB(ux_sign_message_accept,
+UX_STEP_CB(ux_sign_message_accept_new,
            pbb,
-           (*g_validate_callback)(&G_dispatcher_context, true),
+           continue_after_approval(true),
            {&C_icon_validate_14, "Sign", "message"});
 
 // FLOW to display BIP32 path and a message hash to sign:
@@ -334,7 +328,7 @@ UX_FLOW(ux_sign_message_flow,
         &ux_sign_message_step,
         &ux_message_sign_display_path_step,
         &ux_message_hash_step,
-        &ux_sign_message_accept,
+        &ux_sign_message_accept_new,
         &ux_display_reject_step);
 
 // FLOW to display BIP32 path and pubkey:
@@ -491,106 +485,19 @@ UX_FLOW(ux_accept_transaction_flow,
         &ux_accept_and_send_step,
         &ux_display_reject_step);
 
-// Division and modulus operators over uint64_t causes the inclusion of the __udivmoddi4 and other
-// library functions that occupy more than 400 bytes. Since performance is not critical and division
-// by 10 is sufficient, we avoid it with a binary search instead.
-static uint64_t div10(uint64_t n) {
-    if (n < 10) return 0;  // special case needed to make sure that n - 10 is safe
-
-    // Since low, mid and high are always <= UINT64_MAX / 10, there is no risk of overflow
-    uint64_t low = 0, high = UINT64_MAX / 10;
-
-    while (true) {
-        uint64_t mid = (low + high) / 2;
-
-        // the result equals mid if and only if mid * 10 <= n < mid * 10 + 10
-        // care is taken to make sure overflows and underflows are impossible
-        if (mid * 10 > n - 10 && n >= mid * 10) {
-            return mid;
-        } else if (n < mid * 10) {
-            high = mid - 1;
-        } else /* n >= 10 * mid + 10 */ {
-            low = mid + 1;
-        }
-    }
-}
-
-static uint64_t div100000000(uint64_t n) {
-    uint64_t res = n;
-    for (int i = 0; i < 8; i++) res = div10(res);
-    return res;
-}
-
-static size_t n_digits(uint64_t number) {
-    size_t count = 0;
-    do {
-        count++;
-
-        // HACK: avoid __udivmoddi4
-        // number /= 10;
-
-        number = div10(number);
-    } while (number != 0);
-    return count;
-}
-
-// TODO: document and add unit tests
-static void format_sats_amount(const char *coin_name,
-                               uint64_t amount,
-                               char out[static MAX_AMOUNT_LENGTH + 1]) {
-    size_t coin_name_len = strlen(coin_name);
-    strcpy(out, coin_name);
-    out[coin_name_len] = ' ';
-
-    char *amount_str = out + coin_name_len + 1;
-
-    // HACK: avoid __udivmoddi4
-    // uint64_t integral_part = amount / 100000000;
-    // uint32_t fractional_part = (uint32_t) (amount % 100000000);
-    uint64_t integral_part = div100000000(amount);
-    uint32_t fractional_part = (uint32_t) (amount - integral_part * 100000000);
-
-    // format the integral part, starting from the least significant digit
-    size_t integral_part_digit_count = n_digits(integral_part);
-    for (unsigned int i = 0; i < integral_part_digit_count; i++) {
-        // HACK: avoid __udivmoddi4
-        // amount_str[integral_part_digit_count - 1 - i] = '0' + (integral_part % 10);
-        // integral_part /= 10;
-
-        uint64_t tmp_quotient = div10(integral_part);
-        char tmp_remainder = (char) (integral_part - 10 * tmp_quotient);
-        amount_str[integral_part_digit_count - 1 - i] = '0' + tmp_remainder;
-        integral_part = tmp_quotient;
-    }
-
-    if (fractional_part == 0) {
-        amount_str[integral_part_digit_count] = '\0';
-    } else {
-        // format the fractional part (exactly 8 digits, possibly with trailing zeros)
-        amount_str[integral_part_digit_count] = '.';
-        char *fract_part_str = amount_str + integral_part_digit_count + 1;
-        snprintf(fract_part_str, 8 + 1, "%08u", fractional_part);
-
-        // drop trailing zeros
-        for (int i = 7; i > 0 && fract_part_str[i] == '0'; i--) {
-            fract_part_str[i] = '\0';
-        }
-    }
-}
-
 void ui_display_pubkey(dispatcher_context_t *context,
-                       char *bip32_path_str,
+                       const char *bip32_path_str,
                        bool is_path_suspicious,
-                       char *pubkey,
-                       action_validate_cb callback) {
-    (void) (context);
+                       const char *pubkey,
+                       command_processor_t on_success) {
+    context->pause();
 
     ui_path_and_pubkey_state_t *state = (ui_path_and_pubkey_state_t *) &g_ui_state;
 
     strncpy(state->bip32_path_str, bip32_path_str, sizeof(state->bip32_path_str));
     strncpy(state->pubkey, pubkey, sizeof(state->pubkey));
 
-    g_validate_callback = callback;
+    g_next_processor = on_success;
 
     if (!is_path_suspicious) {
         ux_flow_init(0, ux_display_pubkey_flow, NULL);
@@ -600,33 +507,33 @@ void ui_display_pubkey(dispatcher_context_t *context,
 }
 
 void ui_display_message_hash(dispatcher_context_t *context,
-                             char *bip32_path_str,
-                             char *message_hash,
-                             action_validate_cb callback) {
-    (void) (context);
+                             const char *bip32_path_str,
+                             const char *message_hash,
+                             command_processor_t on_success) {
+    context->pause();
 
     ui_path_and_hash_state_t *state = (ui_path_and_hash_state_t *) &g_ui_state;
 
     strncpy(state->bip32_path_str, bip32_path_str, sizeof(state->bip32_path_str));
     strncpy(state->hash_hex, message_hash, sizeof(state->hash_hex));
 
-    g_validate_callback = callback;
+    g_next_processor = on_success;
 
     ux_flow_init(0, ux_sign_message_flow, NULL);
 }
 
 void ui_display_address(dispatcher_context_t *context,
-                        char *address,
+                        const char *address,
                         bool is_path_suspicious,
-                        char *path_str,
-                        action_validate_cb callback) {
-    (void) (context);
+                        const char *path_str,
+                        command_processor_t on_success) {
+    context->pause();
 
     ui_path_and_address_state_t *state = (ui_path_and_address_state_t *) &g_ui_state;
 
     strncpy(state->address, address, sizeof(state->address));
 
-    g_validate_callback = callback;
+    g_next_processor = on_success;
 
     if (!is_path_suspicious) {
         ux_flow_init(0, ux_display_address_flow, NULL);
@@ -637,28 +544,29 @@ void ui_display_address(dispatcher_context_t *context,
 }
 
 void ui_display_wallet_header(dispatcher_context_t *context,
-                              policy_map_wallet_header_t *wallet_header,
-                              action_validate_cb callback) {
-    (void) (context);
+                              const policy_map_wallet_header_t *wallet_header,
+                              command_processor_t on_success) {
+    context->pause();
 
     ui_wallet_state_t *state = (ui_wallet_state_t *) &g_ui_state;
 
     strncpy(state->wallet_name, wallet_header->name, sizeof(wallet_header->name));
     strncpy(state->policy_map, wallet_header->policy_map, sizeof(wallet_header->policy_map));
 
-    g_validate_callback = callback;
+    g_next_processor = on_success;
 
     ux_flow_init(0, ux_display_policy_map_header_flow, NULL);
 }
 
 void ui_display_policy_map_cosigner_pubkey(dispatcher_context_t *context,
-                                           char *pubkey,
+                                           const char *pubkey,
                                            uint8_t cosigner_index,
                                            uint8_t n_keys,
                                            bool is_internal,
-                                           action_validate_cb callback) {
-    (void) (context);
+                                           command_processor_t on_success) {
     (void) (n_keys);
+
+    context->pause();
 
     ui_cosigner_pubkey_and_index_state_t *state =
         (ui_cosigner_pubkey_and_index_state_t *) &g_ui_state;
@@ -677,21 +585,21 @@ void ui_display_policy_map_cosigner_pubkey(dispatcher_context_t *context,
                  cosigner_index + 1);
     }
 
-    g_validate_callback = callback;
+    g_next_processor = on_success;
 
     ux_flow_init(0, ux_display_policy_map_cosigner_pubkey_flow, NULL);
 }
 
 void ui_display_wallet_address(dispatcher_context_t *context,
-                               char *wallet_name,
-                               char *address,
-                               action_validate_cb callback) {
-    (void) (context);
+                               const char *wallet_name,
+                               const char *address,
+                               command_processor_t on_success) {
+    context->pause();
 
     ui_wallet_state_t *state = (ui_wallet_state_t *) &g_ui_state;
 
     strncpy(state->address, address, sizeof(state->address));
-    g_validate_callback = callback;
+    g_next_processor = on_success;
 
     if (wallet_name == NULL) {
         ux_flow_init(0, ux_display_canonical_wallet_address_flow, NULL);
@@ -702,68 +610,70 @@ void ui_display_wallet_address(dispatcher_context_t *context,
 }
 
 void ui_display_unusual_path(dispatcher_context_t *context,
-                             char *bip32_path_str,
-                             action_validate_cb callback) {
-    (void) (context);
+                             const char *bip32_path_str,
+                             command_processor_t on_success) {
+    context->pause();
 
     ui_path_state_t *state = (ui_path_state_t *) &g_ui_state;
 
-    g_validate_callback = callback;
+    g_next_processor = on_success;
 
     strncpy(state->bip32_path_str, bip32_path_str, sizeof(state->bip32_path_str));
     ux_flow_init(0, ux_display_unusual_derivation_path_flow, NULL);
 }
 
 void ui_authorize_wallet_spend(dispatcher_context_t *context,
-                               char *wallet_name,
-                               action_validate_cb callback) {
-    (void) (context);
+                               const char *wallet_name,
+                               command_processor_t on_success) {
+    context->pause();
 
     ui_wallet_state_t *state = (ui_wallet_state_t *) &g_ui_state;
 
     strncpy(state->wallet_name, wallet_name, sizeof(state->wallet_name));
 
-    g_validate_callback = callback;
+    g_next_processor = on_success;
 
     ux_flow_init(0, ux_display_wallet_for_spending_flow, NULL);
 }
 
-void ui_warn_external_inputs(dispatcher_context_t *context, action_validate_cb callback) {
+void ui_warn_external_inputs(dispatcher_context_t *context, command_processor_t on_success) {
     (void) (context);
 
-    g_validate_callback = callback;
+    g_next_processor = on_success;
 
     ux_flow_init(0, ux_display_warning_external_inputs_flow, NULL);
 }
 
 void ui_validate_output(dispatcher_context_t *context,
                         int index,
-                        char *address,
-                        char *coin_name,
+                        const char *address_or_description,
+                        const char *coin_name,
                         uint64_t amount,
-                        action_validate_cb callback) {
-    (void) (context);
+                        command_processor_t on_success) {
+    context->pause();
 
     ui_validate_output_state_t *state = (ui_validate_output_state_t *) &g_ui_state;
 
     snprintf(state->index, sizeof(state->index), "output #%d", index);
-    strncpy(state->address, address, sizeof(state->address));
+    strncpy(state->address_or_description,
+            address_or_description,
+            sizeof(state->address_or_description));
     format_sats_amount(coin_name, amount, state->amount);
 
-    g_validate_callback = callback;
+    g_next_processor = on_success;
 
     ux_flow_init(0, ux_display_output_address_amount_flow, NULL);
 }
 
 void ui_validate_transaction(dispatcher_context_t *context,
-                             char *coin_name,
+                             const char *coin_name,
                              uint64_t fee,
-                             action_validate_cb callback) {
-    (void) (context);
+                             command_processor_t on_success) {
+    context->pause();
 
     ui_validate_transaction_state_t *state = (ui_validate_transaction_state_t *) &g_ui_state;
 
-    g_validate_callback = callback;
+    g_next_processor = on_success;
 
     format_sats_amount(coin_name, fee, state->fee);
 

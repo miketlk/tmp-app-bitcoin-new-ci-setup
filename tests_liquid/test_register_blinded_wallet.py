@@ -2,7 +2,7 @@ from bitcoin_client.ledger_bitcoin import Client, AddressType, PolicyMapWallet, 
 from bitcoin_client.ledger_bitcoin.exception.errors import IncorrectDataError, NotSupportedError
 from bitcoin_client.ledger_bitcoin.exception import DenyError
 
-from test_utils import automation
+from test_utils import has_automation
 
 import hmac
 from hashlib import sha256
@@ -13,7 +13,7 @@ import pytest
 # TODO: add multisig wallet
 
 # TODO: remove
-@automation("automations/register_wallet_accept.json")
+@has_automation("automations/register_wallet_accept.json")
 @pytest.mark.skip(reason="Non-working")
 def test_register_nonblinded_wallet_accept_singlesig_wit(client: Client, speculos_globals):
     # bech32 address (P2WPKH)
@@ -34,7 +34,7 @@ def test_register_nonblinded_wallet_accept_singlesig_wit(client: Client, speculo
         wallet_hmac,
     )
 
-@automation("automations/register_wallet_accept.json")
+@has_automation("automations/register_wallet_accept.json")
 @pytest.mark.skip(reason="Not supported yet")
 def test_register_blinded_wallet_accept_singlesig_wit(client: Client, speculos_globals):
     # bech32 address (P2WPKH)

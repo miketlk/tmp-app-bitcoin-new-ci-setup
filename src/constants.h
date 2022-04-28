@@ -27,9 +27,15 @@
 
 /**
  * Maximum length of a serialized address (in characters).
+ * Segwit addresses can reach 74 characters; 76 on regtest because of the longer "bcrt" prefix.
  */
-#define MAX_ADDRESS_LENGTH_STR 74  // segwit addresses can reach 74 characters
-
+#ifdef COIN_NATIVE_SEGWIT_PREFIX
+#define MAX_ADDRESS_LENGTH_STR (72 + sizeof(COIN_NATIVE_SEGWIT_PREFIX))
+#else
+// To be removed once altcoins are moved to a separate repo, as COIN_NATIVE_SEGWIT_PREFIX
+// will always be defined
+#define MAX_ADDRESS_LENGTH_STR 74
+#endif
 /**
  * Maximum transaction length (bytes).
  */
@@ -49,6 +55,11 @@
  * Maximum scriptPubKey length for an input that we can sign.
  */
 #define MAX_PREVOUT_SCRIPTPUBKEY_LEN 34  // P2WSH's scriptPubKeys are the longest supported
+
+/**
+ * Maximum scriptPubKey length for an output that we can recognize.
+ */
+#define MAX_OUTPUT_SCRIPTPUBKEY_LEN 83  // max 83 for OP_RETURN; other scripts are shorter
 
 /**
  * Maximum length of a wallet registered into the device (characters), excluding terminating NULL.

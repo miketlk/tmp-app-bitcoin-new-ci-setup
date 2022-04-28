@@ -1,6 +1,15 @@
 name: CI
 
-on: [push, pull_request]
+on:
+  workflow_dispatch:
+  push:
+    branches:
+    - master
+    - develop
+  pull_request:
+    branches:
+    - master
+    - develop
 
 jobs:
   job_build:
@@ -92,7 +101,7 @@ jobs:
     runs-on: ubuntu-latest
 
     container:
-      image: ghcr.io/ledgerhq/speculos:latest
+      image: ghcr.io/ledgerhq/app-bitcoin-new/speculos-bitcoin:latest
       ports:
         - 1234:1234
         - 9999:9999
@@ -114,7 +123,9 @@ jobs:
 
       - name: Run tests
         run: |
-          cd tests && pip install -r requirements.txt && PYTHONPATH=$PYTHONPATH:/speculos pytest
+          cd tests
+          pip install -r requirements.txt
+          PYTHONPATH=$PYTHONPATH:/speculos pytest --headless
 
   job_test_mainnet:
     name: Tests on mainnet
@@ -122,7 +133,7 @@ jobs:
     runs-on: ubuntu-latest
 
     container:
-      image: ghcr.io/ledgerhq/speculos:latest
+      image: ghcr.io/ledgerhq/app-bitcoin-new/speculos-bitcoin:latest
       ports:
         - 1234:1234
         - 9999:9999
@@ -144,9 +155,50 @@ jobs:
 
       - name: Run tests
         run: |
-          cd tests_mainnet && pip install -r requirements.txt && PYTHONPATH=$PYTHONPATH:/speculos pytest
+          cd tests_mainnet
+          pip install -r requirements.txt
+          PYTHONPATH=$PYTHONPATH:/speculos pytest --headless
 
+  job_test_js_lib:
+    name: Tests with the JS library
+    needs: job_build
+    runs-on: ubuntu-latest
 
+    container:
+      image: ghcr.io/ledgerhq/app-bitcoin-new/speculos-bitcoin:latest
+      ports:
+        - 1234:1234
+        - 9999:9999
+        - 40000:40000
+        - 41000:41000
+        - 42000:42000
+        - 43000:43000
+      options: --entrypoint /bin/bash
+
+    steps:
+      - name: Clone
+        uses: actions/checkout@v2
+
+      - name: Install node
+        uses: actions/setup-node@v2
+        with:
+          node-version: '16'
+
+      - name: Install yarn
+        run: |
+          npm install -g yarn
+
+      - name: Download Bitcoin Testnet app binary
+        uses: actions/download-artifact@v2
+        with:
+          name: bitcoin-testnet-app
+          path: bin
+
+      - name: Run tests
+        run: |
+          cd bitcoin_client_js
+          yarn install
+          LOG_SPECULOS=1 LOG_APDUS=1 SPECULOS="/speculos/speculos.py" yarn test
 
   job_test_legacy_native:
     name: Legacy tests
@@ -154,7 +206,7 @@ jobs:
     runs-on: ubuntu-latest
 
     container:
-      image: ghcr.io/ledgerhq/speculos:latest
+      image: ghcr.io/ledgerhq/app-bitcoin-new/speculos-bitcoin:latest
       ports:
         - 1234:1234
         - 9999:9999
@@ -176,7 +228,9 @@ jobs:
 
       - name: Run tests
         run: |
-          cd tests-legacy && pip install -r requirements.txt && PATH=$PATH:/speculos pytest
+          cd tests-legacy
+          pip install -r requirements.txt
+          PATH=$PATH:/speculos pytest
 
 
   job_test_legacy_lib:
@@ -185,7 +239,7 @@ jobs:
     runs-on: ubuntu-latest
 
     container:
-      image: ghcr.io/ledgerhq/speculos:latest
+      image: ghcr.io/ledgerhq/app-bitcoin-new/speculos-bitcoin:latest
       ports:
         - 1234:1234
         - 9999:9999
@@ -214,4 +268,6 @@ jobs:
 
       - name: Run tests
         run: |
-          cd tests-legacy && pip install -r requirements.txt && PATH=$PATH:/speculos pytest
+          cd tests-legacy
+          pip install -r requirements.txt
+          PATH=$PATH:/speculos pytest

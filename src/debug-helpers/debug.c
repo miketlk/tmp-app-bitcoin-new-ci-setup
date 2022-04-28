@@ -2,6 +2,8 @@
 #include <stdarg.h>
 #include "printf.h"
 
+#pragma GCC diagnostic ignored "-Wunused-function"
+
 void debug_write(const char *buf) {
     asm volatile(
         "movs r0, #0x04\n"
@@ -42,6 +44,8 @@ static unsigned int __attribute__((noinline, unused)) get_stack_pointer() {
 #pragma GCC diagnostic ignored "-Wunused-parameter"
 #pragma GCC diagnostic ignored "-Wunused-function"
 void print_stack_pointer(const char *file, int line, const char *func_name) {
+    (void) file, (void) line, (void) func_name;  // avoid warnings when DEBUG == 0
+
     PRINTF("STACK (%s) %s:%d: %08x\n", func_name, file, line, get_stack_pointer());
 }
 #pragma GCC diagnostic pop

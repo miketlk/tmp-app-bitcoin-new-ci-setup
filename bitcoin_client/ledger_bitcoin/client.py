@@ -1,10 +1,9 @@
-from sys import byteorder
 from typing import Tuple, List, Mapping, Optional, Union
 import base64
 from io import BytesIO, BufferedReader
 
 from .command_builder import BitcoinCommandBuilder, BitcoinInsType
-from .common import Chain
+from .common import Chain, read_varint
 from .client_command import ClientCommandInterpreter
 from .client_base import Client, TransportClient
 from .client_legacy import LegacyClient
@@ -133,7 +132,7 @@ class NewClient(Client):
             A PSBT of version 0 or 2, with all the necessary information to sign the inputs already filled in; what the
             required fields changes depending on the type of input.
             The non-witness UTXO must be present for both legacy and SegWit inputs, or the hardware wallet will reject
-            signing (this will change for Taproot inputs).
+            signing. This is not required for Taproot inputs.
 
         wallet : Wallet
             The registered wallet policy, or a standard wallet policy.
@@ -148,12 +147,12 @@ class NewClient(Client):
         """
         if psbt.version != 2:
             if self._no_clone_psbt:
-                psbt.to_psbt_v2()
+                psbt.convert_to_v2()
                 psbt_v2 = psbt
             else:
                 psbt_v2 = PSBT()
                 psbt_v2.deserialize(psbt.serialize())  # clone psbt
-                psbt_v2.to_psbt_v2()
+                psbt_v2.convert_to_v2()
         else:
             psbt_v2 = psbt
 
@@ -174,13 +173,13 @@ class NewClient(Client):
         client_intepreter.add_known_mapping(global_map)
 
         input_maps: List[Mapping[bytes, bytes]] = []
-        for _ in range(psbt_v2.input_count):
+        for _ in range(len(psbt_v2.inputs)):
             input_maps.append(parse_stream_to_map(f))
         for m in input_maps:
             client_intepreter.add_known_mapping(m)
 
         output_maps: List[Mapping[bytes, bytes]] = []
-        for _ in range(psbt_v2.output_count):
+        for _ in range(len(psbt_v2.outputs)):
             output_maps.append(parse_stream_to_map(f))
         for m in output_maps:
             client_intepreter.add_known_mapping(m)
@@ -208,7 +207,18 @@ class NewClient(Client):
         if any(len(x) <= 1 for x in results):
             raise RuntimeError("Invalid response")
 
-        return {int(res[0]): res[1:] for res in results}
+        results_map = {}
+        for res in results:
+            res_buffer = BytesIO(res)
+            input_index = read_varint(res_buffer)
+            signature = res_buffer.read()
+
+            if input_index in results_map:
+                raise RuntimeError(f"Multiple signatures produced for the same input: {input_index}")
+
+            results_map[input_index] = signature
+
+        return results_map
 
     def get_master_fingerprint(self) -> bytes:
         sw, response = self._make_request(self.builder.get_master_fingerprint())

@@ -1,4 +1,5 @@
 #include <stdint.h>
+#include <string.h>
 #include <limits.h>
 #include <string.h>
 
@@ -20,6 +21,8 @@
 
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wcomment"
+// The compiler doesn't like /** inside a block comment, so we disable this warning temporarily.
+
 /*
 Currently supported policies for singlesig:
 
@@ -42,6 +45,7 @@ Currently supported wallet policies for multisig:
   sh(wsh(multi(...)))
   sh(wsh(sortedmulti(...)))
 */
+
 #pragma GCC diagnostic pop
 
 // TODO: add unit tests to this module
@@ -140,6 +144,8 @@ static uint8_t lowercase_hex_to_int(char c) {
     return (uint8_t) (is_digit(c) ? c - '0' : c - 'a' + 10);
 }
 
+// TODO: remove
+#if 0
 /**
  * Read up to out_len characters from buffer, until either:
  * - the buffer is exhausted
@@ -148,16 +154,14 @@ static uint8_t lowercase_hex_to_int(char c) {
  */
 static size_t read_word(buffer_t *buffer, char *out, size_t out_len) {
     size_t word_len = 0;
-    while (word_len < out_len && buffer_can_read(buffer, 1)) {
-        char c = buffer->ptr[buffer->offset];
-        if (!is_alpha(c)) {
-            break;
-        }
-        out[word_len++] = c;
+    uint8_t c;
+    while (word_len < out_len && buffer_peek(buffer, &c) && is_alpha((char) c)) {
+        out[word_len++] = (char) c;
         buffer_seek_cur(buffer, 1);
     }
     return word_len;
 }
+#endif // 0
 
 /**
  * Read up to out_len characters from buffer, until either:
@@ -167,12 +171,9 @@ static size_t read_word(buffer_t *buffer, char *out, size_t out_len) {
  */
 static size_t read_tag(buffer_t *buffer, char *out, size_t out_len) {
     size_t tag_len = 0;
-    while (tag_len < out_len && buffer_can_read(buffer, 1)) {
-        char c = buffer->ptr[buffer->offset];
-        if (!is_alphanumeric(c)) {
-            break;
-        }
-        out[tag_len++] = c;
+    uint8_t c;
+    while (tag_len < out_len && buffer_peek(buffer, &c) && is_alphanumeric((char) c)) {
+        out[tag_len++] = (char) c;
         buffer_seek_cur(buffer, 1);
     }
     return tag_len;
@@ -204,17 +205,17 @@ static int parse_token(buffer_t *buffer) {
  * The read number is saved into *out on success.
  */
 static int parse_unsigned_decimal(buffer_t *buffer, size_t *out) {
-    if (!buffer_can_read(buffer, 1) || !is_digit(buffer->ptr[buffer->offset])) {
-        PRINTF("parse_unsigned_decimal: couldn't read byte, or not a digit: %d\n",
-               buffer->ptr[buffer->offset]);
+    uint8_t c;
+    if (!buffer_peek(buffer, &c) || !is_digit(c)) {
+        PRINTF("parse_unsigned_decimal: couldn't read byte, or not a digit: %d\n", c);
         return -1;
     }
 
     size_t result = 0;
     int digits_read = 0;
-    while ((buffer_can_read(buffer, 1) && is_digit(buffer->ptr[buffer->offset]))) {
+    while (buffer_peek(buffer, &c) && is_digit(c)) {
         ++digits_read;
-        uint8_t next_digit = buffer->ptr[buffer->offset] - '0';
+        uint8_t next_digit = c - '0';
 
         if (digits_read == 2 && result == 0) {
             // if the first digit was a 0, than it should be the only digit
@@ -253,7 +254,8 @@ static int buffer_read_derivation_step(buffer_t *buffer, uint32_t *out) {
     *out = der_step;
 
     // Check if hardened
-    if (buffer_can_read(buffer, 1) || buffer->ptr[buffer->offset] == '\'') {
+    uint8_t c;
+    if (buffer_peek(buffer, &c) && c == '\'') {
         *out |= BIP32_FIRST_HARDENED_CHILD;
         buffer_seek_cur(buffer, 1);  // skip the ' character
     }
@@ -267,11 +269,12 @@ static int buffer_read_derivation_step(buffer_t *buffer, uint32_t *out) {
 int parse_policy_map_key_info(buffer_t *buffer, policy_map_key_info_t *out) {
     memset(out, 0, sizeof(policy_map_key_info_t));
 
-    if (!buffer_can_read(buffer, 1)) {
+    uint8_t c;
+    if (!buffer_peek(buffer, &c)) {
         return -1;
     }
 
-    if (buffer->ptr[buffer->offset] == '[') {
+    if (c == '[') {
         out->has_key_origin = 1;
 
         buffer_seek_cur(buffer, 1);         // skip 1 byte
@@ -290,7 +293,7 @@ int parse_policy_map_key_info(buffer_t *buffer, policy_map_key_info_t *out) {
 
         // read all the given derivation steps
         out->master_key_derivation_len = 0;
-        while (buffer->ptr[buffer->offset] == '/') {
+        while (buffer_peek(buffer, &c) && c == '/') {
             buffer_seek_cur(buffer, 1);  // skip the '/' character
             if (out->master_key_derivation_len > MAX_BIP32_PATH_STEPS) {
                 return -1;
@@ -306,7 +309,6 @@ int parse_policy_map_key_info(buffer_t *buffer, policy_map_key_info_t *out) {
         }
 
         // the next character must be ']'
-        uint8_t c;
         if (!buffer_read_u8(buffer, &c) || c != ']') {
             return -1;
         }
@@ -314,10 +316,11 @@ int parse_policy_map_key_info(buffer_t *buffer, policy_map_key_info_t *out) {
 
     // consume the rest of the buffer into the pubkey, except possibly the final "/**"
     unsigned int ext_pubkey_len = 0;
-    while (ext_pubkey_len < MAX_SERIALIZED_PUBKEY_LENGTH && buffer_can_read(buffer, 1) &&
-           is_alphanumeric(buffer->ptr[buffer->offset])) {
-        buffer_read_u8(buffer, (uint8_t *) &out->ext_pubkey[ext_pubkey_len]);
+    while (ext_pubkey_len < MAX_SERIALIZED_PUBKEY_LENGTH && buffer_peek(buffer, &c) &&
+           is_alphanumeric(c)) {
+        out->ext_pubkey[ext_pubkey_len] = c;
         ++ext_pubkey_len;
+        buffer_seek_cur(buffer, 1);
     }
     out->ext_pubkey[ext_pubkey_len] = '\0';
 
@@ -616,88 +619,7 @@ int parse_policy_map(buffer_t *in_buf, void *out, size_t out_len) {
     return parse_script(in_buf, &out_buf, 0, 0);
 }
 
-// TODO: add unit tests
-int get_script_type(const uint8_t script[], size_t script_len) {
-    if (script_len == 25 && script[0] == 0x76 && script[1] == 0xa9 && script[2] == 0x14 &&
-        script[23] == 0x88 && script[24] == 0xac) {
-        return SCRIPT_TYPE_P2PKH;
-    }
-
-    if (script_len == 23 && script[0] == 0xa9 && script[1] == 0x14 && script[22] == 0x87) {
-        return SCRIPT_TYPE_P2SH;
-    }
-
-    if (script_len == 22 && script[0] == 0x00 && script[1] == 0x14) {
-        return SCRIPT_TYPE_P2WPKH;
-    }
-
-    if (script_len == 34 && script[0] == 0x00 && script[1] == 0x20) {
-        return SCRIPT_TYPE_P2WSH;
-    }
-
-    if (script_len == 34 && script[0] == 0x51 && script[1] == 0x20) {
-        return SCRIPT_TYPE_P2TR;
-    }
-
-    // unknown
-    return -1;
-}
-
 #ifndef SKIP_FOR_CMOCKA
-
-// TODO: add unit tests
-int get_script_address(const uint8_t script[],
-                       size_t script_len,
-                       global_context_t *coin_config,
-                       char *out,
-                       size_t out_len) {
-    int script_type = get_script_type(script, script_len);
-    int addr_len;
-    switch (script_type) {
-        case SCRIPT_TYPE_P2PKH:
-            addr_len =
-                base58_encode_address(script + 3, coin_config->p2pkh_version, out, out_len - 1);
-            break;
-        case SCRIPT_TYPE_P2SH:
-            addr_len =
-                base58_encode_address(script + 2, coin_config->p2sh_version, out, out_len - 1);
-            break;
-        case SCRIPT_TYPE_P2WPKH:
-        case SCRIPT_TYPE_P2WSH:
-        case SCRIPT_TYPE_P2TR: {
-            // bech32/bech32m encoding
-
-            // 20 for P2WPKH, 32 for P2WSH or P2TR
-            int hash_length = (script_type == SCRIPT_TYPE_P2WPKH ? 20 : 32);
-
-            // witness program version
-            int version = (script_type == SCRIPT_TYPE_P2TR ? 1 : 0);
-
-            // make sure that the output buffer is long enough
-            if (out_len < 73 + strlen(coin_config->native_segwit_prefix)) {
-                return -1;
-            }
-
-            int ret = segwit_addr_encode(out,
-                                         coin_config->native_segwit_prefix,
-                                         version,
-                                         script + 2,
-                                         hash_length  // 20 for WPKH, 32 for WSH
-            );
-
-            if (ret != 1) {
-                return -1;  // should never happen
-            }
-
-            addr_len = strlen(out);
-            break;
-        }
-        default:
-            return -1;
-    }
-    out[addr_len] = '\0';
-    return addr_len;
-}
 
 void get_policy_wallet_id(policy_map_wallet_header_t *wallet_header, uint8_t out[static 32]) {
     cx_sha256_t wallet_hash_context;
