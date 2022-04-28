@@ -6,6 +6,7 @@
 #include "../common/buffer.h"
 #include "../common/segwit_addr.h"
 #include "../common/wallet.h"
+#include "../liquid.h"
 
 #include "../boilerplate/sw.h"
 
@@ -368,6 +369,7 @@ static int parse_script(buffer_t *in_buf,
     // We read the token, we'll do different parsing based on what token we find
     int token = parse_token(in_buf);
     char c;
+    unsigned int inner_context_flags = context_flags;
 
     // Opening '('
     if (!buffer_read_u8(in_buf, (uint8_t *) &c) && c != '(') {
@@ -378,13 +380,14 @@ static int parse_script(buffer_t *in_buf,
         case TOKEN_SH:
         case TOKEN_WSH: {
             if (token == TOKEN_SH) {
-                if (depth != 0) {
-                    return -2;  // can only be top-level
+                if (depth != 0 && (context_flags & CONTEXT_WITHIN_BLINDED) == 0) {
+                    return -2;  // can only be top-level or inside blinded
                 }
 
             } else if (token == TOKEN_WSH) {
-                if (depth != 0 && (context_flags & CONTEXT_WITHIN_SH) == 0) {
-                    return -3;  // only top-level or inside sh
+                if (depth != 0 &&
+                    (context_flags & (CONTEXT_WITHIN_SH|CONTEXT_WITHIN_BLINDED)) == 0) {
+                    return -3;  // only top-level, inside sh or blinded
                 }
             }
 
@@ -396,8 +399,6 @@ static int parse_script(buffer_t *in_buf,
                 return -4;
             }
             node->type = token;
-
-            unsigned int inner_context_flags = context_flags;
 
             if (token == TOKEN_SH) {
                 inner_context_flags |= CONTEXT_WITHIN_SH;
@@ -419,6 +420,12 @@ static int parse_script(buffer_t *in_buf,
         case TOKEN_WPKH:
         case TOKEN_TR:  // not currently supporting x-only keys
         {
+            if (token == TOKEN_WPKH) {
+                if (depth != 0 &&
+                    (context_flags & (CONTEXT_WITHIN_SH|CONTEXT_WITHIN_BLINDED)) == 0) {
+                    return -3;  // only top-level, inside sh or blinded
+                }
+            }
             policy_node_with_key_t *node =
                 (policy_node_with_key_t *) buffer_alloc(out_buf,
                                                         sizeof(policy_node_with_key_t),
@@ -506,7 +513,7 @@ static int parse_script(buffer_t *in_buf,
             }
             node->type = token;
 
-            unsigned int inner_context_flags = context_flags | CONTEXT_WITHIN_BLINDED;
+            inner_context_flags |= CONTEXT_WITHIN_BLINDED;
 
             // the master blinding key script is recursively parsed (if successful) in the current
             // location of the output buffer
@@ -538,12 +545,15 @@ static int parse_script(buffer_t *in_buf,
             break;
         }
         case TOKEN_SLIP77: {
+            if (depth != 1 && (context_flags & CONTEXT_WITHIN_BLINDED) == 0) {
+                return -20;  // must be inside blinded()
+            }
             policy_node_blinding_key_t *node =
                 (policy_node_blinding_key_t *) buffer_alloc(out_buf,
-                                                          sizeof(policy_node_blinding_key_t),
-                                                          true);
+                                                            sizeof(policy_node_blinding_key_t),
+                                                            true);
             if (node == NULL) {
-                return -20;
+                return -21;
             }
             node->type = token;
             node->key_str = (const char *)(out_buf->ptr + out_buf->offset);
@@ -558,31 +568,38 @@ static int parse_script(buffer_t *in_buf,
                 // otherwise, there must be an alphanumeric character
                 if (!buffer_read_u8(in_buf, (uint8_t *) &c) || !is_alphanumeric(c)) {
                     PRINTF("Unexpected char: %c\n", c);
-                    return -21;
+                    return -22;
                 }
 
                 char *p_key_chr = (char *) buffer_alloc(out_buf, sizeof(char), false);
                 if (p_key_chr == NULL) {
-                    return -22;
+                    return -23;
                 }
                 *p_key_chr = c;
                 ++node->key_str_len;
             }
+
+            // Check length of a private key in WIF Base58 format
+            if(node->key_str_len < WIF_PRIVATE_KEY_LENGTH_MIN ||
+               node->key_str_len > WIF_PRIVATE_KEY_LENGTH_MAX) {
+                return -24;
+            }
+
             break;
         }
 #endif // HAVE_LIQUID
         default:
             PRINTF("Unknown token\n");
-            return -14;
+            return -25;
     }
 
     if (!buffer_read_u8(in_buf, (uint8_t *) &c) && c != ')') {
-        return -15;
+        return -26;
     }
 
     if (depth == 0 && buffer_can_read(in_buf, 1)) {
         PRINTF("Input buffer too long\n");
-        return -16;
+        return -27;
     }
 
     return 0;

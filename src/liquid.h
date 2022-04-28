@@ -12,3 +12,9 @@
  * supported
  */
 #define GET_BLINDING_KEY_MAX_SCRIPT_LEN 252
+
+/**
+ * Minimum and maximum length of private key in WIF Base58 format
+ */
+#define WIF_PRIVATE_KEY_LENGTH_MIN 51
+#define WIF_PRIVATE_KEY_LENGTH_MAX 52
