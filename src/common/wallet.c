@@ -7,6 +7,7 @@
 #include "../common/buffer.h"
 #include "../common/segwit_addr.h"
 #include "../common/wallet.h"
+#include "../common/wif.h"
 #include "../liquid.h"
 
 #include "../boilerplate/sw.h"
