@@ -99,7 +99,8 @@ int read_policy_map_wallet(buffer_t *buffer, policy_map_wallet_header_t *header)
     header->name[header->name_len] = '\0';
 
     uint64_t policy_map_len;
-    if (!buffer_read_varint(buffer, &policy_map_len) || policy_map_len > 74) {
+    if (!buffer_read_varint(buffer, &policy_map_len) ||
+        policy_map_len > MAX_POLICY_MAP_STR_LENGTH) {
         return -6;
     }
     header->policy_map_len = (uint16_t) policy_map_len;
@@ -583,9 +584,8 @@ static int parse_script(buffer_t *in_buf,
                 ++node->key_str_len;
             }
 
-            // Check length of a private key in WIF Base58 format
-            if(node->key_str_len < WIF_PRIVATE_KEY_LENGTH_MIN ||
-               node->key_str_len > WIF_PRIVATE_KEY_LENGTH_MAX) {
+            // Check blinding key provided in WIF format
+            if(!wif_verify_private_key(node->key_str, node->key_str_len, NULL)) {
                 return -24;
             }
 

@@ -266,6 +266,21 @@ static void finalize_response(dispatcher_context_t *dc) {
     SEND_RESPONSE(dc, &response, sizeof(response), SW_OK);
 }
 
+static bool is_policy_acceptable_blinded(policy_node_t *policy, policy_node_t **p_internal_script) {
+    if(!policy || !p_internal_script || policy->type != TOKEN_BLINDED) {
+        return false;
+    }
+    *p_internal_script = NULL;
+
+    policy_node_blinded_t *blinded = (policy_node_blinded_t *)policy;
+    if(!blinded->mbk_script || !blinded->script || blinded->mbk_script->type != TOKEN_SLIP77) {
+        return false;
+    }
+
+    *p_internal_script = blinded->script;
+    return true;
+}
+
 static bool is_policy_acceptable(policy_node_t *policy) {
     policy_node_t *internal_script;
 
@@ -281,6 +296,13 @@ static bool is_policy_acceptable(policy_node_t *policy) {
     } else if (policy->type == TOKEN_WSH) {
         // wsh({sorted}multi(@0))
         internal_script = ((policy_node_with_script_t *) policy)->script;
+    } else if (policy->type == TOKEN_BLINDED) {
+#ifdef HAVE_LIQUID
+        if(is_policy_acceptable_blinded(policy, &internal_script)) {
+            return is_policy_acceptable(internal_script);
+        }
+#endif // HAVE_LIQUID
+        return false;  // unexpected policy
     } else {
         return false;  // unexpected policy
     }
