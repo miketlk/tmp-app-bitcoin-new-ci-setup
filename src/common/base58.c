@@ -23,6 +23,13 @@
 
 #include "../cxram_stash.h"
 
+#ifndef SKIP_FOR_CMOCKA
+#include "cx.h"
+#else
+// This function is defined in test module
+extern size_t cx_hash_sha256(const uint8_t *in, size_t len, uint8_t *out, size_t out_len);
+#endif
+
 // uint8_t const BASE58_TABLE[] = {
 //     0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,  //
 //     0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,  //
@@ -189,4 +196,14 @@ int base58_encode(const uint8_t *in, size_t in_len, char *out, size_t out_len) {
     }
 
     return i;
+}
+
+uint32_t base58_checksum(const uint8_t *in, size_t in_len) {
+    uint8_t hash[32];
+    cx_hash_sha256(in, in_len, hash, sizeof(hash));
+    cx_hash_sha256(hash, sizeof(hash), hash, sizeof(hash));
+    return (uint32_t) hash[0] << 24 |
+           (uint32_t) hash[1] << 16 |
+           (uint32_t) hash[2] << 8  |
+           (uint32_t) hash[3];
 }

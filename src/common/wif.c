@@ -1,13 +1,7 @@
 #include <string.h>   // memmove, memset
 #include "wif.h"
 #include "base58.h"
-
-#ifndef SKIP_FOR_CMOCKA
-#include "cx.h"
-#else
-// This function is defined in test module
-extern size_t cx_hash_sha256(const uint8_t *in, size_t len, uint8_t *out, size_t out_len);
-#endif
+#include "read.h"
 
 /**
  * Constants used by WIF decoder
@@ -59,11 +53,8 @@ bool wif_decode_private_key(const char* key_str,
 
     // Checksum verification
     if(success) {
-        uint8_t hash[32];
-        cx_hash_sha256(decoded, decoded_len - WIF_CHECKSUM_LEN, hash, sizeof(hash));
-        cx_hash_sha256(hash, sizeof(hash), hash, sizeof(hash));
         const uint8_t *p_checksum_in = decoded + decoded_len - WIF_CHECKSUM_LEN;
-        if(memcmp(hash, p_checksum_in, sizeof(uint8_t) * WIF_CHECKSUM_LEN) != 0) {
+        if(base58_checksum(decoded, decoded_len - WIF_CHECKSUM_LEN) != read_u32_be(p_checksum_in, 0)) {
             success = false;
         }
     }
@@ -82,7 +73,7 @@ bool wif_decode_private_key(const char* key_str,
         }
     }
 
-    // Zeroise temporary buffer ant return
+    // Zeroise temporary buffer and return
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wimplicit-function-declaration"
     explicit_bzero(decoded, sizeof(decoded));
