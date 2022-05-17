@@ -25,6 +25,9 @@
  */
 #define MAX_APPNAME_LEN 64
 
+#ifdef HAVE_LIQUID
+#define MAX_ADDRESS_LENGTH_STR (130 + sizeof(COIN_NATIVE_SEGWIT_PREFIX))
+#else // HAVE_LIQUID
 /**
  * Maximum length of a serialized address (in characters).
  * Segwit addresses can reach 74 characters; 76 on regtest because of the longer "bcrt" prefix.
@@ -36,6 +39,8 @@
 // will always be defined
 #define MAX_ADDRESS_LENGTH_STR 74
 #endif
+#endif // HAVE_LIQUID
+
 /**
  * Maximum transaction length (bytes).
  */

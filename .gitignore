@@ -24,6 +24,7 @@ fuzzing/build/
 # Editors
 .idea/
 .vscode/c_cpp_properties.json
+.vscode/*.log
 
 # Python
 *.pyc[cod]

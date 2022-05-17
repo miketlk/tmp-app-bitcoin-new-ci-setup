@@ -33,7 +33,7 @@ void handler_liquid_get_master_blinding_key(dispatcher_context_t *dc) {
     }
 
     uint8_t master_blinding_key[32];
-    crypto_derive_symmetric_key(SLIP77_LABEL, SLIP77_LABEL_LEN, master_blinding_key);
+    liquid_get_master_blinding_key(master_blinding_key);
 
     SEND_RESPONSE(dc, master_blinding_key, sizeof(master_blinding_key), SW_OK);
 }

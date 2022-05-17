@@ -31,13 +31,13 @@
  * @param[out] p_flags
  *   Pointer to variable receiving flags, can be NULL if not needed.
  *
- * @return true on success, false in case of error.
+ * @return size of decoded private key in bytes, or -1 in case of error.
  */
-bool wif_decode_private_key(const char* key_str,
-                            size_t key_str_len,
-                            uint8_t *out,
-                            size_t out_len,
-                            uint32_t *p_flags);
+int wif_decode_private_key(const char* key_str,
+                           size_t key_str_len,
+                           uint8_t *out,
+                           size_t out_len,
+                           uint32_t *p_flags);
 
 
 /**
@@ -55,5 +55,5 @@ bool wif_decode_private_key(const char* key_str,
 static inline bool wif_verify_private_key(const char* key_str,
                                           size_t key_str_len,
                                           uint32_t *p_flags) {
-    return wif_decode_private_key(key_str, key_str_len, NULL, 0, p_flags);
+    return wif_decode_private_key(key_str, key_str_len, NULL, 0, p_flags) > 0;
 }

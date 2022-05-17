@@ -47,17 +47,9 @@ void handler_liquid_get_blinding_key(dispatcher_context_t *dc) {
         return;
     }
 
-    uint8_t mbk[32]; // Master blinding key
-    crypto_derive_symmetric_key(SLIP77_LABEL, SLIP77_LABEL_LEN, mbk);
-
     uint8_t *script_ptr = dc->read_buffer.ptr + dc->read_buffer.offset;
     uint8_t blinding_key[32];
-    cx_hmac_sha256(mbk,
-                   sizeof(mbk),
-                   script_ptr,
-                   script_length,
-                   blinding_key,
-                   sizeof(blinding_key));
+    liquid_get_blinding_key(script_ptr, script_length, blinding_key);
 
     SEND_RESPONSE(dc, blinding_key, sizeof(blinding_key), SW_OK);
 }

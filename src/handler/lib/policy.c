@@ -4,12 +4,18 @@
 
 #include "../lib/get_merkle_leaf_element.h"
 #include "../../crypto.h"
+#include "../../liquid.h"
 #include "../../common/base58.h"
 #include "../../common/segwit_addr.h"
+#include "../../common/wif.h"
 
 extern global_context_t G_context;
 
+#ifdef HAVE_LIQUID
+#define MAX_POLICY_DEPTH 4
+#else
 #define MAX_POLICY_DEPTH 3
+#endif
 
 #define MODE_OUT_BYTES 0
 #define MODE_OUT_HASH  1
@@ -450,6 +456,39 @@ int call_get_wallet_script(dispatcher_context_t *dispatcher_context,
     return ret;
 }
 
+#ifdef HAVE_LIQUID
+bool is_master_blinding_key_ours(const policy_node_t *mbk_node) {
+    bool result = false;
+
+    if(mbk_node->type == TOKEN_SLIP77) {
+        const policy_node_blinding_key_t *slip77 =
+            (const policy_node_blinding_key_t *)mbk_node;
+
+        uint8_t in_mbk[32];
+        uint8_t ours_mbk[32];
+
+        BEGIN_TRY {
+            TRY {
+                if(wif_decode_private_key(slip77->key_str,
+                                        slip77->key_str_len,
+                                        in_mbk,
+                                        sizeof(in_mbk),
+                                        NULL)) {
+                    liquid_get_master_blinding_key(ours_mbk);
+                    result = os_secure_memcmp((void *) in_mbk, (void *) ours_mbk, 32) == 0;
+                }
+            }
+            FINALLY {
+                explicit_bzero(in_mbk, sizeof(in_mbk));
+                explicit_bzero(ours_mbk, sizeof(ours_mbk));
+            }
+        }
+        END_TRY;
+    }
+    return result;
+}
+#endif // HAVE_LIQUID
+
 int get_policy_address_type(const policy_node_t *policy) {
     // legacy, native segwit, wrapped segwit, or taproot
     switch (policy->type) {
@@ -465,6 +504,15 @@ int get_policy_address_type(const policy_node_t *policy) {
             return -1;
         case TOKEN_TR:
             return ADDRESS_TYPE_TR;
+#ifdef HAVE_LIQUID
+        case TOKEN_BLINDED: {
+            const policy_node_blinded_t *blinded = (const policy_node_blinded_t *)policy;
+            if(is_master_blinding_key_ours(blinded->mbk_script)) {
+                return get_policy_address_type(blinded->script);
+            }
+            return -1;
+        }
+#endif
         default:
             return -1;
     }

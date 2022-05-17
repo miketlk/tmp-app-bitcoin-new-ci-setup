@@ -12,15 +12,15 @@
 #define WIF_VERSION_TESTNET     0xEF
 #define WIF_COMPRESSION_SUFFIX  0x01
 
-bool wif_decode_private_key(const char* key_str,
-                            size_t key_str_len,
-                            uint8_t *out,
-                            size_t out_len,
-                            uint32_t *p_flags) {
+int wif_decode_private_key(const char* key_str,
+                           size_t key_str_len,
+                           uint8_t *out,
+                           size_t out_len,
+                           uint32_t *p_flags) {
     if(!key_str ||
        key_str_len < WIF_PRIVATE_KEY_LENGTH_MIN ||
        key_str_len > WIF_PRIVATE_KEY_LENGTH_MAX) {
-        return false;
+        return -1;
     }
 
     bool success = true;
@@ -78,5 +78,5 @@ bool wif_decode_private_key(const char* key_str,
 #pragma GCC diagnostic ignored "-Wimplicit-function-declaration"
     explicit_bzero(decoded, sizeof(decoded));
 #pragma GCC diagnostic pop
-    return success;
+    return success ? WIF_PRIVATE_KEY_LEN : -1;
 }

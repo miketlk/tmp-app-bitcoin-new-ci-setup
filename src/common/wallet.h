@@ -4,6 +4,7 @@
 
 #include "common/bip32.h"
 #include "common/buffer.h"
+#include "common/wif.h"
 #include "../constants.h"
 
 #ifndef SKIP_FOR_CMOCKA
@@ -60,9 +61,13 @@
 #define MAX_POLICY_MAP_SERIALIZED_LENGTH \
     (1 + 1 + MAX_POLICY_MAP_NAME_LENGTH + 1 + MAX_POLICY_MAP_STR_LENGTH + 1 + 32)
 
-// TODO: verify
+#ifdef HAVE_LIQUID
+// Maximum size of a parsed policy map in memory
+#define MAX_POLICY_MAP_BYTES 208
+#else
 // Maximum size of a parsed policy map in memory
 #define MAX_POLICY_MAP_BYTES 128
+#endif
 
 // Currently only multisig is supported
 #define MAX_POLICY_MAP_LEN MAX_MULTISIG_POLICY_MAP_LENGTH
@@ -182,3 +187,26 @@ int parse_policy_map(buffer_t *in_buf, void *out, size_t out_len);
 void get_policy_wallet_id(policy_map_wallet_header_t *wallet_header, uint8_t out[static 32]);
 
 #endif
+
+/**
+ * Unwraps blinded tag and extracts master blinding key from wallet policy.
+ *
+ * @param[in,out] p_policy
+ *   Pointer to a modifiable variable holding pointer to root policy node.
+ * @param[out] p_is_blinded
+ *   Pointer to a boolean variable which is set to true if the wallet policy has blinded tag.
+ * @param blinding_key
+ *   Pointer to buffer receiving extracted blinding key.
+ * @param blinding_key_len
+ *   The length of the ``blinding_key`` buffer.
+ * @param p_flags
+ *   Pointer to variable receiving flags related to extracted blinding key, a combination of
+ *   WIF_FLAG_* constants. Can be NULL if not needed.
+ *
+ * @return true on success, false in case of error.
+ */
+bool policy_unwrap_blinded(const policy_node_t **p_policy,
+                           bool *p_is_blinded,
+                           uint8_t *blinding_key,
+                           size_t blinding_key_len,
+                           uint32_t *p_flags);

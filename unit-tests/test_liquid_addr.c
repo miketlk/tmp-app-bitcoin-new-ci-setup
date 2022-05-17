@@ -7,7 +7,7 @@
 
 #include <cmocka.h>
 
-#include "common/liquid_addr.h"
+#include "liquid/liquid_addr.h"
 
 // TODO: add failure tests
 

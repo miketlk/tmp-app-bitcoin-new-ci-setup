@@ -4,6 +4,9 @@
 #include <stdint.h>   // uint*_t
 #include <stdbool.h>  // bool
 
+// Prefix of confidential address
+#define LIQUID_ADDR_PREFIX_CA
+
 /**
  * Creates a confidential address.
  *

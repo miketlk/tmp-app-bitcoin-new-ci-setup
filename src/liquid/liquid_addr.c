@@ -29,12 +29,12 @@
 
 #include <string.h>   // memmove, memset
 #include "liquid_addr.h"
-#include "base58.h"
+#include "../common/buffer.h"
+#include "../common/read.h"
+#include "../common/write.h"
+#include "../common/base58.h"
+#include "../common/segwit_addr.h"
 #include "blech32.h"
-#include "segwit_addr.h"
-#include "buffer.h"
-#include "read.h"
-#include "write.h"
 
 // The length of a public key used for EC signing
 #define EC_PUBLIC_KEY_LEN 33
@@ -61,14 +61,14 @@ int liquid_encode_address_base58(const uint8_t *in,
                                  char *out,
                                  size_t out_len) {
     if(!in || in_len != HASH160_LEN || prefix > 0xFF || version > 0xFF || !pub_key ||
-       pub_key_len != EC_PUBLIC_KEY_LEN || !out) {
+       pub_key_len != EC_PUBLIC_KEY_LEN || !out || !out_len) {
         return -1;
     }
 
     uint8_t data[2 + EC_PUBLIC_KEY_LEN + HASH160_LEN + BASE58_CHECKSUM_LEN];
     buffer_t buf = buffer_create(data, sizeof(data));
     bool ok = true;
-    int ret = -1;
+    int addr_len = -1;
 
     ok = ok && buffer_write_u8(&buf, prefix & 0xFF);
     ok = ok && buffer_write_u8(&buf, version & 0xFF);
@@ -77,12 +77,17 @@ int liquid_encode_address_base58(const uint8_t *in,
     ok = ok && buffer_write_u32(&buf, base58_checksum(data, buf.offset), BE);
 
     if(ok) {
-        ret = base58_encode(data, buf.offset, out, out_len);
+        addr_len = base58_encode(data, buf.offset, out, out_len - 1);
+        if(addr_len >= 0 && addr_len < out_len) {
+            out[addr_len] = '\0';
+        } else {
+            ok = false;
+        }
     }
 
     // Zeroise temporary buffer and return
     call_explicit_bzero(data, sizeof(data));
-    return ok ? ret : -1;
+    return ok ? addr_len : -1;
 }
 
 int liquid_encode_address_segwit(const uint8_t *witprog,
@@ -93,7 +98,7 @@ int liquid_encode_address_segwit(const uint8_t *witprog,
                                  size_t pub_key_len,
                                  char *out,
                                  size_t out_len) {
-    if(!witprog || !prefix || version > 0xFF || !pub_key || !out) {
+    if(!witprog || !prefix || version > 0xFF || !pub_key || !out || !out_len) {
         return -1;
     }
 

@@ -8,7 +8,7 @@
 #include "../common/segwit_addr.h"
 #include "../common/wallet.h"
 #include "../common/wif.h"
-#include "../liquid.h"
+#include "../liquid/liquid.h"
 
 #include "../boilerplate/sw.h"
 
@@ -643,3 +643,40 @@ void get_policy_wallet_id(policy_map_wallet_header_t *wallet_header, uint8_t out
 }
 
 #endif
+
+
+#ifdef HAVE_LIQUID
+
+bool policy_unwrap_blinded(const policy_node_t **p_policy,
+                           bool *p_is_blinded,
+                           uint8_t *blinding_key,
+                           size_t blinding_key_len,
+                           uint32_t *p_flags) {
+    if(!p_policy || !(*p_policy) || !p_is_blinded || !blinding_key) {
+        return false;
+    }
+
+    *p_is_blinded = false;
+
+    if((*p_policy)->type == TOKEN_BLINDED) {
+        const policy_node_blinded_t *root = (const policy_node_blinded_t*)*p_policy;
+        if(root->mbk_script && root->script && root->mbk_script->type == TOKEN_SLIP77) {
+            const policy_node_blinding_key_t *slip77 =
+                (const policy_node_blinding_key_t*)root->mbk_script;
+            int key_len = wif_decode_private_key(slip77->key_str,
+                                                 slip77->key_str_len,
+                                                 blinding_key,
+                                                 blinding_key_len,
+                                                 p_flags);
+            if(key_len == blinding_key_len) {
+                *p_policy = root->script;
+                *p_is_blinded = true;
+                return true;
+            }
+        }
+        return false;
+    }
+    return true;
+}
+
+#endif // HAVE_LIQUID

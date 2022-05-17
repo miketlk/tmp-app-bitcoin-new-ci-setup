@@ -18,13 +18,13 @@ static void test_wif_decode_private_key_mainnet(void **state) {
     };
     uint8_t out_key[sizeof(ref_key)] = {0};
     uint32_t flags = 0;
-    bool ret = wif_decode_private_key(wif_key,
-                                      sizeof(wif_key) - 1,
-                                      out_key,
-                                      sizeof(out_key),
-                                      &flags);
+    int ret = wif_decode_private_key(wif_key,
+                                     sizeof(wif_key) - 1,
+                                     out_key,
+                                     sizeof(out_key),
+                                     &flags);
 
-    assert_true(ret);
+    assert_int_equal(ret, sizeof(out_key));
     assert_memory_equal(out_key, ref_key, sizeof(out_key));
     assert_int_equal(flags, WIF_FLAG_MAINNET|WIF_FLAG_COMPRESSION);
 }
@@ -38,13 +38,13 @@ static void test_wif_decode_private_key_testnet(void **state) {
     };
     uint8_t out_key[sizeof(ref_key)] = {0};
     uint32_t flags = 0;
-    bool ret = wif_decode_private_key(wif_key,
-                                      sizeof(wif_key) - 1,
-                                      out_key,
-                                      sizeof(out_key),
-                                      &flags);
+    int ret = wif_decode_private_key(wif_key,
+                                     sizeof(wif_key) - 1,
+                                     out_key,
+                                     sizeof(out_key),
+                                     &flags);
 
-    assert_true(ret);
+    assert_int_equal(ret, sizeof(out_key));
     assert_memory_equal(out_key, ref_key, sizeof(out_key));
     assert_int_equal(flags, WIF_FLAG_TESTNET);
 }
