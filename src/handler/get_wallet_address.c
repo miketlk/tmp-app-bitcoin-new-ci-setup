@@ -223,31 +223,75 @@ void handler_get_wallet_address(dispatcher_context_t *dc) {
     dc->next(compute_address);
 }
 
+static int get_script_address_wrapper(get_wallet_address_state_t *state) {
+#ifdef HAVE_LIQUID
+    if(state->is_blinded) {
+        // Derive blinding public key from script
+        uint8_t blinding_pubkey[33];
+        size_t blinding_pubkey_len = sizeof(blinding_pubkey);
+        if(!liquid_get_blinding_public_key(state->master_blinding_key,
+                                           state->script,
+                                           state->script_len,
+                                           blinding_pubkey,
+                                           &blinding_pubkey_len,
+                                           LIQUID_PUBKEY_COMPRESSED)) {
+            return -1;
+        }
+
+        int addr_len = liquid_get_script_confidential_address(state->script,
+                                                              state->script_len,
+                                                              &G_liquid_network_config,
+                                                              blinding_pubkey,
+                                                              blinding_pubkey_len,
+                                                              state->address,
+                                                              sizeof(state->address));
+
+        explicit_bzero(blinding_pubkey, sizeof(blinding_pubkey));
+        return addr_len;
+    }
+#endif // HAVE_LIQUID
+
+    return get_script_address(state->script,
+                              state->script_len,
+                              G_coin_config,
+                              state->address,
+                              sizeof(state->address));
+}
+
 // stack-intensive, split from the previous function to optimize stack usage
 static void compute_address(dispatcher_context_t *dc) {
     LOG_PROCESSOR(dc, __FILE__, __LINE__, __func__);
 
     get_wallet_address_state_t *state = (get_wallet_address_state_t *) &G_command_state;
+    const policy_node_t *p_policy_map = &state->wallet_policy_map;
+
+#ifdef HAVE_LIQUID
+    if(!liquid_policy_unwrap_blinded(&p_policy_map,
+                                     &state->is_blinded,
+                                     state->master_blinding_key,
+                                     sizeof(state->master_blinding_key),
+                                     NULL,
+                                     &state->blinding_key_type)) {
+        SEND_SW(dc, SW_BAD_STATE);  // unexpected
+        return;
+    }
+#endif
 
     buffer_t script_buf = buffer_create(state->script, sizeof(state->script));
 
-    int script_len = call_get_wallet_script(dc,
-                                            &state->wallet_policy_map,
-                                            state->wallet_header_keys_info_merkle_root,
-                                            state->wallet_header_n_keys,
-                                            state->is_change,
-                                            state->address_index,
-                                            &script_buf);
-    if (script_len < 0) {
+    state->script_len = call_get_wallet_script(dc,
+                                               p_policy_map,
+                                               state->wallet_header_keys_info_merkle_root,
+                                               state->wallet_header_n_keys,
+                                               state->is_change,
+                                               state->address_index,
+                                               &script_buf);
+    if (state->script_len < 0) {
         SEND_SW(dc, SW_BAD_STATE);  // unexpected
         return;
     }
 
-    state->address_len = get_script_address(state->script,
-                                            script_len,
-                                            G_coin_config,
-                                            state->address,
-                                            sizeof(state->address));
+    state->address_len = get_script_address_wrapper(state);
 
     if (state->address_len < 0) {
         SEND_SW(dc, SW_BAD_STATE);  // unexpected

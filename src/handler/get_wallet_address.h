@@ -7,6 +7,10 @@
 
 #include "lib/get_merkle_leaf_element.h"
 
+#ifdef HAVE_LIQUID
+#include "../liquid/liquid.h"
+#endif
+
 typedef struct {
     machine_context_t ctx;
 
@@ -35,12 +39,18 @@ typedef struct {
         policy_node_t wallet_policy_map;
     };
 
+    int script_len;
     uint8_t script[MAX_PREVOUT_SCRIPTPUBKEY_LEN];
 
     int address_len;
     char address[MAX_ADDRESS_LENGTH_STR + 1];  // null-terminated string
 
     uint8_t key_info_str[MAX_POLICY_KEY_INFO_LEN];
+#ifdef HAVE_LIQUID
+    bool is_blinded;
+    liquid_blinding_key_type_t blinding_key_type;
+    uint8_t master_blinding_key[32];
+#endif
 } get_wallet_address_state_t;
 
 void handler_get_wallet_address(dispatcher_context_t *dispatcher_context);

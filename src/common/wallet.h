@@ -28,7 +28,8 @@
  * Maximum supported number of keys for a policy map.
  */
 #ifdef HAVE_LIQUID
-#define MAX_POLICY_MAP_KEYS 15
+// TODO: Add support of 15 public keys
+#define MAX_POLICY_MAP_KEYS 5
 #else
 #define MAX_POLICY_MAP_KEYS 5
 #endif
@@ -187,26 +188,3 @@ int parse_policy_map(buffer_t *in_buf, void *out, size_t out_len);
 void get_policy_wallet_id(policy_map_wallet_header_t *wallet_header, uint8_t out[static 32]);
 
 #endif
-
-/**
- * Unwraps blinded tag and extracts master blinding key from wallet policy.
- *
- * @param[in,out] p_policy
- *   Pointer to a modifiable variable holding pointer to root policy node.
- * @param[out] p_is_blinded
- *   Pointer to a boolean variable which is set to true if the wallet policy has blinded tag.
- * @param blinding_key
- *   Pointer to buffer receiving extracted blinding key.
- * @param blinding_key_len
- *   The length of the ``blinding_key`` buffer.
- * @param p_flags
- *   Pointer to variable receiving flags related to extracted blinding key, a combination of
- *   WIF_FLAG_* constants. Can be NULL if not needed.
- *
- * @return true on success, false in case of error.
- */
-bool policy_unwrap_blinded(const policy_node_t **p_policy,
-                           bool *p_is_blinded,
-                           uint8_t *blinding_key,
-                           size_t blinding_key_len,
-                           uint32_t *p_flags);

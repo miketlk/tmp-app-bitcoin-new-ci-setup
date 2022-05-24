@@ -78,7 +78,7 @@ int liquid_encode_address_base58(const uint8_t *in,
 
     if(ok) {
         addr_len = base58_encode(data, buf.offset, out, out_len - 1);
-        if(addr_len >= 0 && addr_len < out_len) {
+        if(addr_len >= 0 && (size_t)addr_len < out_len) {
             out[addr_len] = '\0';
         } else {
             ok = false;

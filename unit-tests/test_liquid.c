@@ -9,6 +9,10 @@
 
 #include "liquid/liquid.h"
 
+// in unit tests, size_t integers are currently 8 compiled as 8 bytes; therefore, in the app
+// about half of the memory would be needed
+#define MAX_POLICY_MAP_MEMORY_SIZE 512
+
 const liquid_network_config_t config_elementsregtest = {
     .p2pkh_version = 0x6F,
     .p2sh_version = 0x4B,
@@ -76,10 +80,63 @@ static void test_liquid_get_script_confidential_address_p2sh(void **state) {
     assert_string_equal(addr, ref_addr);
 }
 
+static void test_policy_unwrap_blinded(void **state) {
+    (void) state;
+
+    uint8_t policy_bytes[MAX_POLICY_MAP_MEMORY_SIZE];
+    const char *policy_str = "blinded(slip77(L24LLSbccJ52ESXkRvnKxYik3iBJvH2uQHf6X3xnsKZ3sw8RHMmA),wpkh(@0))";
+    buffer_t policy_buf = buffer_create((void *)policy_str, strlen(policy_str));
+    const uint8_t ref_mbk[] = {
+        0x90, 0x5C, 0xFE, 0x33, 0xA3, 0xDF, 0xB3, 0x7D, 0xB5, 0x13, 0xD1, 0x07, 0x8C, 0x16, 0xBC,
+        0xFD, 0xF9, 0x06, 0xEC, 0xD9, 0x44, 0xC5, 0xDD, 0xD3, 0x7F, 0xDF, 0xBC, 0xC5, 0xE6, 0x19,
+        0xC1, 0x41
+    };
+    assert_int_equal(parse_policy_map(&policy_buf, policy_bytes, sizeof(policy_bytes)), 0);
+
+    const policy_node_t *policy = (const policy_node_t *)policy_bytes;
+    bool is_blinded = false;
+    uint8_t mbk[sizeof(ref_mbk)] = {0};
+    uint32_t flags = 0;
+    liquid_blinding_key_type_t key_type = BLINDING_KEY_UNKNOWN;
+    bool ret = liquid_policy_unwrap_blinded(&policy, &is_blinded, mbk, sizeof(mbk), &flags, &key_type);
+
+    assert_true(ret);
+    assert_non_null(policy);
+    assert_true(policy != (policy_node_t *)policy_bytes);
+    assert_int_equal(policy->type, TOKEN_WPKH); // inside blinded()
+    assert_true(is_blinded);
+    assert_memory_equal(mbk, ref_mbk, sizeof(mbk));
+    assert_int_equal(flags, WIF_FLAG_MAINNET | WIF_FLAG_COMPRESSION);
+    assert_int_equal(key_type, BLINDING_KEY_SLIP77);
+}
+
+static void test_policy_unwrap_blinded_noop(void **state) {
+    (void) state;
+
+    uint8_t policy_bytes[MAX_POLICY_MAP_MEMORY_SIZE];
+    const char *policy_str = "wpkh(@0)";
+    buffer_t policy_buf = buffer_create((void *)policy_str, strlen(policy_str));
+    assert_int_equal(parse_policy_map(&policy_buf, policy_bytes, sizeof(policy_bytes)), 0);
+
+    const policy_node_t *policy = (const policy_node_t *)policy_bytes;
+    bool is_blinded = false;
+    uint8_t mbk[32] = {0};
+    liquid_blinding_key_type_t key_type = BLINDING_KEY_UNKNOWN;
+    bool ret = liquid_policy_unwrap_blinded(&policy, &is_blinded, mbk, sizeof(mbk), NULL, &key_type);
+
+    assert_true(ret);
+    assert_non_null(policy);
+    assert_true(policy == (policy_node_t *)policy_bytes); // unchanged
+    assert_int_equal(policy->type, TOKEN_WPKH);
+    assert_false(is_blinded);
+}
+
 int main() {
     const struct CMUnitTest tests[] = {
         cmocka_unit_test(test_liquid_get_script_confidential_address_segwit),
         cmocka_unit_test(test_liquid_get_script_confidential_address_p2sh),
+        cmocka_unit_test(test_policy_unwrap_blinded),
+        cmocka_unit_test(test_policy_unwrap_blinded_noop)
     };
 
     return cmocka_run_group_tests(tests, NULL, NULL);

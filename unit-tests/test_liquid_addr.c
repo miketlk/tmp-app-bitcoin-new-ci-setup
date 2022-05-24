@@ -109,11 +109,44 @@ static void test_liquid_encode_address_segwit_v1(void **state) {
     assert_string_equal(conf_addr, ref_conf_addr);
 }
 
+static void test_liquid_encode_address_taproot(void **state) {
+    (void) state;
+
+    const uint8_t script[] = {
+        0x51, 0x20, 0x74, 0x0E, 0xE6, 0x4E, 0x45, 0x2E, 0x3B, 0xAE, 0xE1, 0x27, 0xB0, 0x3C, 0x19,
+        0x5B, 0xCC, 0x21, 0xAD, 0x3E, 0xDD, 0xED, 0x2E, 0xF2, 0x6C, 0x5A, 0xF4, 0x83, 0xD9, 0xC5,
+        0x63, 0x04, 0xD1, 0xE5
+    };
+    const uint8_t blinding_pubkey[] = {
+        0x02, 0x1F, 0xE2, 0x41, 0xD1, 0x83, 0xE6, 0x73, 0x30, 0x0F, 0x03, 0xF2, 0x73, 0x19, 0x5D,
+        0x83, 0xDB, 0x44, 0x1C, 0xFC, 0x4E, 0x51, 0xBE, 0x6E, 0x97, 0x07, 0xF6, 0xEC, 0x6F, 0x9E,
+        0x5A, 0xA9, 0x70
+    };
+    const char prefix[] = "el";
+    const char ref_addr[] =
+        "el1pqg07ysw3s0n8xvq0q0e8xx2as0d5g88ufegmum5hqlmwcmu7t25hqaqwue8y2t3m4msj0vpur9ducgdd8mw76"\
+        "thjd3d0fq7ec43sf509vzd04meg4245";
+    char addr[sizeof(ref_addr)] = "";
+
+    int ret = liquid_encode_address_segwit(script + 2,
+                                           script[1],
+                                           prefix,
+                                           script[0] - 80,
+                                           blinding_pubkey,
+                                           sizeof(blinding_pubkey),
+                                           addr,
+                                           sizeof(addr));
+
+    assert_int_equal(ret, sizeof(ref_addr) - 1);
+    assert_string_equal(addr, ref_addr);
+}
+
 int main() {
     const struct CMUnitTest tests[] = {
         cmocka_unit_test(test_liquid_encode_address_base58),
         cmocka_unit_test(test_liquid_encode_address_segwit_v0),
-        cmocka_unit_test(test_liquid_encode_address_segwit_v1)
+        cmocka_unit_test(test_liquid_encode_address_segwit_v1),
+        cmocka_unit_test(test_liquid_encode_address_taproot)
     };
 
     return cmocka_run_group_tests(tests, NULL, NULL);

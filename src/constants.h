@@ -25,8 +25,17 @@
  */
 #define MAX_APPNAME_LEN 64
 
+/**
+ * Maximum length of SegWit prefix in characters
+ */
 #ifdef HAVE_LIQUID
-#define MAX_ADDRESS_LENGTH_STR (130 + sizeof(COIN_NATIVE_SEGWIT_PREFIX))
+#define MAX_SEGWIT_PREFIX_LENGTH 3
+#else
+#define MAX_SEGWIT_PREFIX_LENGTH sizeof(COIN_NATIVE_SEGWIT_PREFIX)
+#endif
+
+#ifdef HAVE_LIQUID
+#define MAX_ADDRESS_LENGTH_STR (118 + MAX_SEGWIT_PREFIX_LENGTH)
 #else // HAVE_LIQUID
 /**
  * Maximum length of a serialized address (in characters).

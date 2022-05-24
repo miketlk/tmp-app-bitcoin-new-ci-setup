@@ -21,7 +21,7 @@
 #include "boilerplate/sw.h"
 #include "../commands.h"
 #include "../crypto.h"
-#include "../liquid.h"
+#include "../liquid/liquid.h"
 
 #include "liquid_get_master_blinding_key.h"
 
@@ -32,8 +32,25 @@ void handler_liquid_get_master_blinding_key(dispatcher_context_t *dc) {
         return;
     }
 
-    uint8_t master_blinding_key[32];
-    liquid_get_master_blinding_key(master_blinding_key);
+    bool error = false;
+    uint8_t mbk[32];
+    BEGIN_TRY {
+        TRY {
+            liquid_get_master_blinding_key(mbk);
+        }
+        CATCH_ALL {
+            error = true;
+        }
+        FINALLY {
+        }
+    }
+    END_TRY;
 
-    SEND_RESPONSE(dc, master_blinding_key, sizeof(master_blinding_key), SW_OK);
+    if (error) {
+        // Unexpected error
+        explicit_bzero(mbk, sizeof(mbk));
+        SEND_SW(dc, SW_BAD_STATE);
+    } else {
+        SEND_RESPONSE(dc, mbk, sizeof(mbk), SW_OK);
+    }
 }

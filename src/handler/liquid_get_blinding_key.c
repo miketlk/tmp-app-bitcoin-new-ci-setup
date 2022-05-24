@@ -21,7 +21,7 @@
 #include "boilerplate/sw.h"
 #include "../commands.h"
 #include "../crypto.h"
-#include "../liquid.h"
+#include "../liquid/liquid.h"
 
 #include "liquid_get_blinding_key.h"
 
@@ -47,9 +47,29 @@ void handler_liquid_get_blinding_key(dispatcher_context_t *dc) {
         return;
     }
 
-    uint8_t *script_ptr = dc->read_buffer.ptr + dc->read_buffer.offset;
+    bool error = false;
+    uint8_t mbk[32];
     uint8_t blinding_key[32];
-    liquid_get_blinding_key(script_ptr, script_length, blinding_key);
+    BEGIN_TRY {
+        TRY {
+            liquid_get_master_blinding_key(mbk);
+            uint8_t *script_ptr = dc->read_buffer.ptr + dc->read_buffer.offset;
+            liquid_get_blinding_key(mbk, script_ptr, script_length, blinding_key);
+        }
+        CATCH_ALL {
+            error = true;
+        }
+        FINALLY {
+            explicit_bzero(mbk, sizeof(mbk));
+        }
+    }
+    END_TRY;
 
-    SEND_RESPONSE(dc, blinding_key, sizeof(blinding_key), SW_OK);
+    if (error) {
+        // Unexpected error
+        explicit_bzero(blinding_key, sizeof(blinding_key));
+        SEND_SW(dc, SW_BAD_STATE);
+    } else {
+        SEND_RESPONSE(dc, blinding_key, sizeof(blinding_key), SW_OK);
+    }
 }

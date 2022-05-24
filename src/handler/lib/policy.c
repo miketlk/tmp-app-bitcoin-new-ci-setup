@@ -4,10 +4,10 @@
 
 #include "../lib/get_merkle_leaf_element.h"
 #include "../../crypto.h"
-#include "../../liquid.h"
 #include "../../common/base58.h"
 #include "../../common/segwit_addr.h"
 #include "../../common/wif.h"
+#include "../../liquid/liquid.h"
 
 extern global_context_t G_context;
 
@@ -470,10 +470,10 @@ bool is_master_blinding_key_ours(const policy_node_t *mbk_node) {
         BEGIN_TRY {
             TRY {
                 if(wif_decode_private_key(slip77->key_str,
-                                        slip77->key_str_len,
-                                        in_mbk,
-                                        sizeof(in_mbk),
-                                        NULL)) {
+                                          slip77->key_str_len,
+                                          in_mbk,
+                                          sizeof(in_mbk),
+                                          NULL)) {
                     liquid_get_master_blinding_key(ours_mbk);
                     result = os_secure_memcmp((void *) in_mbk, (void *) ours_mbk, 32) == 0;
                 }

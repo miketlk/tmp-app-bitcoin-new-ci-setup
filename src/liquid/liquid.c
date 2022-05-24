@@ -3,6 +3,7 @@
 #include "crypto.h"
 #include "liquid.h"
 #include "liquid_addr.h"
+#include "../common/wif.h"
 #include "../common/script.h"
 
 #ifdef HAVE_LIQUID
@@ -29,12 +30,68 @@ void liquid_get_master_blinding_key(uint8_t mbk[static 32]) {
     crypto_derive_symmetric_key(SLIP77_LABEL, SLIP77_LABEL_LEN, mbk);
 }
 
-void liquid_get_blinding_key(const uint8_t *script,
+void liquid_get_blinding_key(const uint8_t mbk[static 32],
+                             const uint8_t *script,
                              size_t script_length,
                              uint8_t blinding_key[static 32]) {
-    uint8_t mbk[32]; // Master blinding key
-    crypto_derive_symmetric_key(SLIP77_LABEL, SLIP77_LABEL_LEN, mbk);
-    cx_hmac_sha256(mbk, sizeof(mbk), script, script_length, blinding_key, 32);
+    cx_hmac_sha256(mbk, 32, script, script_length, blinding_key, 32);
+}
+
+bool liquid_get_blinding_public_key(const uint8_t mbk[static 32],
+                                    const uint8_t *script,
+                                    size_t script_length,
+                                    uint8_t *pubkey,
+                                    size_t *p_pubkey_len,
+                                    liquid_pubkey_compression_t pubkey_compression) {
+    if(!mbk || !script || !pubkey || !p_pubkey_len ||
+       (LIQUID_PUBKEY_COMPRESSED == pubkey_compression && *p_pubkey_len < 33) ||
+       (LIQUID_PUBKEY_UNCOMPRESSED == pubkey_compression && *p_pubkey_len < 65) ) {
+        return false;
+    }
+
+    uint8_t raw_privkey[32];
+    cx_ecfp_private_key_t privkey_inst = {0};
+    cx_ecfp_public_key_t pubkey_inst = {0};
+
+    bool result = true;
+    BEGIN_TRY {
+        TRY {
+            // Get raw blinding key
+            liquid_get_blinding_key(mbk, script, script_length, raw_privkey);
+
+            // New private key instance from raw private key
+            cx_ecfp_init_private_key(CX_CURVE_256K1,
+                                     raw_privkey,
+                                     sizeof(raw_privkey),
+                                     &privkey_inst);
+
+            // Generate corresponding public key
+            cx_ecfp_generate_pair(CX_CURVE_256K1, &pubkey_inst, &privkey_inst, 1);
+
+            if(LIQUID_PUBKEY_COMPRESSED == pubkey_compression) {
+                pubkey[0] = ((pubkey_inst.W[64] & 1) ? 0x03 : 0x02);
+                memcpy(pubkey + 1, pubkey_inst.W + 1, 32);
+                *p_pubkey_len = 33;
+            } else if(LIQUID_PUBKEY_UNCOMPRESSED == pubkey_compression) {
+                memcpy(pubkey, pubkey_inst.W, 65);
+                *p_pubkey_len = 65;
+            } else {
+                result = false;
+            }
+        }
+        CATCH_ALL {
+            result = false;
+        }
+        FINALLY {
+            // Zeroize sensitive data
+            explicit_bzero(&raw_privkey, sizeof(raw_privkey));
+            explicit_bzero(&privkey_inst, sizeof(privkey_inst));
+            explicit_bzero(&pubkey_inst, sizeof(pubkey_inst));
+        }
+    }
+    END_TRY;
+
+    return result;
 }
 
 #endif
@@ -93,6 +150,41 @@ int liquid_get_script_confidential_address(const uint8_t script[],
         }
     }
     return addr_len;
+}
+
+bool liquid_policy_unwrap_blinded(const policy_node_t **p_policy,
+                                  bool *p_is_blinded,
+                                  uint8_t *blinding_key,
+                                  size_t blinding_key_len,
+                                  uint32_t *p_wif_flags,
+                                  liquid_blinding_key_type_t *p_key_type) {
+    if(!p_policy || !(*p_policy) || !p_is_blinded || !blinding_key || !p_key_type) {
+        return false;
+    }
+
+    *p_is_blinded = false;
+    *p_key_type = BLINDING_KEY_UNKNOWN;
+
+    if((*p_policy)->type == TOKEN_BLINDED) {
+        *p_is_blinded = true;
+        const policy_node_blinded_t *root = (const policy_node_blinded_t*)*p_policy;
+        if(root->mbk_script && root->script && root->mbk_script->type == TOKEN_SLIP77) {
+            *p_key_type = BLINDING_KEY_SLIP77;
+            const policy_node_blinding_key_t *slip77 =
+                (const policy_node_blinding_key_t*)root->mbk_script;
+            int key_len = wif_decode_private_key(slip77->key_str,
+                                                 slip77->key_str_len,
+                                                 blinding_key,
+                                                 blinding_key_len,
+                                                 p_wif_flags);
+            if((size_t)key_len == blinding_key_len) {
+                *p_policy = root->script;
+                return true;
+            }
+        }
+        return false;
+    }
+    return true;
 }
 
 #endif // HAVE_LIQUID

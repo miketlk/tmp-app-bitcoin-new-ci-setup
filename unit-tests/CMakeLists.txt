@@ -131,7 +131,7 @@ target_link_libraries(test_write PUBLIC cmocka ${GCOV_LIB} write)
 target_link_libraries(test_wif PUBLIC cmocka ${GCOV_LIB} wif base58 read mock_crypto)
 if (HAVE_LIQUID)
   target_link_libraries(test_liquid_addr PUBLIC cmocka ${GCOV_LIB} liquid buffer varint bip32 base58 read write mock_crypto)
-  target_link_libraries(test_liquid PUBLIC cmocka ${GCOV_LIB} liquid script buffer varint bip32 base58 read write mock_crypto)
+  target_link_libraries(test_liquid PUBLIC cmocka ${GCOV_LIB} liquid wif wallet script buffer varint bip32 base58 read write mock_crypto)
 endif()
 
 add_test(test_apdu_parser test_apdu_parser)
