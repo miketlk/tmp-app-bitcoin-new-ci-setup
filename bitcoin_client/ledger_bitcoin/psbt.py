@@ -86,6 +86,10 @@ class PartiallySignedInput:
     An object for a PSBT input map.
     """
 
+    TX_CLS = CTransaction
+    TXIN_WITNESS_CLS = CTxInWitness
+    TXOUT_CLS = CTxOut
+
     PSBT_IN_NON_WITNESS_UTXO = 0x00
     PSBT_IN_WITNESS_UTXO = 0x01
     PSBT_IN_PARTIAL_SIG = 0x02
@@ -106,9 +110,10 @@ class PartiallySignedInput:
     PSBT_IN_TAP_BIP32_DERIVATION = 0x16
     PSBT_IN_TAP_INTERNAL_KEY = 0x17
     PSBT_IN_TAP_MERKLE_ROOT = 0x18
+    PSBT_IN_PROPRIETARY = 0xFC
 
     def __init__(self, version: int) -> None:
-        self.non_witness_utxo: Optional[CTransaction] = None
+        self.non_witness_utxo: Optional[self.TX_CLS] = None
         self.witness_utxo: Optional[CTxOut] = None
         self.partial_sigs: Dict[bytes, bytes] = {}
         self.sighash: Optional[int] = None
@@ -116,7 +121,7 @@ class PartiallySignedInput:
         self.witness_script = b""
         self.hd_keypaths: Dict[bytes, KeyOriginInfo] = {}
         self.final_script_sig = b""
-        self.final_script_witness = CTxInWitness()
+        self.final_script_witness = self.TXIN_WITNESS_CLS()
         self.prev_txid = b""
         self.prev_out: Optional[int] = None
         self.sequence: Optional[int] = None
@@ -144,7 +149,7 @@ class PartiallySignedInput:
         self.witness_script = b""
         self.hd_keypaths.clear()
         self.final_script_sig = b""
-        self.final_script_witness = CTxInWitness()
+        self.final_script_witness = self.TXIN_WITNESS_CLS()
         self.tap_key_sig = b""
         self.tap_script_sigs.clear()
         self.tap_scripts.clear()
@@ -185,7 +190,7 @@ class PartiallySignedInput:
                     raise PSBTSerializationError("Duplicate Key, input non witness utxo already provided")
                 elif len(key) != 1:
                     raise PSBTSerializationError("non witness utxo key is more than one byte type")
-                self.non_witness_utxo = CTransaction()
+                self.non_witness_utxo = self.TX_CLS()
                 utxo_bytes = BufferedReader(BytesIO(deser_string(f))) # type: ignore
                 self.non_witness_utxo.deserialize(utxo_bytes)
                 self.non_witness_utxo.rehash()
@@ -194,7 +199,7 @@ class PartiallySignedInput:
                     raise PSBTSerializationError("Duplicate Key, input witness utxo already provided")
                 elif len(key) != 1:
                     raise PSBTSerializationError("witness utxo key is more than one byte type")
-                self.witness_utxo = CTxOut()
+                self.witness_utxo = self.TXOUT_CLS()
                 tx_out_bytes = BufferedReader(BytesIO(deser_string(f))) # type: ignore
                 self.witness_utxo.deserialize(tx_out_bytes)
             elif key_type == PartiallySignedInput.PSBT_IN_PARTIAL_SIG:
@@ -355,19 +360,29 @@ class PartiallySignedInput:
                 if len(self.tap_merkle_root) != 32:
                     raise PSBTSerializationError("Input Taproot merkle root is not 32 bytes")
             else:
-                if key in self.unknown:
-                    raise PSBTSerializationError("Duplicate key, key for unknown value already provided")
-                unknown_bytes = deser_string(f)
-                self.unknown[key] = unknown_bytes
+                known = False
+                if key_type == PartiallySignedInput.PSBT_IN_PROPRIETARY:
+                    known = self._deserialize_proprietary_record(f, key)
+
+                if not known:
+                    if key in self.unknown:
+                        raise PSBTSerializationError("Duplicate key, key for unknown value already provided")
+                    unknown_bytes = deser_string(f)
+                    self.unknown[key] = unknown_bytes
 
             key_lookup.add(key)
 
+        self._validate_deserialized()
+
+
+    def _validate_deserialized(self) -> None:
         # Make sure required PSBTv2 fields are present
         if self.version >= 2:
             if len(self.prev_txid) == 0:
                 raise PSBTSerializationError("Previous TXID is required in PSBTv2")
             if self.prev_out is None:
                 raise PSBTSerializationError("Previous output's index is required in PSBTv2")
+
 
     def serialize(self) -> bytes:
         """
@@ -465,6 +480,9 @@ class PartiallySignedInput:
                 r += ser_string(ser_compact_size(PartiallySignedInput.PSBT_IN_REQUIRED_HEIGHT_LOCKTIME))
                 r += ser_string(struct.pack("<I", self.height_locktime))
 
+        # proprietary records
+        r += self._serialize_proprietary_records()
+
         for key, value in sorted(self.unknown.items()):
             r += ser_string(key)
             r += ser_string(value)
@@ -473,10 +491,35 @@ class PartiallySignedInput:
 
         return r
 
+    def _deserialize_proprietary_record(self, f: Readable, key: bytes) -> bool:
+        """
+        :meta private:
+
+        Deserialize a proprietary record.
+
+        :param f: The byte stream to read the value from.
+        :param key: The bytes of the key of the key-value pair.
+        :returns: True if the record is known and successfully deserialized.
+        """
+        # Signal the calling code that proprietary type is unknown
+        return False
+
+    def _serialize_proprietary_records(self) -> bytes:
+        """
+        :meta private:
+
+        Serialize all proprietary records.
+
+        :returns: The serialized records or an empty byte string if there are none.
+        """
+        return b""
+
 class PartiallySignedOutput:
     """
     An object for a PSBT output map.
     """
+
+    TXOUT_CLS = CTxOut
 
     PSBT_OUT_REDEEM_SCRIPT = 0x00
     PSBT_OUT_WITNESS_SCRIPT = 0x01
@@ -486,13 +529,14 @@ class PartiallySignedOutput:
     PSBT_OUT_TAP_INTERNAL_KEY = 0x05
     PSBT_OUT_TAP_TREE = 0x06
     PSBT_OUT_TAP_BIP32_DERIVATION = 0x07
+    PSBT_OUT_PROPRIETARY = 0xFC
 
     def __init__(self, version: int) -> None:
         self.redeem_script = b""
         self.witness_script = b""
         self.hd_keypaths: Dict[bytes, KeyOriginInfo] = {}
         self.amount: Optional[int] = None
-        self.script = b""
+        self.script: Optional[int] = None
         self.tap_internal_key = b""
         self.tap_tree = b""
         self.tap_bip32_paths: Dict[bytes, Tuple[Set[bytes], KeyOriginInfo]] = {}
@@ -511,7 +555,7 @@ class PartiallySignedOutput:
         self.tap_tree = b""
         self.tap_bip32_paths.clear()
         self.amount = None
-        self.script = b""
+        self.script = None
         self.unknown.clear()
 
     def deserialize(self, f: Readable) -> None:
@@ -593,18 +637,26 @@ class PartiallySignedOutput:
                     leaf_hashes.add(vs.read(32))
                 self.tap_bip32_paths[xonly] = (leaf_hashes, KeyOriginInfo.deserialize(vs.read()))
             else:
-                if key in self.unknown:
-                    raise PSBTSerializationError("Duplicate key, key for unknown value already provided")
-                value = deser_string(f)
-                self.unknown[key] = value
+                known = False
+                if key_type == PartiallySignedOutput.PSBT_OUT_PROPRIETARY:
+                    known = self._deserialize_proprietary_record(f, key)
+
+                if not known:
+                    if key in self.unknown:
+                        raise PSBTSerializationError("Duplicate key, key for unknown value already provided")
+                    value = deser_string(f)
+                    self.unknown[key] = value
 
             key_lookup.add(key)
 
+        self._validate_deserialized()
+
+    def _validate_deserialized(self) -> None:
         # Make sure required PSBTv2 fields are present
         if self.version >= 2:
             if self.amount is None:
                 raise PSBTSerializationError("PSBT_OUTPUT_AMOUNT is required in PSBTv2")
-            if len(self.script) == 0:
+            if not self.script:
                 raise PSBTSerializationError("PSBT_OUTPUT_SCRIPT is required in PSBTv2")
 
     def serialize(self) -> bytes:
@@ -629,7 +681,7 @@ class PartiallySignedOutput:
                 r += ser_string(ser_compact_size(PartiallySignedOutput.PSBT_OUT_AMOUNT))
                 r += ser_string(struct.pack("<q", self.amount))
 
-            if len(self.script) != 0:
+            if self.script is not None:
                 r += ser_string(ser_compact_size(PartiallySignedOutput.PSBT_OUT_SCRIPT))
                 r += ser_string(self.script)
 
@@ -649,6 +701,9 @@ class PartiallySignedOutput:
             value += origin.serialize()
             r += ser_string(value)
 
+        # proprietary records
+        r += self._serialize_proprietary_records()
+
         for key, value in sorted(self.unknown.items()):
             r += ser_string(key)
             r += ser_string(value)
@@ -664,13 +719,38 @@ class PartiallySignedOutput:
         :returns: The CTxOut
         """
         assert self.amount is not None
-        assert len(self.script) != 0
-        return CTxOut(self.amount, self.script)
+        assert self.script is not None
+        return self.TXOUT_CLS(self.amount, self.script)
+
+    def _deserialize_proprietary_record(self, f: Readable, key: bytes) -> bool:
+        """
+        :meta private:
+
+        Deserialize a proprietary record.
+
+        :param f: The byte stream to read the value from.
+        :param key: The bytes of the key of the key-value pair.
+        :returns: True if the record is known and successfully deserialized.
+        """
+        # Signal the calling code that proprietary type is unknown
+        return False
+
+    def _serialize_proprietary_records(self) -> bytes:
+        """
+        :meta private:
+
+        Serialize all proprietary records.
+
+        :returns: The serialized records or an empty byte string if there are none.
+        """
+        return b""
 
 class PSBT(object):
     """
     A class representing a PSBT
     """
+
+    MAGIC = b"psbt\xff"
 
     PSBT_GLOBAL_UNSIGNED_TX = 0x00
     PSBT_GLOBAL_XPUB = 0x01
@@ -680,6 +760,14 @@ class PSBT(object):
     PSBT_GLOBAL_OUTPUT_COUNT = 0x05
     PSBT_GLOBAL_TX_MODIFIABLE = 0x06
     PSBT_GLOBAL_VERSION = 0xFB
+    PSBT_GLOBAL_PROPRIETARY = 0xFC
+
+    # Classes for internal structures
+    PSBTIN_CLS = PartiallySignedInput
+    PSBTOUT_CLS = PartiallySignedOutput
+    TX_CLS = CTransaction
+    TXIN_CLS = CTxIn
+    TXOUT_CLS = CTxOut
 
     def __init__(self, tx: Optional[CTransaction] = None) -> None:
         """
@@ -688,9 +776,9 @@ class PSBT(object):
         if tx:
             self.tx = tx
         else:
-            self.tx = CTransaction()
-        self.inputs: List[PartiallySignedInput] = []
-        self.outputs: List[PartiallySignedOutput] = []
+            self.tx = self.TX_CLS()
+        self.inputs: List[self.PSBTIN_CLS] = []
+        self.outputs: List[self.PSBTOUT_CLS] = []
         self.unknown: Dict[bytes, bytes] = {}
         self.xpub: Dict[bytes, KeyOriginInfo] = {}
         self.tx_version: Optional[int] = None
@@ -713,7 +801,7 @@ class PSBT(object):
 
         # Read the magic bytes
         magic = f.read(5)
-        if magic != b"psbt\xff":
+        if magic != self.MAGIC:
             raise PSBTSerializationError("invalid magic")
 
         key_lookup: Set[bytes] = set()
@@ -806,13 +894,52 @@ class PSBT(object):
                 self.version = struct.unpack("<I", v)[0]
                 self.explicit_version = True
             else:
-                if key in self.unknown:
-                    raise PSBTSerializationError("Duplicate key, key for unknown value already provided")
-                unknown_bytes = deser_string(f)
-                self.unknown[key] = unknown_bytes
+                known = False
+                if key_type == PSBT.PSBT_GLOBAL_PROPRIETARY:
+                    known = self._deserialize_proprietary_record(f, key)
+
+                if not known:
+                    if key in self.unknown:
+                        raise PSBTSerializationError("Duplicate key, key for unknown value already provided")
+                    unknown_bytes = deser_string(f)
+                    self.unknown[key] = unknown_bytes
 
             key_lookup.add(key)
 
+        # Read input data
+        if input_count is None:
+            input_count = len(self.tx.vin)
+        for i in range(input_count):
+            if f.tell() == end:
+                break
+            psbt_in = self.PSBTIN_CLS(self.version)
+            psbt_in.deserialize(f)
+            self.inputs.append(psbt_in)
+
+            if self.version >= 2:
+                prev_txid = psbt_in.prev_txid
+            else:
+                prev_txid = ser_uint256(self.tx.vin[i].prevout.hash)
+
+            if psbt_in.non_witness_utxo:
+                psbt_in.non_witness_utxo.rehash()
+                if psbt_in.non_witness_utxo.hash != prev_txid:
+                    raise PSBTSerializationError("Non-witness UTXO does not match outpoint hash")
+
+        # Read output data
+        if output_count is None:
+            output_count = len(self.tx.vout)
+        for i in range(output_count):
+            if f.tell() == end:
+                break
+            output = self.PSBTOUT_CLS(self.version)
+            output.deserialize(f)
+            self.outputs.append(output)
+
+        self._validate_deserialized(input_count, output_count)
+        self.cache_unsigned_tx_pieces()
+
+    def _validate_deserialized(self, input_count: int, output_count: int) -> None:
         # Check PSBT version constraints
         if self.version == 0:
             # make sure that we got an unsigned tx
@@ -845,43 +972,12 @@ class PSBT(object):
             if not self.tx.is_null():
                 raise PSBTSerializationError("PSBT_GLOBAL_UNSIGNED_TX is not allowed in PSBTv2")
 
-        # Read input data
-        if input_count is None:
-            input_count = len(self.tx.vin)
-        for i in range(input_count):
-            if f.tell() == end:
-                break
-            psbt_in = PartiallySignedInput(self.version)
-            psbt_in.deserialize(f)
-            self.inputs.append(psbt_in)
-
-            if self.version >= 2:
-                prev_txid = psbt_in.prev_txid
-            else:
-                prev_txid = ser_uint256(self.tx.vin[i].prevout.hash)
-
-            if psbt_in.non_witness_utxo:
-                psbt_in.non_witness_utxo.rehash()
-                if psbt_in.non_witness_utxo.hash != prev_txid:
-                    raise PSBTSerializationError("Non-witness UTXO does not match outpoint hash")
-
         if (len(self.inputs) != input_count):
             raise PSBTSerializationError("Inputs provided does not match the number of inputs in transaction")
-
-        # Read output data
-        if output_count is None:
-            output_count = len(self.tx.vout)
-        for i in range(output_count):
-            if f.tell() == end:
-                break
-            output = PartiallySignedOutput(self.version)
-            output.deserialize(f)
-            self.outputs.append(output)
 
         if len(self.outputs) != output_count:
             raise PSBTSerializationError("Outputs provided does not match the number of outputs in transaction")
 
-        self.cache_unsigned_tx_pieces()
 
     def serialize(self) -> str:
         """
@@ -892,7 +988,7 @@ class PSBT(object):
         r = b""
 
         # magic bytes
-        r += b"psbt\xff"
+        r += self.MAGIC
 
         if self.version == 0:
             # unsigned tx flag
@@ -929,6 +1025,9 @@ class PSBT(object):
             r += ser_string(ser_compact_size(PSBT.PSBT_GLOBAL_VERSION))
             r += ser_string(struct.pack("<I", self.version))
 
+        # proprietary records
+        r += self._serialize_proprietary_records()
+
         # unknowns
         for key, value in sorted(self.unknown.items()):
             r += ser_string(key)
@@ -958,7 +1057,7 @@ class PSBT(object):
         """
         # To make things easier, we split up the global transaction
         # and use the PSBTv2 fields for PSBTv0
-        if self.tx is not None:
+        if self.tx is not None and self.version == 0:
             self.setup_from_tx(self.tx)
 
     def setup_from_tx(self, tx: CTransaction):
@@ -1019,14 +1118,14 @@ class PSBT(object):
         """
         Get the unsigned transaction represented by this PSBT
 
-        :return: A CTransaction
+        :return: A self.TX_CLS
         """
         if not self.tx.is_null():
             return self.tx
 
         assert self.tx_version is not None
 
-        tx = CTransaction()
+        tx = self.TX_CLS()
         tx.nVersion = self.tx_version
         self.nLockTime = self.compute_lock_time()
 
@@ -1035,13 +1134,13 @@ class PSBT(object):
             assert psbt_in.prev_out is not None
             assert psbt_in.sequence is not None
 
-            txin = CTxIn(COutPoint(uint256_from_str(psbt_in.prev_txid), psbt_in.prev_out), b"", psbt_in.sequence)
+            txin = self.TXIN_CLS(COutPoint(uint256_from_str(psbt_in.prev_txid), psbt_in.prev_out), b"", psbt_in.sequence)
             tx.vin.append(txin)
 
         for psbt_out in self.outputs:
             assert psbt_out.amount is not None
 
-            txout = CTxOut(psbt_out.amount, psbt_out.script)
+            txout = self.TXOUT_CLS(psbt_out.amount, psbt_out.script)
             tx.vout.append(txout)
 
         tx.rehash()
@@ -1079,3 +1178,27 @@ class PSBT(object):
         self._convert_version(0)
         self.tx = self.get_unsigned_tx()
         self.explicit_version = False
+
+
+    def _deserialize_proprietary_record(self, f: Readable, key: bytes) -> bool:
+        """
+        :meta private:
+
+        Deserialize a proprietary record.
+
+        :param f: The byte stream to read the value from.
+        :param key: The bytes of the key of the key-value pair.
+        :returns: True if the record is known and successfully deserialized.
+        """
+        # Signal the calling code that proprietary type is unknown
+        return False
+
+    def _serialize_proprietary_records(self) -> bytes:
+        """
+        :meta private:
+
+        Serialize all proprietary records.
+
+        :returns: The serialized records or an empty byte string if there are none.
+        """
+        return b""

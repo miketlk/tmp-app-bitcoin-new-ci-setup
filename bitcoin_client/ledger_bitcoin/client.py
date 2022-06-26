@@ -163,7 +163,7 @@ class NewClient(Client):
         # sequence of bytes, in order to produce the serialized Merkleized map commitments. Moreover, we prepare the
         # client interpreter to respond on queries on all the relevant Merkle trees and pre-images in the psbt.
 
-        assert f.read(5) == b"psbt\xff"
+        assert f.read(5) == psbt.MAGIC
 
         client_intepreter = ClientCommandInterpreter()
         client_intepreter.add_known_list([k.encode() for k in wallet.keys_info])
