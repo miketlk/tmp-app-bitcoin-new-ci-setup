@@ -1,6 +1,6 @@
 #pragma once
 
-#if !defined(HAVE_LIQUID)
+#ifdef HAVE_LIQUID
 
 #include "../boilerplate/dispatcher.h"
 #include "../constants.h"
@@ -121,8 +121,8 @@ typedef struct {
 
     int our_key_derivation_length;
     uint32_t our_key_derivation[MAX_BIP32_PATH_STEPS];
-} sign_psbt_state_t;
+} sign_pset_state_t;
 
-void handler_sign_psbt(dispatcher_context_t *dispatcher_context);
+void handler_liquid_sign_pset(dispatcher_context_t *dispatcher_context);
 
-#endif // !defined(HAVE_LIQUID)
+#endif // HAVE_LIQUID

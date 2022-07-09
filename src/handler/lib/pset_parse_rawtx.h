@@ -1,6 +1,6 @@
 #pragma once
 
-#if !defined(HAVE_LIQUID)
+#ifdef HAVE_LIQUID
 
 #include "../../boilerplate/dispatcher.h"
 #include "../../common/merkle.h"
@@ -18,11 +18,11 @@ typedef struct {
  * transaction, computes the transaction id and optionally keeps track of the vout amunt and
  * scriptPubkey of one of the outputs.
  */
-int call_psbt_parse_rawtx(dispatcher_context_t *dispatcher_context,
+int call_pset_parse_rawtx(dispatcher_context_t *dispatcher_context,
                           const merkleized_map_commitment_t *map,
                           const uint8_t *key,
                           int key_len,
                           int output_index,
                           txid_parser_outputs_t *outputs);
 
-#endif // !defined(HAVE_LIQUID)
+#endif // HAVE_LIQUID

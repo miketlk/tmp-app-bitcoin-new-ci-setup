@@ -1,11 +1,11 @@
-#if !defined(HAVE_LIQUID)
+#ifdef HAVE_LIQUID
 
 #include <stdlib.h>
 #include <string.h>
 
 #include "cx.h"
 
-#include "psbt_parse_rawtx.h"
+#include "pset_parse_rawtx.h"
 
 #include "get_merkleized_map_value_hash.h"
 #include "stream_preimage.h"
@@ -70,14 +70,14 @@ typedef struct parse_rawtx_state_s {
 
 } parse_rawtx_state_t;
 
-typedef struct psbt_parse_rawtx_state_s {
+typedef struct pset_parse_rawtx_state_s {
     // internal state
     uint8_t store[32];               // buffer for unparsed data
     unsigned int store_data_length;  // size of data currently in store
     parse_rawtx_state_t parser_state;
     parser_context_t parser_context;
     bool parser_error;  // set to true if there was an error during parsing
-} psbt_parse_rawtx_state_t;
+} pset_parse_rawtx_state_t;
 
 /*   PARSER FOR A RAWTX INPUT */
 
@@ -498,7 +498,7 @@ static const parsing_step_t parse_rawtx_steps[] = {(parsing_step_t) parse_rawtx_
 const int n_parse_rawtx_steps = sizeof(parse_rawtx_steps) / sizeof(parse_rawtx_steps[0]);
 
 static void cb_process_data(buffer_t *data, void *cb_state) {
-    psbt_parse_rawtx_state_t *state = (psbt_parse_rawtx_state_t *) cb_state;
+    pset_parse_rawtx_state_t *state = (pset_parse_rawtx_state_t *) cb_state;
 
     if (state->parser_error) {
         // there was already a parsing error, ignore any additional data received
@@ -519,7 +519,7 @@ static void cb_process_data(buffer_t *data, void *cb_state) {
     }
 }
 
-int call_psbt_parse_rawtx(dispatcher_context_t *dispatcher_context,
+int call_pset_parse_rawtx(dispatcher_context_t *dispatcher_context,
                           const merkleized_map_commitment_t *map,
                           const uint8_t *key,
                           int key_len,
@@ -530,7 +530,7 @@ int call_psbt_parse_rawtx(dispatcher_context_t *dispatcher_context,
     cx_sha256_t hash_context;
     cx_sha256_init(&hash_context);
 
-    psbt_parse_rawtx_state_t flow_state;
+    pset_parse_rawtx_state_t flow_state;
 
     // init parser
 
@@ -561,4 +561,4 @@ int call_psbt_parse_rawtx(dispatcher_context_t *dispatcher_context,
     return 0;
 }
 
-#endif // !defined(HAVE_LIQUID)
+#endif // HAVE_LIQUID

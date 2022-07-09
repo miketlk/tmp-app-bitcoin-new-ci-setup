@@ -112,7 +112,11 @@ const command_descriptor_t COMMAND_DESCRIPTORS[] = {
     {
         .cla = CLA_APP,
         .ins = SIGN_PSBT,
+#ifdef HAVE_LIQUID
+        .handler = (command_handler_t)handler_liquid_sign_pset
+#else
         .handler = (command_handler_t)handler_sign_psbt
+#endif
     },
     {
         .cla = CLA_APP,

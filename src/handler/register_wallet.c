@@ -266,6 +266,7 @@ static void finalize_response(dispatcher_context_t *dc) {
     SEND_RESPONSE(dc, &response, sizeof(response), SW_OK);
 }
 
+#ifdef HAVE_LIQUID
 static bool is_policy_acceptable_blinded(policy_node_t *policy, policy_node_t **p_internal_script) {
     if(!policy || !p_internal_script || policy->type != TOKEN_BLINDED) {
         return false;
@@ -280,6 +281,7 @@ static bool is_policy_acceptable_blinded(policy_node_t *policy, policy_node_t **
     *p_internal_script = blinded->script;
     return true;
 }
+#endif // HAVE_LIQUID
 
 static bool is_policy_acceptable(policy_node_t *policy) {
     policy_node_t *internal_script;

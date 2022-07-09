@@ -7,6 +7,7 @@
 #include "handler/get_wallet_address.h"
 #include "handler/register_wallet.h"
 #include "handler/sign_psbt.h"
+#include "handler/liquid_sign_pset.h"
 #include "handler/sign_message.h"
 #ifdef HAVE_LIQUID
 #include "handler/liquid_get_master_blinding_key.h"
@@ -37,7 +38,11 @@ typedef union {
     get_extended_pubkey_state_t get_extended_pubkey_state;
     register_wallet_state_t register_wallet_state;
     get_wallet_address_state_t get_wallet_address_state;
+#ifdef HAVE_LIQUID
+    sign_pset_state_t sign_pset_state;
+#else
     sign_psbt_state_t sign_psbt_state;
+#endif
     sign_message_state_t sign_message_state;
 #ifdef HAVE_LIQUID
     liquid_get_master_blinding_key_t liquid_get_master_blinding_key;

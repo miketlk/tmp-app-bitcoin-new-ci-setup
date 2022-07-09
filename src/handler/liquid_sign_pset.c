@@ -15,7 +15,7 @@
  *  limitations under the License.
  *****************************************************************************/
 
-#if !defined(HAVE_LIQUID)
+#ifdef HAVE_LIQUID
 
 #include <stdint.h>
 
@@ -41,9 +41,9 @@
 #include "lib/get_preimage.h"
 #include "lib/get_merkleized_map.h"
 #include "lib/get_merkleized_map_value.h"
-#include "lib/psbt_parse_rawtx.h"
+#include "lib/pset_parse_rawtx.h"
 
-#include "sign_psbt.h"
+#include "liquid_sign_pset.h"
 
 #include "sign_psbt/compare_wallet_script_at_path.h"
 #include "sign_psbt/get_fingerprint_and_path.h"
@@ -111,7 +111,7 @@ the right paths to identify internal inputs/outputs.
 // Updates the hash_context with the network serialization of all the outputs
 // returns -1 on error. 0 on success.
 static int hash_outputs(dispatcher_context_t *dc, cx_hash_t *hash_context) {
-    sign_psbt_state_t *state = (sign_psbt_state_t *) &G_command_state;
+    sign_pset_state_t *state = (sign_pset_state_t *) &G_command_state;
 
     // TODO: support other SIGHASH FLAGS
     for (unsigned int i = 0; i < state->n_outputs; i++) {
@@ -199,7 +199,7 @@ static int get_amount_scriptpubkey_from_psbt_nonwitness(
 
     txid_parser_outputs_t parser_outputs;
     // request non-witness utxo, and get the prevout's value and scriptpubkey
-    int res = call_psbt_parse_rawtx(dc,
+    int res = call_pset_parse_rawtx(dc,
                                     input_map,
                                     (uint8_t[]){PSBT_IN_NON_WITNESS_UTXO},
                                     1,
@@ -297,8 +297,8 @@ static int get_amount_scriptpubkey_from_psbt(
  * Validates the input, initializes the hash context and starts accumulating the wallet header in
  * it.
  */
-void handler_sign_psbt(dispatcher_context_t *dc) {
-    sign_psbt_state_t *state = (sign_psbt_state_t *) &G_command_state;
+void handler_liquid_sign_pset(dispatcher_context_t *dc) {
+    sign_pset_state_t *state = (sign_pset_state_t *) &G_command_state;
 
     // Device must be unlocked
     if (os_global_pin_is_validated() != BOLOS_UX_OK) {
@@ -492,6 +492,7 @@ void handler_sign_psbt(dispatcher_context_t *dc) {
         // Canonical wallet, we start processing the psbt directly
         dc->next(process_input_map);
     } else {
+
         // Show screen to authorize spend from a registered wallet
         ui_authorize_wallet_spend(dc, wallet_header.name, process_input_map);
     }
@@ -509,7 +510,7 @@ void handler_sign_psbt(dispatcher_context_t *dc) {
  * Callback to process all the keys of the current input map.
  * Keeps track if the current input has a witness_utxo and/or a redeemScript.
  */
-static void input_keys_callback(sign_psbt_state_t *state, buffer_t *data) {
+static void input_keys_callback(sign_pset_state_t *state, buffer_t *data) {
     size_t data_len = data->size - data->offset;
     if (data_len >= 1) {
         uint8_t key_type;
@@ -546,7 +547,7 @@ static void input_keys_callback(sign_psbt_state_t *state, buffer_t *data) {
 }
 
 static void process_input_map(dispatcher_context_t *dc) {
-    sign_psbt_state_t *state = (sign_psbt_state_t *) &G_command_state;
+    sign_pset_state_t *state = (sign_pset_state_t *) &G_command_state;
 
     LOG_PROCESSOR(dc, __FILE__, __LINE__, __func__);
 
@@ -657,7 +658,7 @@ static void process_input_map(dispatcher_context_t *dc) {
 }
 
 static void check_input_owned(dispatcher_context_t *dc) {
-    sign_psbt_state_t *state = (sign_psbt_state_t *) &G_command_state;
+    sign_pset_state_t *state = (sign_pset_state_t *) &G_command_state;
 
     LOG_PROCESSOR(dc, __FILE__, __LINE__, __func__);
 
@@ -697,7 +698,7 @@ static void check_input_owned(dispatcher_context_t *dc) {
 
 // If there are external inputs, it is unsafe to sign, therefore we warn the user
 static void alert_external_inputs(dispatcher_context_t *dc) {
-    sign_psbt_state_t *state = (sign_psbt_state_t *) &G_command_state;
+    sign_pset_state_t *state = (sign_pset_state_t *) &G_command_state;
 
     LOG_PROCESSOR(dc, __FILE__, __LINE__, __func__);
 
@@ -737,7 +738,7 @@ static void alert_external_inputs(dispatcher_context_t *dc) {
 
 // entry point for the outputs verification flow
 static void verify_outputs_init(dispatcher_context_t *dc) {
-    sign_psbt_state_t *state = (sign_psbt_state_t *) &G_command_state;
+    sign_pset_state_t *state = (sign_pset_state_t *) &G_command_state;
 
     LOG_PROCESSOR(dc, __FILE__, __LINE__, __func__);
 
@@ -756,7 +757,7 @@ static void verify_outputs_init(dispatcher_context_t *dc) {
  * Callback to process all the keys of the current input map.
  * Keeps track if the current input has a witness_utxo and/or a redeemScript.
  */
-static void output_keys_callback(sign_psbt_state_t *state, buffer_t *data) {
+static void output_keys_callback(sign_pset_state_t *state, buffer_t *data) {
     size_t data_len = data->size - data->offset;
     if (data_len >= 1) {
         uint8_t key_type;
@@ -783,7 +784,7 @@ static void output_keys_callback(sign_psbt_state_t *state, buffer_t *data) {
 }
 
 static void process_output_map(dispatcher_context_t *dc) {
-    sign_psbt_state_t *state = (sign_psbt_state_t *) &G_command_state;
+    sign_pset_state_t *state = (sign_pset_state_t *) &G_command_state;
 
     LOG_PROCESSOR(dc, __FILE__, __LINE__, __func__);
 
@@ -853,7 +854,7 @@ static void process_output_map(dispatcher_context_t *dc) {
 }
 
 static void check_output_owned(dispatcher_context_t *dc) {
-    sign_psbt_state_t *state = (sign_psbt_state_t *) &G_command_state;
+    sign_pset_state_t *state = (sign_pset_state_t *) &G_command_state;
 
     LOG_PROCESSOR(dc, __FILE__, __LINE__, __func__);
 
@@ -881,7 +882,7 @@ static void check_output_owned(dispatcher_context_t *dc) {
 }
 
 static void output_validate_external(dispatcher_context_t *dc) {
-    sign_psbt_state_t *state = (sign_psbt_state_t *) &G_command_state;
+    sign_pset_state_t *state = (sign_pset_state_t *) &G_command_state;
 
     LOG_PROCESSOR(dc, __FILE__, __LINE__, __func__);
 
@@ -938,7 +939,7 @@ static void output_validate_external(dispatcher_context_t *dc) {
 }
 
 static void output_next(dispatcher_context_t *dc) {
-    sign_psbt_state_t *state = (sign_psbt_state_t *) &G_command_state;
+    sign_pset_state_t *state = (sign_pset_state_t *) &G_command_state;
 
     LOG_PROCESSOR(dc, __FILE__, __LINE__, __func__);
 
@@ -949,7 +950,7 @@ static void output_next(dispatcher_context_t *dc) {
 // Performs any final checks if needed, then show the confirmation UI to the user
 // (except during swap)
 static void confirm_transaction(dispatcher_context_t *dc) {
-    sign_psbt_state_t *state = (sign_psbt_state_t *) &G_command_state;
+    sign_pset_state_t *state = (sign_pset_state_t *) &G_command_state;
 
     LOG_PROCESSOR(dc, __FILE__, __LINE__, __func__);
 
@@ -1006,7 +1007,7 @@ static void confirm_transaction(dispatcher_context_t *dc) {
 
 // entry point for the signing flow
 static void sign_init(dispatcher_context_t *dc) {
-    sign_psbt_state_t *state = (sign_psbt_state_t *) &G_command_state;
+    sign_pset_state_t *state = (sign_pset_state_t *) &G_command_state;
 
     LOG_PROCESSOR(dc, __FILE__, __LINE__, __func__);
 
@@ -1080,7 +1081,7 @@ static void sign_init(dispatcher_context_t *dc) {
 }
 
 static void sign_process_input_map(dispatcher_context_t *dc) {
-    sign_psbt_state_t *state = (sign_psbt_state_t *) &G_command_state;
+    sign_pset_state_t *state = (sign_pset_state_t *) &G_command_state;
 
     LOG_PROCESSOR(dc, __FILE__, __LINE__, __func__);
 
@@ -1186,7 +1187,7 @@ static void sign_process_input_map(dispatcher_context_t *dc) {
 static void sign_legacy(dispatcher_context_t *dc) {
     // sign legacy P2PKH or P2SH
 
-    sign_psbt_state_t *state = (sign_psbt_state_t *) &G_command_state;
+    sign_pset_state_t *state = (sign_pset_state_t *) &G_command_state;
 
     LOG_PROCESSOR(dc, __FILE__, __LINE__, __func__);
 
@@ -1207,7 +1208,7 @@ static void sign_legacy(dispatcher_context_t *dc) {
 }
 
 static void sign_legacy_compute_sighash(dispatcher_context_t *dc) {
-    sign_psbt_state_t *state = (sign_psbt_state_t *) &G_command_state;
+    sign_pset_state_t *state = (sign_pset_state_t *) &G_command_state;
 
     LOG_PROCESSOR(dc, __FILE__, __LINE__, __func__);
 
@@ -1331,7 +1332,7 @@ static void sign_legacy_compute_sighash(dispatcher_context_t *dc) {
 }
 
 static void sign_segwit(dispatcher_context_t *dc) {
-    sign_psbt_state_t *state = (sign_psbt_state_t *) &G_command_state;
+    sign_pset_state_t *state = (sign_pset_state_t *) &G_command_state;
 
     LOG_PROCESSOR(dc, __FILE__, __LINE__, __func__);
 
@@ -1545,7 +1546,7 @@ static void sign_segwit(dispatcher_context_t *dc) {
 }
 
 static void sign_segwit_v0(dispatcher_context_t *dc) {
-    sign_psbt_state_t *state = (sign_psbt_state_t *) &G_command_state;
+    sign_pset_state_t *state = (sign_pset_state_t *) &G_command_state;
 
     LOG_PROCESSOR(dc, __FILE__, __LINE__, __func__);
 
@@ -1706,7 +1707,7 @@ static void sign_segwit_v0(dispatcher_context_t *dc) {
 }
 
 static void sign_segwit_v1(dispatcher_context_t *dc) {
-    sign_psbt_state_t *state = (sign_psbt_state_t *) &G_command_state;
+    sign_pset_state_t *state = (sign_pset_state_t *) &G_command_state;
 
     LOG_PROCESSOR(dc, __FILE__, __LINE__, __func__);
 
@@ -1805,7 +1806,7 @@ static void sign_segwit_v1(dispatcher_context_t *dc) {
 
 // Common for legacy and segwitv0 transactions
 static void sign_sighash_ecdsa(dispatcher_context_t *dc) {
-    sign_psbt_state_t *state = (sign_psbt_state_t *) &G_command_state;
+    sign_pset_state_t *state = (sign_pset_state_t *) &G_command_state;
 
     LOG_PROCESSOR(dc, __FILE__, __LINE__, __func__);
 
@@ -1853,7 +1854,7 @@ static void sign_sighash_ecdsa(dispatcher_context_t *dc) {
 
 // Signing for segwitv1 (taproot)
 static void sign_sighash_schnorr(dispatcher_context_t *dc) {
-    sign_psbt_state_t *state = (sign_psbt_state_t *) &G_command_state;
+    sign_pset_state_t *state = (sign_pset_state_t *) &G_command_state;
 
     LOG_PROCESSOR(dc, __FILE__, __LINE__, __func__);
 
@@ -1950,4 +1951,4 @@ static void finalize(dispatcher_context_t *dc) {
     SEND_SW(dc, SW_OK);
 }
 
-#endif // !defined(HAVE_LIQUID)
+#endif // HAVE_LIQUID

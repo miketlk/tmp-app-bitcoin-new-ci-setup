@@ -12,7 +12,7 @@
 extern global_context_t *G_coin_config;
 
 int is_in_out_internal(dispatcher_context_t *dispatcher_context,
-                       const sign_psbt_state_t *state,
+                       const transaction_signer_state_t *state,
                        const in_out_info_t *in_out_info,
                        bool is_input) {
     if (!in_out_info->has_bip32_derivation) {
