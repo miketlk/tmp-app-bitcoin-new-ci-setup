@@ -119,6 +119,7 @@ static int process_interruption(dispatcher_context_t *dc) {
         return -1;
     }
 
+#ifdef HAVE_APDU_LOG
     PRINTF("=> CLA=%02X | INS=%02X | P1=%02X | P2=%02X | Lc=%02X | CData=",
            cmd.cla,
            cmd.ins,
@@ -129,6 +130,7 @@ static int process_interruption(dispatcher_context_t *dc) {
         PRINTF("%02X", cmd.data[i]);
     }
     PRINTF("\n");
+#endif
 
     // INS_CONTINUE is the only valid apdu here
     if (cmd.cla != CLA_FRAMEWORK || cmd.ins != INS_CONTINUE) {
@@ -273,3 +275,31 @@ static void dispatcher_loop() {
 
     io_clear_processing_timeout();
 }
+
+#if !(DEBUG == 0) || defined(HAVE_LOG_PROCESSOR)
+// Print current filename, line number and function name.
+// Indents according to the nesting depth for subprocessors.
+void print_dispatcher_info(dispatcher_context_t *dc,
+                           const char *file,
+                           int line,
+                           const char *func) {
+    // prevent warnings when DEBUG is 0
+    (void) file, (void) line, (void) func;
+
+    // PRINTF() replaced with low-level functions to reduce stack usage (~ 40 vs 500 bytes)
+
+    machine_context_t *ctx = dc->machine_context_ptr;
+    while (ctx->parent_context != NULL) {
+        debug_write("----");
+        ctx = ctx->parent_context;
+    }
+
+    debug_write("->");
+    debug_write(file);
+    debug_write(":");
+    debug_write_dec(line);
+    debug_write(": ");
+    debug_write(func);
+    debug_write("\n");
+}
+#endif

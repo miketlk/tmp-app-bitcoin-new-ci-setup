@@ -1,6 +1,8 @@
 #pragma once
 
 void debug_write(const char *buf);
+void debug_write_hex(unsigned int word, unsigned int bytes);
+void debug_write_dec(unsigned int word);
 
 int semihosted_printf(const char *format, ...);
 

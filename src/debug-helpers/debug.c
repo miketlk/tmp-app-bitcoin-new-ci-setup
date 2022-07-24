@@ -4,12 +4,52 @@
 
 #pragma GCC diagnostic ignored "-Wunused-function"
 
+static const char dectohex[16] = {
+    '0', '1', '2', '3', '4', '5', '6', '7',
+    '8', '9', 'a', 'b', 'c', 'd', 'e', 'f'
+};
+
 void debug_write(const char *buf) {
     asm volatile(
         "movs r0, #0x04\n"
         "movs r1, %0\n"
         "svc      0xab\n" ::"r"(buf)
         : "r0", "r1");
+}
+
+void debug_write_hex(unsigned int word, unsigned int bytes) {
+    if(bytes && bytes <= 4) {
+        char asc[9];
+        char *p_asc = asc;
+
+        word <<= (4 - bytes) << 3;
+        for(unsigned int i = 0; i < bytes; ++i) {
+            *p_asc++ = dectohex[word >> 28 & 15];
+            *p_asc++ = dectohex[word >> 24 & 15];
+            word <<= 8;
+        }
+        *p_asc = '\0';
+        debug_write(asc);
+    }
+}
+
+void debug_write_dec(unsigned int word) {
+    char asc[11];
+
+    if (word == 0) {
+        debug_write("0");
+    } else {
+        unsigned int i;
+        for (i = 9; i >= 0; --i) {
+            asc[i] = '0' + word % 10;
+            if (word == 0) {
+                break;
+            }
+            word /= 10;
+        }
+        asc[10] = '\0';
+        debug_write(asc + i + 1);
+    }
 }
 
 int semihosted_printf(const char *format, ...) {
@@ -46,6 +86,16 @@ static unsigned int __attribute__((noinline, unused)) get_stack_pointer() {
 void print_stack_pointer(const char *file, int line, const char *func_name) {
     (void) file, (void) line, (void) func_name;  // avoid warnings when DEBUG == 0
 
-    PRINTF("STACK (%s) %s:%d: %08x\n", func_name, file, line, get_stack_pointer());
+    // PRINTF() replaced with low-level functions to reduce stack usage (~ 40 vs 500 bytes)
+
+    debug_write("STACK (");
+    debug_write(func_name);
+    debug_write(") ");
+    debug_write(file);
+    debug_write(":");
+    debug_write_dec(line);
+    debug_write(": ");
+    debug_write_hex(get_stack_pointer(), 4);
+    debug_write("\n");
 }
 #pragma GCC diagnostic pop
