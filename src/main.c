@@ -59,6 +59,7 @@ struct libargs_s {
 #endif
 
 #include "main.h"
+#include "tests.h"
 
 #ifdef HAVE_BOLOS_APP_STACK_CANARY
 extern unsigned int app_stack_canary;
@@ -261,6 +262,7 @@ void app_main() {
                 return;
             }
 
+#ifdef HAVE_APDU_LOG
             PRINTF("=> CLA=%02X | INS=%02X | P1=%02X | P2=%02X | Lc=%02X | CData=",
                    cmd.cla,
                    cmd.ins,
@@ -271,7 +273,7 @@ void app_main() {
                 PRINTF("%02X", cmd.data[i]);
             }
             PRINTF("\n");
-
+#endif
             if (G_swap_state.called_from_swap &&
                 (cmd.ins != SIGN_PSBT && cmd.ins != GET_MASTER_FINGERPRINT)) {
                 PRINTF("Only SIGN_PSBT and GET_MASTER_FINGERPRINT can be called during swap\n");
@@ -354,6 +356,10 @@ void coin_main(btchip_altcoin_config_t *coin_config) {
     explicit_bzero(&G_dispatcher_context, sizeof(G_dispatcher_context));
 
     memset(G_io_apdu_buffer, 0, 255);  // paranoia
+
+    // If the app is built with RUN_ON_DEVICE_TESTS this function runs on-device tests and
+    // terminates Speculos session. Otherwise, does nothing.
+    run_on_device_tests();
 
     // Process the incoming APDUs
 

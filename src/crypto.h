@@ -30,6 +30,15 @@ typedef struct {
     uint8_t checksum[4];
 } serialized_extended_pubkey_check_t;
 
+// Generator for secp256k1, value 'g'
+extern const uint8_t secp256k1_generator[65];
+// Modulo for secp256k1
+extern const uint8_t secp256k1_p[32];
+// Curve order for secp256k1
+extern const uint8_t secp256k1_n[32];
+// (p + 1)/4, used to calculate square roots in secp256k1
+extern const uint8_t secp256k1_sqr_exponent[32];
+
 /**
  * Derive private key given BIP32 path.
  * It must be wrapped in a TRY block that wipes the output private key in the FINALLY block.
