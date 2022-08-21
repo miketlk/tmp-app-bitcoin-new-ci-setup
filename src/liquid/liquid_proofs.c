@@ -24,12 +24,6 @@
 #include "liquid.h"
 #include "liquid_proofs.h"
 
-
-#ifdef TEST_LIQUID_PROOFS
-#define STATIC
-#else
-#endif
-
 /** Alternative generator for secp256k1.
  *  This is the sha256 of 'g' after standard encoding (without compression),
  *  which happens to be a point on the curve. More precisely, the generator is
@@ -341,9 +335,7 @@ bool liquid_rangeproof_verify_value(const uint8_t *proof,
             result = false;
         }
         FINALLY {
-            // Zeroize sensitive data
-            // TODO: add all vars!!!!
-            explicit_bzero(&tmp, sizeof(tmp));
+            // Zeroize sensitive data here
         }
     }
     END_TRY;

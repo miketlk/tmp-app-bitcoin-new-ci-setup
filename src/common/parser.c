@@ -106,6 +106,17 @@ bool dbuffer_read_varint(buffer_t *buffers[2], uint64_t *out) {
     return true;
 }
 
+bool dbuffer_peek(buffer_t *buffers[2], uint8_t *value) {
+    if (!dbuffer_can_read(buffers, 1)) {
+        return false;
+    }
+
+    // peek the first byte without changing the offsets
+    *value = buffer_can_read(buffers[0], 1) ? buffers[0]->ptr[buffers[0]->offset]
+                                            : buffers[1]->ptr[buffers[1]->offset];
+    return true;
+}
+
 bool parser_consolidate_buffers(buffer_t *buffers[2], size_t max_size) {
     size_t length0 = buffers[0]->size - buffers[0]->offset;
     size_t length1 = buffers[1]->size - buffers[1]->offset;

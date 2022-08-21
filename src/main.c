@@ -548,8 +548,12 @@ __attribute__((section(".boot"))) int main(int arg0) {
                 coin_main(args->coin_config);
             break;
         default:
+#if !defined(HAVE_LIQUID) || defined(LIQUID_HAS_SWAP)
             // called as bitcoin or altcoin library during swap
             swap_library_main(args);
+#else
+            app_exit();
+#endif
     }
 #endif  // USE_LIB_BITCOIN
     return 0;

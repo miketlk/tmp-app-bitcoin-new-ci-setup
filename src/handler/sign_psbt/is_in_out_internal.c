@@ -14,8 +14,9 @@ extern global_context_t *G_coin_config;
 int is_in_out_internal(dispatcher_context_t *dispatcher_context,
                        const transaction_signer_state_t *state,
                        const in_out_info_t *in_out_info,
-                       bool is_input) {
-    if (!in_out_info->has_bip32_derivation) {
+                       bool is_input,
+                       bool has_bip32_derivation) {
+    if (!has_bip32_derivation) {
         PRINTF("No BIP32 derivation\n");
         return 0;
     }
@@ -95,7 +96,11 @@ int is_in_out_internal(dispatcher_context_t *dispatcher_context,
     return compare_wallet_script_at_path(dispatcher_context,
                                          change,
                                          address_index,
+#ifdef HAVE_LIQUID
+                                         state->wallet_policy_map_unwrapped,
+#else
                                          &state->wallet_policy_map,
+#endif
                                          state->wallet_header_keys_info_merkle_root,
                                          state->wallet_header_n_keys,
                                          in_out_info->scriptPubKey,

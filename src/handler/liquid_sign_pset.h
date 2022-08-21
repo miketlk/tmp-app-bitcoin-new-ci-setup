@@ -7,18 +7,15 @@
 #include "../common/bitvector.h"
 #include "../common/merkle.h"
 #include "../common/wallet.h"
+#include "../liquid/liquid.h"
 
 #define MAX_N_INPUTS_CAN_SIGN 512
+#define SIGN_PSET_SHA_CONTEXT_POOL_SIZE 3
 
 // common info that applies to either the current input or the current output
 typedef struct {
     merkleized_map_commitment_t map;
 
-    bool unexpected_pubkey_error;  // Set to true if the pubkey in the keydata of
-                                   // PSBT_{IN,OUT}_BIP32_DERIVATION or
-                                   // PSBT_{IN,OUT}_TAP_BIP32_DERIVATION is not the correct length.
-
-    bool has_bip32_derivation;
     uint8_t
         bip32_derivation_pubkey[33];  // the pubkey of the first PSBT_{IN,OUT}_BIP32_DERIVATION or
                                       // PSBT_{IN,OUT}_TAP_BIP32_DERIVATION key seen.
@@ -31,15 +28,15 @@ typedef struct {
 
     uint8_t scriptPubKey[MAX_OUTPUT_SCRIPTPUBKEY_LEN];
     size_t scriptPubKey_len;
+
+    uint8_t value_commitment[33];
+    uint8_t value_blinding_factor[32];  // value blinding factor
+    uint8_t asset[32];                  // asset of the current input or output
+    uint8_t asset_blinding_factor[32];  // asset blinding factor of the current input or output
 } in_out_info_t;
 
 typedef struct {
-    bool has_witnessUtxo;
-    bool has_nonWitnessUtxo;
-    bool has_redeemScript;
-    bool has_sighash_type;
-
-    uint64_t prevout_amount;  // the value of the prevout of the current input
+    uint64_t prevout_amount;   // the amount of the prevout of the current input
 
     uint8_t prevout_scriptpubkey[MAX_PREVOUT_SCRIPTPUBKEY_LEN];
     size_t prevout_scriptpubkey_len;
@@ -56,7 +53,20 @@ typedef struct {
 
 typedef struct {
     uint64_t value;
+    uint8_t asset_commitment[33];
+    uint8_t blinding_pubkey[33];
+    uint8_t ecdh_pubkey[33];
+    uint32_t blinder_index;
 } output_info_t;
+
+typedef struct  {
+    in_out_info_t in_out;
+    union {
+        input_info_t input;
+        output_info_t output;
+    };
+    uint32_t key_presence;
+} overlayed_in_out_info_t;
 
 typedef struct {
     machine_context_t ctx;
@@ -79,6 +89,11 @@ typedef struct {
         uint8_t wallet_policy_map_bytes[MAX_POLICY_MAP_BYTES];
         policy_node_t wallet_policy_map;
     };
+    const policy_node_t *wallet_policy_map_unwrapped;
+    bool wallet_is_blinded;
+    liquid_blinding_key_type_t wallet_blinding_key_type;
+    uint8_t wallet_master_blinding_key[32];
+
 
     uint32_t master_key_fingerprint;
 
@@ -88,15 +103,14 @@ typedef struct {
     union {
         unsigned int cur_input_index;
         unsigned int cur_output_index;
+        unsigned int sha_context_index;
     };
 
-    struct {
-        in_out_info_t in_out;
-        union {
-            input_info_t input;
-            output_info_t output;
-        };
-    } cur;
+    union {
+        overlayed_in_out_info_t cur;
+        // Pool of SHA256 contexts used in compute_segwit_hashes()
+        cx_sha256_t sha_context_pool[SIGN_PSET_SHA_CONTEXT_POOL_SIZE];
+    };
 
     uint8_t sighash[32];
 
@@ -106,8 +120,9 @@ typedef struct {
         uint8_t sha_scriptpubkeys[32];
         uint8_t sha_sequences[32];
         uint8_t sha_outputs[32];
+        uint8_t sha_issuances[32];
+        uint8_t sha_rangeproofs[32];
     } hashes;
-    bool segwit_hashes_computed;
 
     uint64_t inputs_total_value;
     uint64_t outputs_total_value;
@@ -115,6 +130,8 @@ typedef struct {
     uint64_t internal_inputs_total_value;
 
     uint64_t change_outputs_total_value;
+
+    uint64_t fee_value;
 
     int external_outputs_count;  // count of external outputs that are shown to the user
     int change_count;            // count of outputs compatible with change outputs

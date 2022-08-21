@@ -4,7 +4,6 @@
 #include "../liquid_sign_pset.h"
 #include "../../common/wallet.h"
 
-// TODO: revert if separate implementation will be used !!!!
 #ifdef HAVE_LIQUID
 typedef sign_pset_state_t transaction_signer_state_t;
 #else
@@ -21,4 +20,5 @@ typedef sign_psbt_state_t transaction_signer_state_t;
 int is_in_out_internal(dispatcher_context_t *dispatcher_context,
                        const transaction_signer_state_t *state,
                        const in_out_info_t *in_out_info,
-                       bool is_input);
+                       bool is_input,
+                       bool has_bip32_derivation);

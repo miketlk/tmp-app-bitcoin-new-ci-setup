@@ -176,6 +176,18 @@ static inline int crypto_hash_update_u32(cx_hash_t *hash_context, uint32_t data)
 }
 
 /**
+ * Convenience wrapper for crypto_hash_update, updating a hash with a number of zero bytes.
+ *
+ * @param[in] hash_context
+ *  The context of the hash, which must already be initialized.
+ * @param[in] n_zeros
+ *  The number of zero bytes to be added to the hash.
+ *
+ * @return the return value of cx_hash.
+ */
+int crypto_hash_update_zeros(cx_hash_t *hash_context, size_t n_zeros);
+
+/**
  * Computes RIPEMD160(in).
  *
  * @param[in] in

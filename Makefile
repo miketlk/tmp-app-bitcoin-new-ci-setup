@@ -819,20 +819,28 @@ CFLAGS    += -include debug-helpers/debug.h
 # DEFINES   += HAVE_PRINT_STACK_POINTER
 
 ifndef DEBUG
-        DEBUG = 0
+    DEBUG = 0
+endif
+
+ifeq ($(TEST),1)
+    $(warning On-device tests should only be run with Speculos!)
+    DEBUG = 10
+    DEFINES += RUN_ON_DEVICE_TESTS
 endif
 
 ifeq ($(DEBUG),0)
         DEFINES   += PRINTF\(...\)=
 else
+        #DEFINES += DEBUG=$(DEBUG)
         ifeq ($(DEBUG),10)
-                $(warning Using semihosted PRINTF. Only run with speculos!)
-                DEFINES   += HAVE_PRINTF HAVE_SEMIHOSTED_PRINTF PRINTF=semihosted_printf
+                $(warning Using semihosted PRINTF. Only run with Speculos!)
+                DEFINES += HAVE_PRINTF HAVE_SEMIHOSTED_PRINTF PRINTF=semihosted_printf HAVE_LOG_PROCESSOR
+                # DEFINES += HAVE_APDU_LOG HAVE_PRINT_STACK_POINTER
         else
                 ifeq ($(TARGET_NAME),TARGET_NANOS)
-                        DEFINES   += HAVE_PRINTF PRINTF=screen_printf
+                        DEFINES += HAVE_PRINTF PRINTF=screen_printf
                 else
-                        DEFINES   += HAVE_PRINTF PRINTF=mcu_usb_printf
+                        DEFINES += HAVE_PRINTF PRINTF=mcu_usb_printf
                 endif
         endif
 endif

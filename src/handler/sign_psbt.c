@@ -661,7 +661,11 @@ static void check_input_owned(dispatcher_context_t *dc) {
 
     LOG_PROCESSOR(dc, __FILE__, __LINE__, __func__);
 
-    int is_internal = is_in_out_internal(dc, state, &state->cur.in_out, true);
+    int is_internal = is_in_out_internal(dc,
+                                         state,
+                                         &state->cur.in_out,
+                                         true,
+                                         &state->cur.in_out.has_bip32_derivation);
 
     if (is_internal < 0) {
         PRINTF("Error checking if input %d is internal\n", state->cur_input_index);
@@ -857,7 +861,11 @@ static void check_output_owned(dispatcher_context_t *dc) {
 
     LOG_PROCESSOR(dc, __FILE__, __LINE__, __func__);
 
-    int is_internal = is_in_out_internal(dc, state, &state->cur.in_out, false);
+    int is_internal = is_in_out_internal(dc,
+                                         state,
+                                         &state->cur.in_out,
+                                         false,
+                                         &state->cur.in_out.has_bip32_derivation);
 
     if (is_internal < 0) {
         PRINTF("Error checking if output %d is internal\n", state->cur_output_index);

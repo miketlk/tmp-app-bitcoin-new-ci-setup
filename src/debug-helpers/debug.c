@@ -1,6 +1,8 @@
 #include <stdio.h>
 #include <stdarg.h>
 #include "printf.h"
+#include "cx.h"
+#include "crypto.h"
 
 #pragma GCC diagnostic ignored "-Wunused-function"
 
@@ -99,3 +101,29 @@ void print_stack_pointer(const char *file, int line, const char *func_name) {
     debug_write("\n");
 }
 #pragma GCC diagnostic pop
+
+void print_hash(const char *msg, const void *sha256_context) {
+    if (sha256_context) {
+        cx_sha256_t ctx = *(const cx_sha256_t*)sha256_context;
+        uint8_t hash[32] = { 0 };
+        crypto_hash_digest(&ctx.header, hash, 32);
+        cx_hash_sha256(hash, 32, hash, 32);
+
+        debug_write("HASH '");
+        debug_write(msg);
+        debug_write("' ");
+        for (int i=0; i<32; ++i) {
+            debug_write_hex(hash[i], 1);
+        }
+        debug_write("\n");
+    }
+}
+
+void print_hex(const char *msg, const void *buf, unsigned int len) {
+    const uint8_t *bytes = (const uint8_t *)buf;
+    debug_write(msg);
+    for (unsigned int i = 0; i < len; ++i) {
+        debug_write_hex(bytes[i], 1);
+    }
+    debug_write("\n");
+}

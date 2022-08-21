@@ -257,38 +257,38 @@ class CETxOut(CTxOut):
 class CETxInWitness(CTxInWitness):
     def __init__(
         self,
-        peamountProof: Optional[bytes] = None,
+        amountProof: Optional[bytes] = None,
         tokenProof: Optional[bytes] = None,
         scriptWitness: Optional[CScriptWitness] = None,
         peginWitness: Optional[CScriptWitness] = None
     ) -> None:
-        self.peamountProof = peamountProof if peamountProof is not None else b""
+        self.amountProof = amountProof if amountProof is not None else b""
         self.tokenProof = tokenProof if tokenProof is not None else b""
         self.scriptWitness = scriptWitness if scriptWitness is not None else CScriptWitness()
         self.peginWitness = peginWitness if peginWitness is not None else CScriptWitness()
 
     def deserialize(self, f: Readable) -> None:
-        self.peamountProof = deser_string(f)
+        self.amountProof = deser_string(f)
         self.tokenProof = deser_string(f)
         self.scriptWitness.stack = deser_string_vector(f)
         self.peginWitness.stack = deser_string_vector(f)
 
     def serialize(self) -> bytes:
-        r = ser_string(self.peamountProof)
+        r = ser_string(self.amountProof)
         r += ser_string(self.tokenProof)
         r += ser_string_vector(self.scriptWitness.stack)
         r += ser_string_vector(self.peginWitness.stack)
         return r
 
     def __repr__(self) -> str:
-        return "CETxInWitness(peamountProof=%s tokenProof=%s scriptWitness=%r"\
+        return "CETxInWitness(amountProof=%s tokenProof=%s scriptWitness=%r"\
             " peginWitness=%r)" \
-            % (self.peamountProof.hex(), self.tokenProof.hex(),
+            % (self.amountProof.hex(), self.tokenProof.hex(),
             self.scriptWitness, self.peginWitness)
 
     def is_null(self) -> bool:
         empty: bool = (
-            not self.peamountProof and
+            not self.amountProof and
             not self.tokenProof and
             not self.scriptWitness.is_null() and
             not self.peginWitness.is_null()

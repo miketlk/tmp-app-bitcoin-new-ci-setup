@@ -60,6 +60,21 @@ bool dbuffer_read_u32(buffer_t *buffers[2], uint32_t *out, endianness_t endianne
 bool dbuffer_read_varint(buffer_t *buffers[2], uint64_t *out);
 
 /**
+ * Read 1 byte from the concatenation of two buffers into uint8_t without
+ * advancing the current position in the buffer. Returns `true` on success,
+ * `false` if both buffers are empty; `value` is not change in case of
+ * failure.
+ *
+ * @param[in]  buffers
+ *   Pointer to an array of two input buffer struct.
+ * @param[out]  value
+ *   Pointer to 8-bit unsigned integer read from buffer.
+ *
+ * @return true if success, false otherwise.
+ */
+bool dbuffer_peek(buffer_t *buffers[2], uint8_t *value);
+
+/**
  * TODO: docs.
  */
 static inline void parser_init_context(parser_context_t *parser_context, void *state) {

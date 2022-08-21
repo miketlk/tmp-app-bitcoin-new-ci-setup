@@ -23,6 +23,7 @@
 #include "../boilerplate/sw.h"
 #include "../common/merkle.h"
 #include "../common/psbt.h"
+#include "../common/pset.h"
 #include "../common/read.h"
 #include "../common/script.h"
 #include "../common/varint.h"
@@ -54,6 +55,54 @@
 
 extern global_context_t *G_coin_config;
 
+typedef enum {
+    HAS_BIP32_DERIVATION = (1 << 0),
+    HAS_VALUE_COMMITMENT = (1 << 1),
+    HAS_VALUE_BLINDING_FACTOR = (1 << 2),
+    HAS_ASSET = (1 << 3),
+    HAS_ASSET_BLINDING_FACTOR = (1 << 4),
+    HAS_WITNESSUTXO = (1 << 5),
+    HAS_NONWITNESSUTXO = (1 << 6),
+    HAS_REDEEMSCRIPT = (1 << 7),
+    HAS_SIGHASH_TYPE = (1 << 8),
+    HAS_PREVOUT_AMOUNT = (1 << 9),
+    HAS_ASSET_COMMITMENT = (1 << 10),
+    HAS_BLINDING_PUBKEY = (1 << 11),
+    HAS_ECDH_PUBKEY = (1 << 12),
+    HAS_BLINDER_INDEX = (1 << 13),
+    HAS_ISSUE_VALUE = (1 << 14),
+    HAS_ISSUE_COMMITMENT = (1 << 15),
+    HAS_ISSUE_NONCE = (1 << 16),
+    HAS_ISSUE_ENTROPY = (1 << 17),
+    HAS_TOKEN_COMMITMENT = (1 << 18),
+    HAS_TOKEN_VALUE = (1 << 19),
+    HAS_ISSUE_PROOF = (1 << 20),
+    HAS_TOKEN_PROOF = (1 << 21),
+    HAS_AMOUNT = (1 << 22)
+} key_presence_flags_t;
+
+/// Order in which witness fields are hashed
+typedef enum {
+    OUT_WITNESS_ORDER_ALL,    ///< Order for hashing all ouptuts: rangeproof, surjection proof
+    OUT_WITNESS_ORDER_SINGLE  ///< Order for hashing single ouptut: surjection proof, rangeproof
+} witness_order_t;
+
+/// State of input_keys_callback()
+typedef struct {
+    uint32_t key_presence;  ///< Flags indicating presence of keys in input scope
+    uint8_t *out_pubkey;    ///< Pointer to buffer receiving public key
+    size_t pubkey_size;     ///< Size of public key buffer, filled with public key size on complete
+    bool error;             ///< Flag indicating error during handling of keys
+} input_keys_callback_state_t;
+
+/// State of output_keys_callback()
+typedef struct {
+    uint32_t key_presence;  ///< Flags indicating presence of keys in input scope
+    uint8_t *out_pubkey;    ///< Pointer to buffer receiving public key
+    size_t pubkey_size;     ///< Size of public key buffer, filled with public key size on complete
+    bool error;             ///< Flag indicating error during handling of keys
+} output_keys_callback_state_t;
+
 // Input validation
 static void process_input_map(dispatcher_context_t *dc);
 static void check_input_owned(dispatcher_context_t *dc);
@@ -72,6 +121,7 @@ static void confirm_transaction(dispatcher_context_t *dc);
 
 // Signing process (all)
 static void sign_init(dispatcher_context_t *dc);
+static void compute_segwit_hashes(dispatcher_context_t *dc);
 static void sign_process_input_map(dispatcher_context_t *dc);
 
 // Legacy sighash computation (P2PKH and P2SH)
@@ -93,6 +143,8 @@ static void finalize(dispatcher_context_t *dc);
 /* BIP0341 tags for computing the tagged hashes when computing he sighash */
 static const uint8_t BIP0341_sighash_tag[] = {'T', 'a', 'p', 'S', 'i', 'g', 'h', 'a', 's', 'h'};
 
+
+
 /*
 Current assumptions during signing:
   1) exactly one of the keys in the wallet is internal (enforce during wallet registration)
@@ -108,51 +160,415 @@ the right paths to identify internal inputs/outputs.
 
 // HELPER FUNCTIONS
 
+/**
+ * Tests proprietary key stored in buffer against reference key given as byte array.
+ * It is assumed that top-level <keytype> (0xfd) is already taken from the buffer before this
+ * function is called and <identifierlen> would be the first value available to read.
+ *
+ * Buffer position is left unchanged after return.
+ */
+static bool test_proprietary_key(buffer_t *buffer, const uint8_t *ref_key) {
+    // Offsets within proprietary key byte array, assuming length and types are single-byte.
+    enum {OFF_KEYTYPE = 0, OFF_ID_LEN, OFF_ID };
+
+    // Sanity check
+    if(!buffer || !ref_key || ref_key[OFF_KEYTYPE] != 0xfc ||
+       ref_key[OFF_ID_LEN] > PSBT_PROPRIETARY_ID_MAX_LENGTH ||
+       ref_key[OFF_ID + ref_key[OFF_ID_LEN]] > 0xfc) {
+        return false;
+    }
+
+    bool success = true;
+    buffer_snapshot_t snapshot = buffer_snapshot(buffer);
+
+    uint8_t id_len;
+    // Only single-byte type and length values are supported
+    if(buffer_read_u8(buffer, &id_len) && id_len == ref_key[OFF_ID_LEN]) {
+        uint8_t curr_byte;
+        const uint8_t *p_ref_key = ref_key + OFF_ID;
+        // Compare all bytes of identifier + a single byte of sub-keytype
+        for(int i = 0; i < id_len + 1; ++i, p_ref_key++) {
+            if(!buffer_read_u8(buffer, &curr_byte) || curr_byte != *p_ref_key) {
+                success = false;
+                break;
+            }
+        }
+        // Assure there is no more bytes left in buffer
+        success = success && !buffer_can_read(buffer, 1);
+    } else {
+        success = false;
+    }
+
+    buffer_restore(buffer, snapshot);
+    return success;
+}
+
+/**
+ * Callback to process all the keys of the current input map.
+ * Keeps track if the current input has a witness_utxo and/or a redeemScript.
+ */
+static void output_keys_callback(output_keys_callback_state_t *state, buffer_t *data) {
+    size_t data_len = data->size - data->offset;
+    if (data_len >= 1) {
+        uint8_t keytype;
+        buffer_read_u8(data, &keytype);
+
+        if ((keytype == PSBT_OUT_BIP32_DERIVATION || keytype == PSBT_OUT_TAP_BIP32_DERIVATION) &&
+            !(state->key_presence & HAS_BIP32_DERIVATION)) {
+            // The first time that we encounter a PSBT_OUT_BIP32_DERIVATION or
+            // PSBT_OUT_TAP_BIP32_DERIVATION key, we store the pubkey.
+            state->key_presence |= HAS_BIP32_DERIVATION;
+
+            // Check if storage of public key is requested
+            if(state->out_pubkey && state->pubkey_size) {
+                // x-only pubkeys for taproot, normal compressed pubkeys otherwise
+                size_t key_len = (keytype == PSBT_IN_TAP_BIP32_DERIVATION ? 32 : 33);
+
+                if(state->pubkey_size >= key_len) {
+                    if (!buffer_read_bytes(data,
+                                           state->out_pubkey,
+                                           key_len)  // read compressed pubkey or x-only pubkey
+                        || buffer_can_read(data, 1)  // ...but should not be able to read more
+                    ) {
+                        state->error = true;
+                    } else {
+                        state->pubkey_size = key_len;
+                    }
+                } else {
+                    state->error = true;
+                }
+            }
+        } else if (keytype == PSBT_OUT_AMOUNT) {
+            state->key_presence |= HAS_AMOUNT;
+        } else if (keytype == PSBT_IN_PROPRIETARY) {
+            if (test_proprietary_key(data, PSBT_ELEMENTS_OUT_VALUE_COMMITMENT)) {
+                state->key_presence |= HAS_VALUE_COMMITMENT;
+            } else if (test_proprietary_key(data, PSBT_ELEMENTS_LEGACY_OUT_VALUE_BLINDER)) {
+                state->key_presence |= HAS_VALUE_BLINDING_FACTOR;
+            } else if (test_proprietary_key(data, PSBT_ELEMENTS_OUT_ASSET)) {
+                state->key_presence |= HAS_ASSET;
+            } else if (test_proprietary_key(data, PSBT_ELEMENTS_OUT_ASSET_COMMITMENT)) {
+                state->key_presence |= HAS_ASSET_COMMITMENT;
+            } else if (test_proprietary_key(data, PSBT_ELEMENTS_LEGACY_OUT_ASSET_BLINDER)) {
+                state->key_presence |= HAS_ASSET_BLINDING_FACTOR;
+            } else if (test_proprietary_key(data, PSBT_ELEMENTS_OUT_BLINDING_PUBKEY)) {
+                state->key_presence |= HAS_BLINDING_PUBKEY;
+            } else if (test_proprietary_key(data, PSBT_ELEMENTS_OUT_ECDH_PUBKEY)) {
+                state->key_presence |= HAS_ECDH_PUBKEY;
+            } else if (test_proprietary_key(data, PSBT_ELEMENTS_OUT_BLINDER_INDEX)) {
+                state->key_presence |= HAS_BLINDER_INDEX;
+            }
+        }
+    }
+}
+
 // Updates the hash_context with the network serialization of all the outputs
 // returns -1 on error. 0 on success.
-static int hash_outputs(dispatcher_context_t *dc, cx_hash_t *hash_context) {
+static int hash_output(dispatcher_context_t *dc,
+                       int output_index,
+                       cx_hash_t *hash_context,
+                       cx_hash_t *rangeproof_hash_context,
+                       witness_order_t witness_order) {
     sign_pset_state_t *state = (sign_pset_state_t *) &G_command_state;
 
-    // TODO: support other SIGHASH FLAGS
-    for (unsigned int i = 0; i < state->n_outputs; i++) {
-        // get this output's map
-        merkleized_map_commitment_t ith_map;
+    // get this output's map
+    merkleized_map_commitment_t ith_map;
+    uint32_t key_presence = 0;
+    int res;
 
-        int res = call_get_merkleized_map(dc, state->outputs_root, state->n_outputs, i, &ith_map);
+    if (witness_order != OUT_WITNESS_ORDER_ALL && witness_order != OUT_WITNESS_ORDER_SINGLE) {
+        return -1;
+    }
+
+    // get output's merkelized map
+    {
+        output_keys_callback_state_t callback_state = (output_keys_callback_state_t) { 0 };
+        res = call_get_merkleized_map_with_callback(
+            dc,
+            state->outputs_root,
+            state->n_outputs,
+            output_index,
+            make_callback(&callback_state, (dispatcher_callback_t) output_keys_callback),
+            &ith_map);
+        if (res < 0 || callback_state.error) {
+            return -1;
+        }
+        key_presence = callback_state.key_presence;
+    }
+
+    if (hash_context) {
+        // hash asset or asset commitment
+        if (key_presence & HAS_ASSET_COMMITMENT) {
+            uint8_t commitment[33];
+            if (sizeof(commitment) !=
+                call_get_merkleized_map_value(dc,
+                                            &ith_map,
+                                            PSBT_ELEMENTS_OUT_ASSET_COMMITMENT,
+                                            sizeof(PSBT_ELEMENTS_OUT_ASSET_COMMITMENT),
+                                            commitment,
+                                            sizeof(commitment))) {
+                return -1;
+            }
+            crypto_hash_update(hash_context, commitment, sizeof(commitment));
+        } else if (key_presence & HAS_ASSET) {
+            uint8_t asset[32];
+            if (sizeof(asset) !=
+                call_get_merkleized_map_value(dc,
+                                            &ith_map,
+                                            PSBT_ELEMENTS_OUT_ASSET,
+                                            sizeof(PSBT_ELEMENTS_OUT_ASSET),
+                                            asset,
+                                            sizeof(asset))) {
+                return -1;
+            }
+            crypto_hash_update_u8(hash_context, 0x01);
+            crypto_hash_update(hash_context, asset, sizeof(asset));
+        } else {
+            PRINTF("No asset nor asset commitment provided for output %i", output_index);
+            return -1;
+        }
+
+        // hash amount or value commitment
+        if (key_presence & HAS_VALUE_COMMITMENT) {
+            uint8_t commitment[33];
+            if (sizeof(commitment) !=
+                call_get_merkleized_map_value(dc,
+                                            &ith_map,
+                                            PSBT_ELEMENTS_OUT_VALUE_COMMITMENT,
+                                            sizeof(PSBT_ELEMENTS_OUT_VALUE_COMMITMENT),
+                                            commitment,
+                                            sizeof(commitment))) {
+                return -1;
+            }
+            crypto_hash_update(hash_context, commitment, sizeof(commitment));
+        } else if (key_presence & HAS_AMOUNT) {
+            uint8_t amount_raw[8];
+            if (sizeof(amount_raw) !=
+                call_get_merkleized_map_value(dc,
+                                            &ith_map,
+                                            (uint8_t[]){PSBT_OUT_AMOUNT},
+                                            1,
+                                            amount_raw,
+                                            sizeof(amount_raw))) {
+                return -1;
+            }
+            crypto_hash_update_u8(hash_context, 0x01);
+            for(int i = 7; i >= 0; --i) {
+                // Value is serialized as big endian
+                crypto_hash_update_u8(hash_context, amount_raw[i]);
+            }
+        } else {
+            PRINTF("No value commitment nor amount provided for output %i", output_index);
+            return -1;
+        }
+
+        // hash ephemeral ECDH pubkey
+        if (key_presence & HAS_ECDH_PUBKEY) {
+            uint8_t ecdh_pubkey[33];
+            if (sizeof(ecdh_pubkey) !=
+                call_get_merkleized_map_value(dc,
+                                            &ith_map,
+                                            PSBT_ELEMENTS_OUT_ECDH_PUBKEY,
+                                            sizeof(PSBT_ELEMENTS_OUT_ECDH_PUBKEY),
+                                            ecdh_pubkey,
+                                            sizeof(ecdh_pubkey))) {
+                return -1;
+            }
+            crypto_hash_update(hash_context, ecdh_pubkey, sizeof(ecdh_pubkey));
+        } else {
+            crypto_hash_update_u8(hash_context, 0x00);
+        }
+
+        // hash scriptPubKey
+        {
+            uint8_t out_script[MAX_OUTPUT_SCRIPTPUBKEY_LEN];
+            int out_script_len = call_get_merkleized_map_value(dc,
+                                                            &ith_map,
+                                                            (uint8_t[]){PSBT_OUT_SCRIPT},
+                                                            1,
+                                                            out_script,
+                                                            sizeof(out_script));
+            if (out_script_len == -1) {
+                return -1;
+            }
+            crypto_hash_update_varint(hash_context, out_script_len);
+            crypto_hash_update(hash_context, out_script, out_script_len);
+        }
+    }
+
+    if (rangeproof_hash_context) {
+        if (witness_order == OUT_WITNESS_ORDER_ALL) {
+            // update hash with range proof
+            res = update_hashes_with_map_value(dc,
+                                                &ith_map,
+                                                PSBT_ELEMENTS_OUT_VALUE_RANGEPROOF,
+                                                sizeof(PSBT_ELEMENTS_OUT_VALUE_RANGEPROOF),
+                                                rangeproof_hash_context,
+                                                NULL);
+
+            if (res < 0) {
+                PRINTF("Error fetching range proof\n");
+                return -1;
+            }
+        }
+
+        // update hash with surjection proof
+        res = update_hashes_with_map_value(dc,
+                                            &ith_map,
+                                            PSBT_ELEMENTS_OUT_ASSET_SURJECTION_PROOF,
+                                            sizeof(PSBT_ELEMENTS_OUT_ASSET_SURJECTION_PROOF),
+                                            rangeproof_hash_context,
+                                            NULL);
+
+        if (res < 0) {
+            PRINTF("Error fetching surjection proof\n");
+            return -1;
+        }
+
+        if (witness_order == OUT_WITNESS_ORDER_SINGLE) {
+            // update hash with range proof
+            res = update_hashes_with_map_value(dc,
+                                                &ith_map,
+                                                PSBT_ELEMENTS_OUT_VALUE_RANGEPROOF,
+                                                sizeof(PSBT_ELEMENTS_OUT_VALUE_RANGEPROOF),
+                                                rangeproof_hash_context,
+                                                NULL);
+
+            if (res < 0) {
+                PRINTF("Error fetching range proof\n");
+                return -1;
+            }
+        }
+    }
+
+    return 0;
+}
+
+// Updates the hash_context with the network serialization of all the outputs
+// returns -1 on error. 0 on success.
+static int hash_outputs(dispatcher_context_t *dc,
+                        cx_hash_t *hash_context,
+                        cx_hash_t *rangeproof_hash_context) {
+    sign_pset_state_t *state = (sign_pset_state_t *) &G_command_state;
+
+    for (unsigned int i = 0; i < state->n_outputs; i++) {
+        int res = hash_output(dc, i, hash_context, rangeproof_hash_context, OUT_WITNESS_ORDER_ALL);
         if (res < 0) {
             return -1;
         }
-
-        // get output's amount
-        uint8_t amount_raw[8];
-        if (8 != call_get_merkleized_map_value(dc,
-                                               &ith_map,
-                                               (uint8_t[]){PSBT_OUT_AMOUNT},
-                                               1,
-                                               amount_raw,
-                                               8)) {
-            return -1;
-        }
-
-        crypto_hash_update(hash_context, amount_raw, 8);
-
-        // get output's scriptPubKey
-
-        uint8_t out_script[MAX_OUTPUT_SCRIPTPUBKEY_LEN];
-        int out_script_len = call_get_merkleized_map_value(dc,
-                                                           &ith_map,
-                                                           (uint8_t[]){PSBT_OUT_SCRIPT},
-                                                           1,
-                                                           out_script,
-                                                           sizeof(out_script));
-        if (out_script_len == -1) {
-            return -1;
-        }
-
-        crypto_hash_update_varint(hash_context, out_script_len);
-        crypto_hash_update(hash_context, out_script, out_script_len);
     }
     return 0;
+}
+
+static int hash_output_issuance(dispatcher_context_t *dc,
+                                const merkleized_map_commitment_t *map,
+                                uint32_t key_presence,
+                                cx_hash_t *hash_context) {
+    //sign_pset_state_t *state = (sign_pset_state_t *) &G_command_state;
+
+    if ( 0 == (key_presence & (HAS_ISSUE_VALUE | HAS_ISSUE_COMMITMENT)) ) {
+        return true; // No asset issuance information provided, nothing to hash
+    }
+
+    // Hash nonce
+    if (key_presence & HAS_ISSUE_NONCE) {
+        uint8_t nonce[32];
+        if (sizeof(nonce) != call_get_merkleized_map_value(
+                dc,
+                map,
+                PSBT_ELEMENTS_IN_ISSUANCE_BLINDING_NONCE,
+                sizeof(PSBT_ELEMENTS_IN_ISSUANCE_BLINDING_NONCE),
+                nonce,
+                sizeof(nonce)
+            )) {
+            return false;
+        }
+        crypto_hash_update(hash_context, nonce, sizeof(nonce));
+    } else {
+        return false;
+    }
+
+    // Hash entropy
+    if (key_presence & HAS_ISSUE_ENTROPY) {
+        uint8_t entropy[32];
+        if (sizeof(entropy) != call_get_merkleized_map_value(
+                dc,
+                map,
+                PSBT_ELEMENTS_IN_ISSUANCE_ASSET_ENTROPY,
+                sizeof(PSBT_ELEMENTS_IN_ISSUANCE_ASSET_ENTROPY),
+                entropy,
+                sizeof(entropy)
+            )) {
+            return false;
+        }
+        crypto_hash_update(hash_context, entropy, sizeof(entropy));
+    } else {
+        return false;
+    }
+
+    // Hash amount commitment
+    if (key_presence & HAS_ISSUE_COMMITMENT) {
+        uint8_t commitment[33];
+        if (sizeof(commitment) != call_get_merkleized_map_value(
+                dc,
+                map,
+                PSBT_ELEMENTS_IN_ISSUANCE_VALUE_COMMITMENT,
+                sizeof(PSBT_ELEMENTS_IN_ISSUANCE_VALUE_COMMITMENT),
+                commitment,
+                sizeof(commitment)
+            )) {
+            return false;
+        }
+        crypto_hash_update(hash_context, commitment, sizeof(commitment));
+    } else if (key_presence & HAS_ISSUE_VALUE) {
+        uint8_t value[8];
+        if (sizeof(value) != call_get_merkleized_map_value(
+                dc,
+                map,
+                PSBT_ELEMENTS_IN_ISSUANCE_VALUE,
+                sizeof(PSBT_ELEMENTS_IN_ISSUANCE_VALUE),
+                value,
+                sizeof(value)
+            )) {
+            return false;
+        }
+        crypto_hash_update(hash_context, value, sizeof(value));
+    } else {
+        return false;
+    }
+
+    // Hash token commitment
+    if (key_presence & HAS_TOKEN_COMMITMENT) {
+        uint8_t commitment[33];
+        if (sizeof(commitment) != call_get_merkleized_map_value(
+                dc,
+                map,
+                PSBT_ELEMENTS_IN_ISSUANCE_INFLATION_KEYS_COMMITMENT,
+                sizeof(PSBT_ELEMENTS_IN_ISSUANCE_INFLATION_KEYS_COMMITMENT),
+                commitment,
+                sizeof(commitment)
+            )) {
+            return false;
+        }
+        crypto_hash_update(hash_context, commitment, sizeof(commitment));
+    } else if (key_presence & HAS_TOKEN_VALUE) {
+        uint8_t value[8];
+        if (sizeof(value) != call_get_merkleized_map_value(
+                dc,
+                map,
+                PSBT_ELEMENTS_IN_ISSUANCE_INFLATION_KEYS_AMOUNT,
+                sizeof(PSBT_ELEMENTS_IN_ISSUANCE_INFLATION_KEYS_AMOUNT),
+                value,
+                sizeof(value)
+            )) {
+            return false;
+        }
+        crypto_hash_update(hash_context, value, sizeof(value));
+    } else {
+        crypto_hash_update_u8(hash_context, 0x00);
+    }
+
+    return true;
 }
 
 static int get_segwit_version(const uint8_t scriptPubKey[], int scriptPubKey_len) {
@@ -179,10 +595,11 @@ static int get_segwit_version(const uint8_t scriptPubKey[], int scriptPubKey_len
 static int get_amount_scriptpubkey_from_psbt_nonwitness(
     dispatcher_context_t *dc,
     const merkleized_map_commitment_t *input_map,
-    uint64_t *amount,
+    tx_amount_t *amount,
     uint8_t scriptPubKey[static MAX_PREVOUT_SCRIPTPUBKEY_LEN],
     size_t *scriptPubKey_len,
-    const uint8_t *expected_prevout_hash) {
+    const uint8_t *expected_prevout_hash,
+    cx_sha256_t *issuance_hash_context) {
     // If there is no witness-utxo, it must be the case that this is a legacy input.
     // In this case, we can only retrieve the prevout amount and scriptPubKey by parsing
     // the non-witness-utxo
@@ -204,13 +621,14 @@ static int get_amount_scriptpubkey_from_psbt_nonwitness(
                                     (uint8_t[]){PSBT_IN_NON_WITNESS_UTXO},
                                     1,
                                     prevout_n,
-                                    &parser_outputs);
+                                    &parser_outputs,
+                                    issuance_hash_context);
     if (res < 0) {
         PRINTF("Parsing rawtx failed\n");
         return -1;
     }
 
-    // if expected_prevout_hash is give, check that it matches the txid obtained from the parser
+    // if expected_prevout_hash is given, check that it matches the txid obtained from the parser
     if (expected_prevout_hash != NULL &&
         memcmp(parser_outputs.txid, expected_prevout_hash, 32) != 0) {
         PRINTF("Prevout hash did not match non-witness-utxo transaction hash\n");
@@ -218,9 +636,13 @@ static int get_amount_scriptpubkey_from_psbt_nonwitness(
         return -1;
     }
 
-    *amount = parser_outputs.vout_value;
-    *scriptPubKey_len = parser_outputs.vout_scriptpubkey_len;
-    memcpy(scriptPubKey, parser_outputs.vout_scriptpubkey, parser_outputs.vout_scriptpubkey_len);
+    if(parser_outputs.vout.scriptpubkey_len > MAX_PREVOUT_SCRIPTPUBKEY_LEN) {
+        return -1;
+    }
+
+    *amount = parser_outputs.vout.amount;
+    *scriptPubKey_len = parser_outputs.vout.scriptpubkey_len;
+    memcpy(scriptPubKey, parser_outputs.vout.scriptpubkey, parser_outputs.vout.scriptpubkey_len);
 
     return 0;
 }
@@ -233,64 +655,84 @@ static int get_amount_scriptpubkey_from_psbt_nonwitness(
 static int get_amount_scriptpubkey_from_psbt_witness(
     dispatcher_context_t *dc,
     const merkleized_map_commitment_t *input_map,
-    uint64_t *amount,
+    tx_amount_t *amount,
     uint8_t scriptPubKey[static MAX_PREVOUT_SCRIPTPUBKEY_LEN],
     size_t *scriptPubKey_len) {
-    uint8_t raw_witnessUtxo[8 + 1 + MAX_PREVOUT_SCRIPTPUBKEY_LEN];
+    txid_parser_vout_t parser_output;
 
-    int wit_utxo_len = call_get_merkleized_map_value(dc,
-                                                     input_map,
-                                                     (uint8_t[]){PSBT_IN_WITNESS_UTXO},
-                                                     1,
-                                                     raw_witnessUtxo,
-                                                     sizeof(raw_witnessUtxo));
+    int res = call_pset_parse_rawtx_single_output(dc,
+                                                  input_map,
+                                                  (uint8_t[]){PSBT_IN_WITNESS_UTXO},
+                                                  1,
+                                                  &parser_output,
+                                                  NULL);
 
-    if (wit_utxo_len < 0) {
-        return -1;
-    }
-    int wit_utxo_scriptPubkey_len = raw_witnessUtxo[8];
-
-    if (wit_utxo_len != 8 + 1 + wit_utxo_scriptPubkey_len) {
-        PRINTF("Length mismatch for witness utxo's scriptPubKey\n");
+    if (res < 0) {
+        PRINTF("Parsing witness UTXO failed\n");
         return -1;
     }
 
-    uint8_t *wit_utxo_scriptPubkey = raw_witnessUtxo + 9;
-    uint64_t wit_utxo_prevout_amount = read_u64_le(&raw_witnessUtxo[0], 0);
+    if(parser_output.scriptpubkey_len > MAX_PREVOUT_SCRIPTPUBKEY_LEN) {
+        return -1;
+    }
 
-    *amount = wit_utxo_prevout_amount;
-    *scriptPubKey_len = wit_utxo_scriptPubkey_len;
-    memcpy(scriptPubKey, wit_utxo_scriptPubkey, wit_utxo_scriptPubkey_len);
+    *amount = parser_output.amount;
+    *scriptPubKey_len = parser_output.scriptpubkey_len;
+    memcpy(scriptPubKey, parser_output.scriptpubkey, parser_output.scriptpubkey_len);
+
     return 0;
 }
 
-/*
- Convenience function to get the amount and scriptpubkey of a certain input in a PSBTv2.
- It first tries to obtain it from the witness-utxo field; in case of failure, it then obtains it
- from the non-witness-utxo.
- Returns -1 on failure, 0 on success.
-*/
-static int get_amount_scriptpubkey_from_psbt(
-    dispatcher_context_t *dc,
-    const merkleized_map_commitment_t *input_map,
-    uint64_t *amount,
-    uint8_t scriptPubKey[static MAX_PREVOUT_SCRIPTPUBKEY_LEN],
-    size_t *scriptPubKey_len) {
-    int ret = get_amount_scriptpubkey_from_psbt_witness(dc,
-                                                        input_map,
-                                                        amount,
-                                                        scriptPubKey,
-                                                        scriptPubKey_len);
-    if (ret >= 0) {
-        return ret;
+/**
+ * Updates given input with provided plaintext amount or amount commitment
+ */
+static bool set_input_amount(overlayed_in_out_info_t *p_info, tx_amount_t *p_amount) {
+    if(!p_info || !p_amount) {
+        return false;
     }
 
-    return get_amount_scriptpubkey_from_psbt_nonwitness(dc,
-                                                        input_map,
-                                                        amount,
-                                                        scriptPubKey,
-                                                        scriptPubKey_len,
-                                                        NULL);
+    if(!p_amount->is_blinded) {
+        if(!(p_info->key_presence & HAS_PREVOUT_AMOUNT)) {
+            p_info->input.prevout_amount = p_amount->value;
+            p_info->key_presence |= HAS_PREVOUT_AMOUNT;
+        } else if(p_amount->value != p_info->input.prevout_amount) {
+            // new value does not match with the previous initialization
+            return false;
+        }
+    } else {
+        if(p_info->key_presence & HAS_VALUE_COMMITMENT) {
+            if(0 != memcmp(p_info->in_out.value_commitment,
+                           p_amount->commitment,
+                           sizeof(p_info->in_out.value_commitment))) {
+                return false;
+            }
+        } else {
+            memcpy(p_info->in_out.value_commitment,
+                   p_amount->commitment,
+                   sizeof(p_info->in_out.value_commitment));
+            p_info->key_presence |= HAS_VALUE_COMMITMENT;
+        }
+    }
+
+    return true;
+}
+
+// TODO: document
+static cx_sha256_t* sha_context_alloc(sign_pset_state_t *state) {
+    if(state->sha_context_index >= SIGN_PSET_SHA_CONTEXT_POOL_SIZE) {
+        THROW(EXCEPTION);
+    }
+    return &state->sha_context_pool[state->sha_context_index++];
+}
+
+// TODO: document
+// contexts must be freed in reverse order
+static void sha_context_free(sign_pset_state_t *state, const cx_sha256_t *context) {
+    if(!state->sha_context_index ||
+       context != &state->sha_context_pool[state->sha_context_index - 1]) {
+        THROW(EXCEPTION);
+    }
+    state->sha_context_index--;
 }
 
 /**
@@ -299,6 +741,9 @@ static int get_amount_scriptpubkey_from_psbt(
  */
 void handler_liquid_sign_pset(dispatcher_context_t *dc) {
     sign_pset_state_t *state = (sign_pset_state_t *) &G_command_state;
+
+    // Initialize allocator for SHA256 contexts
+    state->sha_context_index = 0;
 
     // Device must be unlocked
     if (os_global_pin_is_validated() != BOLOS_UX_OK) {
@@ -337,6 +782,11 @@ void handler_liquid_sign_pset(dispatcher_context_t *dc) {
     if (!buffer_read_varint(&dc->read_buffer, &n_outputs) ||
         !buffer_read_bytes(&dc->read_buffer, state->outputs_root, 32)) {
         SEND_SW(dc, SW_WRONG_DATA_LENGTH);
+        return;
+    }
+    if (n_outputs < 2) {
+        PRINTF("At least 2 outputs are required (including fee output)\n");
+        SEND_SW(dc, SW_INCORRECT_DATA);
         return;
     }
     state->n_outputs = (unsigned int) n_outputs;
@@ -383,6 +833,18 @@ void handler_liquid_sign_pset(dispatcher_context_t *dc) {
         return;
     }
 
+    // Unwrap policy map removing blinded() tag and extracting master blinding key
+    state->wallet_policy_map_unwrapped = &state->wallet_policy_map;
+    if(!liquid_policy_unwrap_blinded(&state->wallet_policy_map_unwrapped,
+                                     &state->wallet_is_blinded,
+                                     state->wallet_master_blinding_key,
+                                     sizeof(state->wallet_master_blinding_key),
+                                     NULL,
+                                     &state->wallet_blinding_key_type)) {
+        SEND_SW(dc, SW_INCORRECT_DATA);  // unexpected
+        return;
+    }
+
     uint8_t hmac_or =
         0;  // the binary OR of all the hmac bytes (so == 0 iff the hmac is identically 0)
     for (int i = 0; i < 32; i++) {
@@ -397,7 +859,7 @@ void handler_liquid_sign_pset(dispatcher_context_t *dc) {
             return;
         }
 
-        state->address_type = get_policy_address_type(&state->wallet_policy_map);
+        state->address_type = get_policy_address_type(state->wallet_policy_map_unwrapped);
         if (state->address_type == -1) {
             PRINTF("Non-standard policy, and no hmac provided\n");
             SEND_SW(dc, SW_INCORRECT_DATA);
@@ -427,12 +889,20 @@ void handler_liquid_sign_pset(dispatcher_context_t *dc) {
         state->is_wallet_canonical = false;
     }
 
+#ifdef LIQUID_HAS_SWAP
     // Swap feature: check that wallet is canonical
     if (G_swap_state.called_from_swap && !state->is_wallet_canonical) {
         PRINTF("Must be a canonical wallet for swap feature\n");
         SEND_SW(dc, SW_INCORRECT_DATA);
         return;
     }
+#else
+    if (G_swap_state.called_from_swap) {
+        PRINTF("Swap feature is not supported\n");
+        SEND_SW(dc, SW_NOT_SUPPORTED);
+        return;
+    }
+#endif
 
     state->inputs_total_value = 0;
     state->internal_inputs_total_value = 0;
@@ -506,41 +976,81 @@ void handler_liquid_sign_pset(dispatcher_context_t *dc) {
  *  - detect internal inputs that should be signed, and external inputs that shouldn't
  */
 
+
+
 /**
  * Callback to process all the keys of the current input map.
  * Keeps track if the current input has a witness_utxo and/or a redeemScript.
  */
-static void input_keys_callback(sign_pset_state_t *state, buffer_t *data) {
+static void input_keys_callback(input_keys_callback_state_t *state, buffer_t *data) {
     size_t data_len = data->size - data->offset;
     if (data_len >= 1) {
-        uint8_t key_type;
-        buffer_read_u8(data, &key_type);
-        if (key_type == PSBT_IN_WITNESS_UTXO) {
-            state->cur.input.has_witnessUtxo = true;
-        } else if (key_type == PSBT_IN_NON_WITNESS_UTXO) {
-            state->cur.input.has_nonWitnessUtxo = true;
-        } else if (key_type == PSBT_IN_REDEEM_SCRIPT) {
-            state->cur.input.has_redeemScript = true;
-        } else if (key_type == PSBT_IN_SIGHASH_TYPE) {
-            state->cur.input.has_sighash_type = true;
-        } else if ((key_type == PSBT_IN_BIP32_DERIVATION ||
-                    key_type == PSBT_IN_TAP_BIP32_DERIVATION) &&
-                   !state->cur.in_out.has_bip32_derivation) {
+        uint8_t keytype;
+        buffer_read_u8(data, &keytype);
+        if (keytype == PSBT_IN_WITNESS_UTXO) {
+            state->key_presence |= HAS_WITNESSUTXO;
+        } else if (keytype == PSBT_IN_NON_WITNESS_UTXO) {
+            state->key_presence |= HAS_NONWITNESSUTXO;
+        } else if (keytype == PSBT_IN_REDEEM_SCRIPT) {
+            state->key_presence |= HAS_REDEEMSCRIPT;
+        } else if (keytype == PSBT_IN_SIGHASH_TYPE) {
+            state->key_presence |= HAS_SIGHASH_TYPE;
+        } else if ((keytype == PSBT_IN_BIP32_DERIVATION ||
+                    keytype == PSBT_IN_TAP_BIP32_DERIVATION) &&
+                   !(state->key_presence & HAS_BIP32_DERIVATION)) {
             // The first time that we encounter a PSBT_IN_BIP32_DERIVATION or
             // PSBT_IN_TAP_BIP32_DERIVATION (handled below) key, we store the pubkey. Since we only
             // use this to identify the change and address_index, it does not matter which of the
             // keys we use here (if there are multiple), as per the assumptions above.
-            state->cur.in_out.has_bip32_derivation = true;
+            state->key_presence |= HAS_BIP32_DERIVATION;
 
-            // x-only pubkeys for taproot, normal compressed pubkeys otherwise
-            size_t key_len = (key_type == PSBT_IN_TAP_BIP32_DERIVATION ? 32 : 33);
+            // Check if storage of public key is requested
+            if(state->out_pubkey && state->pubkey_size) {
+                // x-only pubkeys for taproot, normal compressed pubkeys otherwise
+                size_t key_len = (keytype == PSBT_IN_TAP_BIP32_DERIVATION ? 32 : 33);
 
-            if (!buffer_read_bytes(data,
-                                   state->cur.in_out.bip32_derivation_pubkey,
-                                   key_len)  // read compressed pubkey or x-only pubkey
-                || buffer_can_read(data, 1)  // ...but should not be able to read more
-            ) {
-                state->cur.in_out.unexpected_pubkey_error = true;
+                if(state->pubkey_size >= key_len) {
+                    if (!buffer_read_bytes(data,
+                                           state->out_pubkey,
+                                           key_len)  // read compressed pubkey or x-only pubkey
+                        || buffer_can_read(data, 1)  // ...but should not be able to read more
+                    ) {
+                        state->error = true;
+                    } else {
+                        state->pubkey_size = key_len;
+                    }
+                } else {
+                    state->error = true;
+                }
+            }
+        } else if (keytype == PSBT_IN_PROPRIETARY) {
+            if (test_proprietary_key(data, PSBT_ELEMENTS_LEGACY_IN_VALUE)) {
+                state->key_presence |= HAS_PREVOUT_AMOUNT;
+            } else if (test_proprietary_key(data, PSBT_ELEMENTS_LEGACY_IN_VALUE_BLINDER)) {
+                state->key_presence |= HAS_VALUE_BLINDING_FACTOR;
+            } else if (test_proprietary_key(data, PSBT_ELEMENTS_LEGACY_IN_ASSET)) {
+                state->key_presence |= HAS_ASSET;
+            } else if (test_proprietary_key(data, PSBT_ELEMENTS_LEGACY_IN_ASSET_BLINDER)) {
+                state->key_presence |= HAS_ASSET_BLINDING_FACTOR;
+            } else if (test_proprietary_key(data, PSBT_ELEMENTS_IN_ISSUANCE_VALUE)) {
+                state->key_presence |= HAS_ISSUE_VALUE;
+            } else if (test_proprietary_key(data, PSBT_ELEMENTS_IN_ISSUANCE_VALUE_COMMITMENT)) {
+                state->key_presence |= HAS_ISSUE_COMMITMENT;
+            } else if (test_proprietary_key(data, PSBT_ELEMENTS_IN_ISSUANCE_BLIND_VALUE_PROOF)) {
+                state->key_presence |= HAS_ISSUE_PROOF;
+            } else if (test_proprietary_key(data,
+                                            PSBT_ELEMENTS_IN_ISSUANCE_INFLATION_KEYS_AMOUNT)) {
+                state->key_presence |= HAS_TOKEN_VALUE;
+            } else if (test_proprietary_key(data,
+                                            PSBT_ELEMENTS_IN_ISSUANCE_INFLATION_KEYS_COMMITMENT)) {
+                state->key_presence |= HAS_TOKEN_COMMITMENT;
+            } else if (test_proprietary_key(data, PSBT_ELEMENTS_IN_ISSUANCE_BLINDING_NONCE)) {
+                state->key_presence |= HAS_ISSUE_NONCE;
+            } else if (test_proprietary_key(data, PSBT_ELEMENTS_IN_ISSUANCE_ASSET_ENTROPY)) {
+                state->key_presence |= HAS_ISSUE_ENTROPY;
+            } else if (test_proprietary_key(data,
+                                            PSBT_ELEMENTS_IN_ISSUANCE_BLIND_INFLATION_KEYS_PROOF)) {
+                state->key_presence |= HAS_TOKEN_PROOF;
             }
         }
     }
@@ -560,27 +1070,47 @@ static void process_input_map(dispatcher_context_t *dc) {
     // Reset cur struct
     memset(&state->cur, 0, sizeof(state->cur));
 
-    int res = call_get_merkleized_map_with_callback(
-        dc,
-        state->inputs_root,
-        state->n_inputs,
-        state->cur_input_index,
-        make_callback(state, (dispatcher_callback_t) input_keys_callback),
-        &state->cur.in_out.map);
-    if (res < 0) {
-        PRINTF("Failed to process input map\n");
-        SEND_SW(dc, SW_INCORRECT_DATA);
-        return;
+    {
+        input_keys_callback_state_t callback_state = (input_keys_callback_state_t) {
+            .out_pubkey = state->cur.in_out.bip32_derivation_pubkey,
+            .pubkey_size = sizeof(state->cur.in_out.bip32_derivation_pubkey)
+        };
+        int res = call_get_merkleized_map_with_callback(
+            dc,
+            state->inputs_root,
+            state->n_inputs,
+            state->cur_input_index,
+            make_callback(&callback_state, (dispatcher_callback_t) input_keys_callback),
+            &state->cur.in_out.map);
+        if (res < 0) {
+            PRINTF("Failed to process input map\n");
+            SEND_SW(dc, SW_INCORRECT_DATA);
+            return;
+        }
+
+        if (callback_state.error) {
+            PRINTF("Error during processing input keys (wrong pubkey format?)\n");
+            SEND_SW(dc, SW_INCORRECT_DATA);
+            return;
+        }
+        state->cur.key_presence = callback_state.key_presence;
     }
 
-    if (state->cur.in_out.unexpected_pubkey_error) {
-        PRINTF("Unexpected pubkey length\n");  // only compressed pubkeys are supported
-        SEND_SW(dc, SW_INCORRECT_DATA);
-        return;
+    if(state->cur.key_presence & HAS_PREVOUT_AMOUNT) {
+        // Obtain input value from PSET field
+        if (8 != call_get_merkleized_map_value_u64_le(dc,
+                                                      &state->cur.in_out.map,
+                                                      PSBT_ELEMENTS_LEGACY_IN_VALUE,
+                                                      sizeof(PSBT_ELEMENTS_LEGACY_IN_VALUE),
+                                                      &state->cur.input.prevout_amount)) {
+            PRINTF("Failed to obtain value for input %u\n", state->cur_input_index);
+            SEND_SW(dc, SW_INCORRECT_DATA);
+            return;
+        }
     }
 
     // either witness utxo or non-witness utxo (or both) must be present.
-    if (!state->cur.input.has_nonWitnessUtxo && !state->cur.input.has_witnessUtxo) {
+    if (0 == (state->cur.key_presence & (HAS_NONWITNESSUTXO | HAS_WITNESSUTXO))) {
         PRINTF("No witness utxo nor non-witness utxo present in input.\n");
         SEND_SW(dc, SW_INCORRECT_DATA);
         return;
@@ -588,7 +1118,7 @@ static void process_input_map(dispatcher_context_t *dc) {
 
     // validate non-witness utxo (if present) and witness utxo (if present)
 
-    if (state->cur.input.has_nonWitnessUtxo) {
+    if (state->cur.key_presence & HAS_NONWITNESSUTXO) {
         uint8_t prevout_hash[32];
 
         // check if the prevout_hash of the transaction matches the computed one from the
@@ -604,23 +1134,28 @@ static void process_input_map(dispatcher_context_t *dc) {
         }
 
         // request non-witness utxo, and get the prevout's value and scriptpubkey
+        tx_amount_t prevout_amount;
         if (0 > get_amount_scriptpubkey_from_psbt_nonwitness(dc,
                                                              &state->cur.in_out.map,
-                                                             &state->cur.input.prevout_amount,
+                                                             &prevout_amount,
                                                              state->cur.in_out.scriptPubKey,
                                                              &state->cur.in_out.scriptPubKey_len,
-                                                             prevout_hash)) {
+                                                             prevout_hash,
+                                                             NULL)) {
             SEND_SW(dc, SW_INCORRECT_DATA);
             return;
         }
 
-        state->inputs_total_value += state->cur.input.prevout_amount;
+        if(!set_input_amount(&state->cur, &prevout_amount)) {
+            PRINTF("Amount in non-witness utxo doesn't match externally provided one\n");
+            SEND_SW(dc, SW_INCORRECT_DATA);
+        }
     }
 
-    if (state->cur.input.has_witnessUtxo) {
+    if (state->cur.key_presence & HAS_WITNESSUTXO) {
         size_t wit_utxo_scriptPubkey_len;
         uint8_t wit_utxo_scriptPubkey[MAX_PREVOUT_SCRIPTPUBKEY_LEN];
-        uint64_t wit_utxo_prevout_amount;
+        tx_amount_t wit_utxo_prevout_amount;
 
         if (0 > get_amount_scriptpubkey_from_psbt_witness(dc,
                                                           &state->cur.in_out.map,
@@ -631,28 +1166,34 @@ static void process_input_map(dispatcher_context_t *dc) {
             return;
         };
 
-        if (state->cur.input.has_nonWitnessUtxo) {
+        if(!set_input_amount(&state->cur, &wit_utxo_prevout_amount)) {
+            PRINTF("Amount in witness utxo doesn't previously decoded one\n");
+            SEND_SW(dc, SW_INCORRECT_DATA);
+        }
+
+        if (state->cur.key_presence & HAS_NONWITNESSUTXO) {
             // we already know the scriptPubKey, but we double check that it matches
             if (state->cur.in_out.scriptPubKey_len != wit_utxo_scriptPubkey_len ||
                 memcmp(state->cur.in_out.scriptPubKey,
                        wit_utxo_scriptPubkey,
-                       wit_utxo_scriptPubkey_len) != 0 ||
-                state->cur.input.prevout_amount != wit_utxo_prevout_amount) {
-                PRINTF(
-                    "scriptPubKey or amount in non-witness utxo doesn't match with witness utxo\n");
+                       wit_utxo_scriptPubkey_len) != 0) {
+                PRINTF("scriptPubKey in non-witness utxo doesn't match with witness utxo\n");
                 SEND_SW(dc, SW_INCORRECT_DATA);
             }
         } else {
-            // we extract the scriptPubKey and prevout amount from the witness utxo
-            state->inputs_total_value += wit_utxo_prevout_amount;
-
-            state->cur.input.prevout_amount = wit_utxo_prevout_amount;
+            // we extract the scriptPubKey from the witness utxo
             state->cur.in_out.scriptPubKey_len = wit_utxo_scriptPubkey_len;
             memcpy(state->cur.in_out.scriptPubKey,
                    wit_utxo_scriptPubkey,
                    wit_utxo_scriptPubkey_len);
         }
     }
+
+    if(!(state->cur.key_presence & HAS_PREVOUT_AMOUNT)) {
+        PRINTF("Non-blinded amount is not provided for input %u\n", state->cur_input_index);
+        SEND_SW(dc, SW_INCORRECT_DATA);
+    }
+    state->inputs_total_value += state->cur.input.prevout_amount;
 
     dc->next(check_input_owned);
 }
@@ -662,7 +1203,11 @@ static void check_input_owned(dispatcher_context_t *dc) {
 
     LOG_PROCESSOR(dc, __FILE__, __LINE__, __func__);
 
-    int is_internal = is_in_out_internal(dc, state, &state->cur.in_out, true);
+    int is_internal = is_in_out_internal(dc,
+                                         state,
+                                         &state->cur.in_out,
+                                         true,
+                                         !!(state->cur.key_presence & HAS_BIP32_DERIVATION));
 
     if (is_internal < 0) {
         PRINTF("Error checking if input %d is internal\n", state->cur_input_index);
@@ -672,20 +1217,25 @@ static void check_input_owned(dispatcher_context_t *dc) {
         PRINTF("INPUT %d is external\n", state->cur_input_index);
     } else {
         bitvector_set(state->internal_inputs, state->cur_input_index, 1);
+        if(!(state->cur.key_presence & HAS_PREVOUT_AMOUNT)) {
+            PRINTF("Non-blinded amount is not provided for input %u\n", state->cur_input_index);
+            SEND_SW(dc, SW_INCORRECT_DATA);
+        }
         state->internal_inputs_total_value += state->cur.input.prevout_amount;
 
         int segwit_version =
             get_segwit_version(state->cur.in_out.scriptPubKey, state->cur.in_out.scriptPubKey_len);
 
         // For legacy or segwit-v0 inputs, the non-witness utxo must be present
-        if ((segwit_version == -1 || segwit_version == 0) && !state->cur.input.has_nonWitnessUtxo) {
+        if ((segwit_version == -1 || segwit_version == 0) &&
+             !(state->cur.key_presence & HAS_NONWITNESSUTXO)) {
             PRINTF("Non-witness utxo missing for legacy or segwitv0 input\n");
             SEND_SW(dc, SW_INCORRECT_DATA);
             return;
         }
 
         // For all segwit transactions, the witness utxo must be present
-        if (segwit_version >= 0 && !state->cur.input.has_witnessUtxo) {
+        if (segwit_version >= 0 && !(state->cur.key_presence & HAS_WITNESSUTXO)) {
             PRINTF("Witness utxo missing for segwit input\n");
             SEND_SW(dc, SW_INCORRECT_DATA);
             return;
@@ -718,12 +1268,14 @@ static void alert_external_inputs(dispatcher_context_t *dc) {
         SEND_SW(dc, SW_INCORRECT_DATA);
         return;
     } else {
+#ifdef LIQUID_HAS_SWAP
         // Swap feature: no external inputs allowed
         if (G_swap_state.called_from_swap) {
             PRINTF("External inputs not allowed in swap transactions\n");
             SEND_SW(dc, SW_INCORRECT_DATA);
             return;
         }
+#endif
 
         // some internal and some external inputs, warn the user first
         ui_warn_external_inputs(dc, verify_outputs_init);
@@ -753,66 +1305,39 @@ static void verify_outputs_init(dispatcher_context_t *dc) {
     dc->next(process_output_map);
 }
 
-/**
- * Callback to process all the keys of the current input map.
- * Keeps track if the current input has a witness_utxo and/or a redeemScript.
- */
-static void output_keys_callback(sign_pset_state_t *state, buffer_t *data) {
-    size_t data_len = data->size - data->offset;
-    if (data_len >= 1) {
-        uint8_t key_type;
-        buffer_read_u8(data, &key_type);
-
-        if ((key_type == PSBT_OUT_BIP32_DERIVATION || key_type == PSBT_OUT_TAP_BIP32_DERIVATION) &&
-            !state->cur.in_out.has_bip32_derivation) {
-            // The first time that we encounter a PSBT_OUT_BIP32_DERIVATION or
-            // PSBT_OUT_TAP_BIP32_DERIVATION key, we store the pubkey.
-            state->cur.in_out.has_bip32_derivation = true;
-
-            // x-only pubkeys for taproot, normal compressed pubkeys otherwise
-            size_t key_len = (key_type == PSBT_OUT_TAP_BIP32_DERIVATION ? 32 : 33);
-
-            if (!buffer_read_bytes(data,
-                                   state->cur.in_out.bip32_derivation_pubkey,
-                                   key_len)  // read compressed pubkey or x-only pubkey
-                || buffer_can_read(data, 1)  // ...but should not be able to read more
-            ) {
-                state->cur.in_out.unexpected_pubkey_error = true;
-            }
-        }
-    }
-}
-
 static void process_output_map(dispatcher_context_t *dc) {
     sign_pset_state_t *state = (sign_pset_state_t *) &G_command_state;
 
     LOG_PROCESSOR(dc, __FILE__, __LINE__, __func__);
 
-    if (state->cur_output_index >= state->n_outputs) {
-        // all outputs already processed
-        dc->next(confirm_transaction);
-        return;
-    }
-
+    // The last output is a "fee output" in Elements transactions
+    bool is_fee_output = (state->cur_output_index + 1 == state->n_outputs);
     // Reset cur struct
     memset(&state->cur, 0, sizeof(state->cur));
 
-    int res = call_get_merkleized_map_with_callback(
-        dc,
-        state->outputs_root,
-        state->n_outputs,
-        state->cur_output_index,
-        make_callback(state, (dispatcher_callback_t) output_keys_callback),
-        &state->cur.in_out.map);
-    if (res < 0) {
-        SEND_SW(dc, SW_INCORRECT_DATA);
-        return;
-    }
+    {
+        output_keys_callback_state_t callback_state = (output_keys_callback_state_t) {
+            .out_pubkey = state->cur.in_out.bip32_derivation_pubkey,
+            .pubkey_size = sizeof(state->cur.in_out.bip32_derivation_pubkey)
+        };
+        int res = call_get_merkleized_map_with_callback(
+            dc,
+            state->outputs_root,
+            state->n_outputs,
+            state->cur_output_index,
+            make_callback(&callback_state, (dispatcher_callback_t) output_keys_callback),
+            &state->cur.in_out.map);
+        if (res < 0) {
+            SEND_SW(dc, SW_INCORRECT_DATA);
+            return;
+        }
 
-    if (state->cur.in_out.unexpected_pubkey_error) {
-        PRINTF("Unexpected pubkey length\n");  // only compressed pubkeys are supported
-        SEND_SW(dc, SW_INCORRECT_DATA);
-        return;
+        if (callback_state.error) {
+            PRINTF("Error during processing input keys (wrong pubkey format?)\n");
+            SEND_SW(dc, SW_INCORRECT_DATA);
+            return;
+        }
+        state->cur.key_presence = callback_state.key_presence;
     }
 
     // read output amount and scriptpubkey
@@ -833,7 +1358,11 @@ static void process_output_map(dispatcher_context_t *dc) {
     uint64_t value = read_u64_le(raw_result, 0);
 
     state->cur.output.value = value;
-    state->outputs_total_value += value;
+    if (!is_fee_output) {
+        state->outputs_total_value += value;
+    } else {
+        state->fee_value = state->cur.output.value;
+    }
 
     // Read the output's scriptPubKey
     result_len = call_get_merkleized_map_value(dc,
@@ -843,14 +1372,19 @@ static void process_output_map(dispatcher_context_t *dc) {
                                                state->cur.in_out.scriptPubKey,
                                                sizeof(state->cur.in_out.scriptPubKey));
 
-    if (result_len == -1 || result_len > (int) sizeof(state->cur.in_out.scriptPubKey)) {
+    if (result_len == -1 || result_len > (int) sizeof(state->cur.in_out.scriptPubKey) ||
+        (is_fee_output && result_len != 0)) {
         SEND_SW(dc, SW_INCORRECT_DATA);
         return;
     }
 
     state->cur.in_out.scriptPubKey_len = result_len;
 
-    dc->next(check_output_owned);
+    if (is_fee_output) {
+        dc->next(confirm_transaction);
+    } else {
+        dc->next(check_output_owned);
+    }
 }
 
 static void check_output_owned(dispatcher_context_t *dc) {
@@ -858,7 +1392,11 @@ static void check_output_owned(dispatcher_context_t *dc) {
 
     LOG_PROCESSOR(dc, __FILE__, __LINE__, __func__);
 
-    int is_internal = is_in_out_internal(dc, state, &state->cur.in_out, false);
+    int is_internal = is_in_out_internal(dc,
+                                         state,
+                                         &state->cur.in_out,
+                                         false,
+                                         !!(state->cur.key_presence & HAS_BIP32_DERIVATION));
 
     if (is_internal < 0) {
         PRINTF("Error checking if output %d is internal\n", state->cur_output_index);
@@ -911,6 +1449,7 @@ static void output_validate_external(dispatcher_context_t *dc) {
         }
     }
 
+#ifdef LIQUID_HAS_SWAP
     if (G_swap_state.called_from_swap) {
         // Swap feature: do not show the address to the user, but double check it matches the
         // request from app-exchange; it must be the only external output (checked elsewhere).
@@ -927,6 +1466,7 @@ static void output_validate_external(dispatcher_context_t *dc) {
             return;
         }
     } else {
+#endif // LIQUID_HAS_SWAP
         // Show address to the user
         ui_validate_output(dc,
                            state->external_outputs_count,
@@ -935,7 +1475,9 @@ static void output_validate_external(dispatcher_context_t *dc) {
                            state->cur.output.value,
                            output_next);
         return;
+#ifdef LIQUID_HAS_SWAP
     }
+#endif
 }
 
 static void output_next(dispatcher_context_t *dc) {
@@ -954,9 +1496,10 @@ static void confirm_transaction(dispatcher_context_t *dc) {
 
     LOG_PROCESSOR(dc, __FILE__, __LINE__, __func__);
 
-    if (state->inputs_total_value < state->outputs_total_value) {
-        PRINTF("Negative fee is invalid\n");
-        // negative fee transaction is invalid
+    if (state->fee_value > UINT64_MAX - state->outputs_total_value || // to avoid overflow
+        state->inputs_total_value != state->outputs_total_value + state->fee_value) {
+        PRINTF("Fee is invalid\n");
+        // Fee must be equal to difference between sum of inputs and sum of outputs
         SEND_SW(dc, SW_INCORRECT_DATA);
         return;
     }
@@ -970,8 +1513,7 @@ static void confirm_transaction(dispatcher_context_t *dc) {
         return;
     }
 
-    uint64_t fee = state->inputs_total_value - state->outputs_total_value;
-
+#ifdef LIQUID_HAS_SWAP
     if (G_swap_state.called_from_swap) {
         // Swap feature: check total amount and fees are as expected; moreover, only one external
         // output
@@ -981,7 +1523,7 @@ static void confirm_transaction(dispatcher_context_t *dc) {
             return;
         }
 
-        if (fee != G_swap_state.fees) {
+        if (state->fee_value != G_swap_state.fees) {
             PRINTF("Mismatching fee for swap\n");
             SEND_SW(dc, SW_INCORRECT_DATA);
             return;
@@ -995,9 +1537,12 @@ static void confirm_transaction(dispatcher_context_t *dc) {
         // No user validation required during swap
         dc->next(sign_init);
     } else {
+#endif // LIQUID_HAS_SWAP
         // Show final user validation UI
-        ui_validate_transaction(dc, G_coin_config->name_short, fee, sign_init);
+        ui_validate_transaction(dc, G_coin_config->name_short, state->fee_value, sign_init);
+#ifdef LIQUID_HAS_SWAP
     }
+#endif
 }
 
 /** SIGNING FLOW
@@ -1068,13 +1613,176 @@ static void sign_init(dispatcher_context_t *dc) {
 
     if (!our_key_found) {
         PRINTF("Couldn't find internal key\n");
-        SEND_SW(
-            dc,
-            SW_BAD_STATE);  // should never happen if we only register wallets with an internal key
+        // should never happen if we only register wallets with an internal key
+        SEND_SW(dc, SW_BAD_STATE);
         return;
     }
 
-    state->segwit_hashes_computed = false;
+    state->cur_input_index = 0;
+    dc->next(compute_segwit_hashes);
+}
+
+// Compute all the tx-wide hashes for segwit inputs. Can be skipped if all inputs are legacy.
+static void compute_segwit_hashes(dispatcher_context_t *dc) {
+    sign_pset_state_t *state = (sign_pset_state_t *) &G_command_state;
+
+    LOG_PROCESSOR(dc, __FILE__, __LINE__, __func__);
+    PRINT_STACK_POINTER();
+
+    {
+        // compute sha_prevouts and sha_sequences
+        cx_sha256_t *sha_prevouts_context = sha_context_alloc(state);
+        cx_sha256_t *sha_sequences_context = sha_context_alloc(state);
+
+        // compute hashPrevouts and hashSequence
+        cx_sha256_init(sha_prevouts_context);
+        cx_sha256_init(sha_sequences_context);
+
+        for (unsigned int i = 0; i < state->n_inputs; i++) {
+            // get this input's map
+            merkleized_map_commitment_t ith_map;
+
+            int res =
+                call_get_merkleized_map(dc, state->inputs_root, state->n_inputs, i, &ith_map);
+            if (res < 0) {
+                SEND_SW(dc, SW_INCORRECT_DATA);
+                return;
+            }
+
+            // get prevout hash and output index for the i-th input
+            uint8_t ith_prevout_hash[32];
+            if (32 != call_get_merkleized_map_value(dc,
+                                                    &ith_map,
+                                                    (uint8_t[]){PSBT_IN_PREVIOUS_TXID},
+                                                    1,
+                                                    ith_prevout_hash,
+                                                    32)) {
+                SEND_SW(dc, SW_INCORRECT_DATA);
+                return;
+            }
+
+            crypto_hash_update(&sha_prevouts_context->header, ith_prevout_hash, 32);
+
+            uint8_t ith_prevout_n_raw[4];
+            if (4 != call_get_merkleized_map_value(dc,
+                                                    &ith_map,
+                                                    (uint8_t[]){PSBT_IN_OUTPUT_INDEX},
+                                                    1,
+                                                    ith_prevout_n_raw,
+                                                    4)) {
+                SEND_SW(dc, SW_INCORRECT_DATA);
+                return;
+            }
+
+            crypto_hash_update(&sha_prevouts_context->header, ith_prevout_n_raw, 4);
+
+            uint8_t ith_nSequence_raw[4];
+            if (4 != call_get_merkleized_map_value(dc,
+                                                    &ith_map,
+                                                    (uint8_t[]){PSBT_IN_SEQUENCE},
+                                                    1,
+                                                    ith_nSequence_raw,
+                                                    4)) {
+                // if no PSBT_IN_SEQUENCE is present, we must assume nSequence 0xFFFFFFFF
+                memset(ith_nSequence_raw, 0xFF, 4);
+            }
+
+            crypto_hash_update(&sha_sequences_context->header, ith_nSequence_raw, 4);
+        }
+
+        crypto_hash_digest(&sha_prevouts_context->header, state->hashes.sha_prevouts, 32);
+        crypto_hash_digest(&sha_sequences_context->header, state->hashes.sha_sequences, 32);
+
+        sha_context_free(state, sha_sequences_context);
+        sha_context_free(state, sha_prevouts_context);
+    }
+
+    {
+        // compute sha_outputs and sha_rangeproofs (if needed)
+        cx_sha256_t *sha_outputs_context = sha_context_alloc(state);
+        cx_sha256_t *sha_rangeproofs_context = sha_context_alloc(state);
+        cx_sha256_init(sha_outputs_context);
+        cx_sha256_init(sha_rangeproofs_context);
+
+        if (hash_outputs(dc,
+                         &sha_outputs_context->header,
+                         (state->cur.input.sighash_type & SIGHASH_RANGEPROOF) ?
+                         &sha_rangeproofs_context->header : NULL) == -1) {
+            SEND_SW(dc, SW_INCORRECT_DATA);
+            return;
+        }
+
+        crypto_hash_digest(&sha_outputs_context->header, state->hashes.sha_outputs, 32);
+        crypto_hash_digest(&sha_rangeproofs_context->header, state->hashes.sha_rangeproofs, 32);
+
+        sha_context_free(state, sha_rangeproofs_context);
+        sha_context_free(state, sha_outputs_context);
+    }
+
+    {
+        // compute sha_amounts and sha_scriptpubkeys
+        // TODO: could be skipped if there are no segwitv1 inputs to sign
+
+        cx_sha256_t *sha_amounts_context = sha_context_alloc(state);
+        cx_sha256_t *sha_scriptpubkeys_context = sha_context_alloc(state);
+        cx_sha256_t *sha_issuances_context = sha_context_alloc(state);
+
+        cx_sha256_init(sha_amounts_context);
+        cx_sha256_init(sha_scriptpubkeys_context);
+        cx_sha256_init(sha_issuances_context);
+
+        for (unsigned int i = 0; i < state->n_inputs; i++) {
+            // get this input's map
+            merkleized_map_commitment_t ith_map;
+
+            int res =
+                call_get_merkleized_map(dc, state->inputs_root, state->n_inputs, i, &ith_map);
+            if (res < 0) {
+                SEND_SW(dc, SW_INCORRECT_DATA);
+                return;
+            }
+
+            tx_amount_t in_amount;
+            uint8_t in_scriptPubKey[MAX_PREVOUT_SCRIPTPUBKEY_LEN];
+            size_t in_scriptPubKey_len;
+
+            if (0 > get_amount_scriptpubkey_from_psbt_nonwitness(dc,
+                                                                    &ith_map,
+                                                                    &in_amount,
+                                                                    in_scriptPubKey,
+                                                                    &in_scriptPubKey_len,
+                                                                    NULL,
+                                                                    sha_issuances_context)) {
+                SEND_SW(dc, SW_INCORRECT_DATA);
+                return;
+            }
+
+            if(in_amount.is_blinded) {
+                crypto_hash_update(&sha_amounts_context->header,
+                                    in_amount.commitment,
+                                    sizeof(in_amount.commitment));
+            } else {
+                uint8_t in_amount_le[8];
+                write_u64_le(in_amount_le, 0, in_amount.value);
+                crypto_hash_update(&sha_amounts_context->header, in_amount_le, 8);
+            }
+
+            crypto_hash_update_varint(&sha_scriptpubkeys_context->header, in_scriptPubKey_len);
+            crypto_hash_update(&sha_scriptpubkeys_context->header,
+                                in_scriptPubKey,
+                                in_scriptPubKey_len);
+        }
+
+        crypto_hash_digest(&sha_amounts_context->header, state->hashes.sha_amounts, 32);
+        crypto_hash_digest(&sha_scriptpubkeys_context->header,
+                            state->hashes.sha_scriptpubkeys,
+                            32);
+        crypto_hash_digest(&sha_issuances_context->header, state->hashes.sha_issuances, 32);
+
+        sha_context_free(state, sha_issuances_context);
+        sha_context_free(state, sha_scriptpubkeys_context);
+        sha_context_free(state, sha_amounts_context);
+    }
 
     state->cur_input_index = 0;
     dc->next(sign_process_input_map);
@@ -1101,19 +1809,45 @@ static void sign_process_input_map(dispatcher_context_t *dc) {
     // Reset cur struct
     memset(&state->cur, 0, sizeof(state->cur));
 
-    int res = call_get_merkleized_map_with_callback(
-        dc,
-        state->inputs_root,
-        state->n_inputs,
-        state->cur_input_index,
-        make_callback(state, (dispatcher_callback_t) input_keys_callback),
-        &state->cur.in_out.map);
-    if (res < 0) {
-        SEND_SW(dc, SW_INCORRECT_DATA);
-        return;
+    {
+        input_keys_callback_state_t callback_state = (input_keys_callback_state_t) {
+            .out_pubkey = state->cur.in_out.bip32_derivation_pubkey,
+            .pubkey_size = sizeof(state->cur.in_out.bip32_derivation_pubkey)
+        };
+        int res = call_get_merkleized_map_with_callback(
+            dc,
+            state->inputs_root,
+            state->n_inputs,
+            state->cur_input_index,
+            make_callback(&callback_state, (dispatcher_callback_t) input_keys_callback),
+            &state->cur.in_out.map);
+        if (res < 0) {
+            SEND_SW(dc, SW_INCORRECT_DATA);
+            return;
+        }
+
+        if (callback_state.error) {
+            PRINTF("Error during processing input keys (wrong pubkey format?)\n");
+            SEND_SW(dc, SW_INCORRECT_DATA);
+            return;
+        }
+        state->cur.key_presence = callback_state.key_presence;
     }
 
-    if (!state->cur.input.has_sighash_type) {
+    if(state->cur.key_presence & HAS_PREVOUT_AMOUNT) {
+        // Obtain input value from PSET field
+        if (8 != call_get_merkleized_map_value_u64_le(dc,
+                                                      &state->cur.in_out.map,
+                                                      PSBT_ELEMENTS_LEGACY_IN_VALUE,
+                                                      sizeof(PSBT_ELEMENTS_LEGACY_IN_VALUE),
+                                                      &state->cur.input.prevout_amount)) {
+            PRINTF("Failed to obtain value for input %u\n", state->cur_input_index);
+            SEND_SW(dc, SW_INCORRECT_DATA);
+            return;
+        }
+    }
+
+    if (!(state->cur.key_presence & HAS_SIGHASH_TYPE)) {
         state->cur.input.sighash_type = SIGHASH_ALL;
     } else {
         // Get sighash type
@@ -1129,20 +1863,13 @@ static void sign_process_input_map(dispatcher_context_t *dc) {
         }
     }
 
-    // TODO: add support for other sighash flags
-    if (state->cur.input.sighash_type != SIGHASH_ALL) {
-        PRINTF("Only SIGHASH_ALL is currently supported\n");
-        SEND_SW(dc, SW_NOT_SUPPORTED);
-        return;
-    }
-
     // get path, obtain change and address_index
 
     int bip32_path_len;
     uint32_t bip32_path[MAX_BIP32_PATH_STEPS];
     uint32_t fingerprint;
 
-    if (state->wallet_policy_map.type == TOKEN_TR) {
+    if (state->wallet_policy_map_unwrapped->type == TOKEN_TR) {
         // taproot input, use PSBT_IN_TAP_BIP32_DERIVATION
         uint8_t key[1 + 32];
         key[0] = PSBT_IN_TAP_BIP32_DERIVATION;
@@ -1177,7 +1904,7 @@ static void sign_process_input_map(dispatcher_context_t *dc) {
     state->cur.input.address_index = bip32_path[bip32_path_len - 1];
 
     // Sign as segwit input iff it has a witness utxo
-    if (!state->cur.input.has_witnessUtxo) {
+    if (!(state->cur.key_presence & HAS_WITNESSUTXO)) {
         dc->next(sign_legacy);
     } else {
         dc->next(sign_segwit);
@@ -1193,12 +1920,13 @@ static void sign_legacy(dispatcher_context_t *dc) {
 
     // sign_non_witness(non_witness_utxo.vout[psbt.tx.input_[i].prevout.n].scriptPubKey, i)
 
-    uint64_t tmp;  // unused
+    tx_amount_t tmp;  // unused
     if (0 > get_amount_scriptpubkey_from_psbt_nonwitness(dc,
                                                          &state->cur.in_out.map,
                                                          &tmp,
                                                          state->cur.in_out.scriptPubKey,
                                                          &state->cur.in_out.scriptPubKey_len,
+                                                         NULL,
                                                          NULL)) {
         SEND_SW(dc, SW_INCORRECT_DATA);
         return;
@@ -1268,7 +1996,7 @@ static void sign_legacy_compute_sighash(dispatcher_context_t *dc) {
             // empty scriptcode
             crypto_hash_update_u8(&sighash_context.header, 0x00);
         } else {
-            if (!state->cur.input.has_redeemScript) {
+            if (!(state->cur.key_presence & HAS_REDEEMSCRIPT)) {
                 // P2PKH, the script_code is the prevout's scriptPubKey
                 crypto_hash_update_varint(&sighash_context.header,
                                           state->cur.in_out.scriptPubKey_len);
@@ -1311,7 +2039,7 @@ static void sign_legacy_compute_sighash(dispatcher_context_t *dc) {
 
     // outputs
     crypto_hash_update_varint(&sighash_context.header, state->n_outputs);
-    if (hash_outputs(dc, &sighash_context.header) == -1) {
+    if (hash_outputs(dc, &sighash_context.header, NULL) == -1) {
         SEND_SW(dc, SW_INCORRECT_DATA);
         return;
     }
@@ -1335,11 +2063,12 @@ static void sign_segwit(dispatcher_context_t *dc) {
     sign_pset_state_t *state = (sign_pset_state_t *) &G_command_state;
 
     LOG_PROCESSOR(dc, __FILE__, __LINE__, __func__);
+    PRINT_STACK_POINTER();
 
     int segwit_version;
 
     {
-        uint64_t amount;
+        tx_amount_t amount;
         if (0 > get_amount_scriptpubkey_from_psbt_witness(dc,
                                                           &state->cur.in_out.map,
                                                           &amount,
@@ -1349,9 +2078,17 @@ static void sign_segwit(dispatcher_context_t *dc) {
             return;
         }
 
-        state->inputs_total_value += amount;
+        if(!set_input_amount(&state->cur, &amount)) {
+            PRINTF("Amount in witness utxo doesn't match externally provided one\n");
+            SEND_SW(dc, SW_INCORRECT_DATA);
+        }
+        if(!(state->cur.key_presence & HAS_PREVOUT_AMOUNT)) {
+            PRINTF("Non-blinded amount is not provided for input %u\n", state->cur_input_index);
+            SEND_SW(dc, SW_INCORRECT_DATA);
+        }
+        state->inputs_total_value += state->cur.input.prevout_amount;
 
-        if (state->cur.input.has_redeemScript) {
+        if (state->cur.key_presence & HAS_REDEEMSCRIPT) {
             // Get redeemScript
             uint8_t redeemScript[64];
 
@@ -1401,137 +2138,6 @@ static void sign_segwit(dispatcher_context_t *dc) {
         }
     }
 
-    // compute all the tx-wide hashes
-
-    if (!state->segwit_hashes_computed) {
-        {
-            // compute sha_prevouts and sha_sequences
-            cx_sha256_t sha_prevouts_context, sha_sequences_context;
-
-            // compute hashPrevouts and hashSequence
-            cx_sha256_init(&sha_prevouts_context);
-            cx_sha256_init(&sha_sequences_context);
-
-            for (unsigned int i = 0; i < state->n_inputs; i++) {
-                // get this input's map
-                merkleized_map_commitment_t ith_map;
-
-                int res =
-                    call_get_merkleized_map(dc, state->inputs_root, state->n_inputs, i, &ith_map);
-                if (res < 0) {
-                    SEND_SW(dc, SW_INCORRECT_DATA);
-                    return;
-                }
-
-                // get prevout hash and output index for the i-th input
-                uint8_t ith_prevout_hash[32];
-                if (32 != call_get_merkleized_map_value(dc,
-                                                        &ith_map,
-                                                        (uint8_t[]){PSBT_IN_PREVIOUS_TXID},
-                                                        1,
-                                                        ith_prevout_hash,
-                                                        32)) {
-                    SEND_SW(dc, SW_INCORRECT_DATA);
-                    return;
-                }
-
-                crypto_hash_update(&sha_prevouts_context.header, ith_prevout_hash, 32);
-
-                uint8_t ith_prevout_n_raw[4];
-                if (4 != call_get_merkleized_map_value(dc,
-                                                       &ith_map,
-                                                       (uint8_t[]){PSBT_IN_OUTPUT_INDEX},
-                                                       1,
-                                                       ith_prevout_n_raw,
-                                                       4)) {
-                    SEND_SW(dc, SW_INCORRECT_DATA);
-                    return;
-                }
-
-                crypto_hash_update(&sha_prevouts_context.header, ith_prevout_n_raw, 4);
-
-                uint8_t ith_nSequence_raw[4];
-                if (4 != call_get_merkleized_map_value(dc,
-                                                       &ith_map,
-                                                       (uint8_t[]){PSBT_IN_SEQUENCE},
-                                                       1,
-                                                       ith_nSequence_raw,
-                                                       4)) {
-                    // if no PSBT_IN_SEQUENCE is present, we must assume nSequence 0xFFFFFFFF
-                    memset(ith_nSequence_raw, 0xFF, 4);
-                }
-
-                crypto_hash_update(&sha_sequences_context.header, ith_nSequence_raw, 4);
-            }
-
-            crypto_hash_digest(&sha_prevouts_context.header, state->hashes.sha_prevouts, 32);
-            crypto_hash_digest(&sha_sequences_context.header, state->hashes.sha_sequences, 32);
-        }
-
-        {
-            // compute sha_outputs
-            cx_sha256_t sha_outputs_context;
-            cx_sha256_init(&sha_outputs_context);
-
-            if (hash_outputs(dc, &sha_outputs_context.header) == -1) {
-                SEND_SW(dc, SW_INCORRECT_DATA);
-                return;
-            }
-
-            crypto_hash_digest(&sha_outputs_context.header, state->hashes.sha_outputs, 32);
-        }
-
-        {
-            // compute sha_amounts and sha_scriptpubkeys
-            // TODO: could be skipped if there are no segwitv1 inputs to sign
-
-            cx_sha256_t sha_amounts_context, sha_scriptpubkeys_context;
-
-            cx_sha256_init(&sha_amounts_context);
-            cx_sha256_init(&sha_scriptpubkeys_context);
-
-            for (unsigned int i = 0; i < state->n_inputs; i++) {
-                // get this input's map
-                merkleized_map_commitment_t ith_map;
-
-                int res =
-                    call_get_merkleized_map(dc, state->inputs_root, state->n_inputs, i, &ith_map);
-                if (res < 0) {
-                    SEND_SW(dc, SW_INCORRECT_DATA);
-                    return;
-                }
-
-                uint64_t in_amount;
-                uint8_t in_scriptPubKey[MAX_PREVOUT_SCRIPTPUBKEY_LEN];
-                size_t in_scriptPubKey_len;
-
-                if (0 > get_amount_scriptpubkey_from_psbt(dc,
-                                                          &ith_map,
-                                                          &in_amount,
-                                                          in_scriptPubKey,
-                                                          &in_scriptPubKey_len)) {
-                    SEND_SW(dc, SW_INCORRECT_DATA);
-                    return;
-                }
-
-                uint8_t in_amount_le[8];
-                write_u64_le(in_amount_le, 0, in_amount);
-                crypto_hash_update(&sha_amounts_context.header, in_amount_le, 8);
-
-                crypto_hash_update_varint(&sha_scriptpubkeys_context.header, in_scriptPubKey_len);
-                crypto_hash_update(&sha_scriptpubkeys_context.header,
-                                   in_scriptPubKey,
-                                   in_scriptPubKey_len);
-            }
-
-            crypto_hash_digest(&sha_amounts_context.header, state->hashes.sha_amounts, 32);
-            crypto_hash_digest(&sha_scriptpubkeys_context.header,
-                               state->hashes.sha_scriptpubkeys,
-                               32);
-        }
-    }
-    state->segwit_hashes_computed = true;
-
     if (segwit_version == 0) {
         dc->next(sign_segwit_v0);
         return;
@@ -1550,26 +2156,59 @@ static void sign_segwit_v0(dispatcher_context_t *dc) {
 
     LOG_PROCESSOR(dc, __FILE__, __LINE__, __func__);
 
+    bool sighash_anyonecanpay = !!(state->cur.input.sighash_type & SIGHASH_ANYONECANPAY);
+    bool sighash_rangeproof = !!(state->cur.input.sighash_type & SIGHASH_RANGEPROOF);
+    uint32_t sighash_base = state->cur.input.sighash_type &
+                            ~(SIGHASH_ANYONECANPAY | SIGHASH_RANGEPROOF);
+
+    if (sighash_base != SIGHASH_ALL && sighash_base != SIGHASH_NONE &&
+        sighash_base != SIGHASH_SINGLE ) {
+        PRINTF("Invalid SIGHASH type");
+        SEND_SW(dc, SW_INCORRECT_DATA);
+        return;
+    }
+
     cx_sha256_t sighash_context;
     cx_sha256_init(&sighash_context);
 
-    uint8_t tmp[8];
+    uint8_t tmp[9];
 
     // nVersion
     write_u32_le(tmp, 0, state->tx_version);
     crypto_hash_update(&sighash_context.header, tmp, 4);
 
-    {
-        uint8_t dbl_hash[32];
+    PRINT_HASH("version", &sighash_context);
 
+    if (sighash_anyonecanpay) {
+        crypto_hash_update_zeros(&sighash_context.header, 32);
+    } else {
         // add to hash: hashPrevouts = sha256(sha_prevouts)
+        uint8_t dbl_hash[32];
         cx_hash_sha256(state->hashes.sha_prevouts, 32, dbl_hash, 32);
         crypto_hash_update(&sighash_context.header, dbl_hash, 32);
+    }
 
+    PRINT_HASH("prevouts", &sighash_context);
+
+    if (sighash_anyonecanpay || sighash_base == SIGHASH_NONE || sighash_base == SIGHASH_SINGLE) {
+        crypto_hash_update_zeros(&sighash_context.header, 32);
+    } else {
         // add to hash: hashSequence sha256(sha_sequences)
+        uint8_t dbl_hash[32];
         cx_hash_sha256(state->hashes.sha_sequences, 32, dbl_hash, 32);
         crypto_hash_update(&sighash_context.header, dbl_hash, 32);
     }
+
+    PRINT_HASH("sequences", &sighash_context);
+
+    {
+        // add to hash: hashIssuance sha256(sha_issuances)
+        uint8_t dbl_hash[32];
+        cx_hash_sha256(state->hashes.sha_issuances, 32, dbl_hash, 32);
+        crypto_hash_update(&sighash_context.header, dbl_hash, 32);
+    }
+
+    PRINT_HASH("issuances", &sighash_context);
 
     {
         // outpoint (32-byte prevout hash, 4-byte index)
@@ -1588,6 +2227,8 @@ static void sign_segwit_v0(dispatcher_context_t *dc) {
 
         crypto_hash_update(&sighash_context.header, prevout_hash, 32);
 
+        PRINT_HASH("txid", &sighash_context);
+
         uint8_t prevout_n_raw[4];
         if (4 != call_get_merkleized_map_value(dc,
                                                &state->cur.in_out.map,
@@ -1600,6 +2241,7 @@ static void sign_segwit_v0(dispatcher_context_t *dc) {
         }
 
         crypto_hash_update(&sighash_context.header, prevout_n_raw, 4);
+        PRINT_HASH("vout", &sighash_context);
     }
 
     // scriptCode
@@ -1646,26 +2288,35 @@ static void sign_segwit_v0(dispatcher_context_t *dc) {
         SEND_SW(dc, SW_INCORRECT_DATA);
         return;
     }
+    PRINT_HASH("pubkey", &sighash_context);
 
+    // amount or amount commitment
     {
-        // input value, taken from the WITNESS_UTXO field
-        uint8_t witness_utxo[8 + 1 + MAX_PREVOUT_SCRIPTPUBKEY_LEN];
+        txid_parser_vout_t parser_output;
+        int res = call_pset_parse_rawtx_single_output(dc,
+                                                    &state->cur.in_out.map,
+                                                    (uint8_t[]){PSBT_IN_WITNESS_UTXO},
+                                                    1,
+                                                    &parser_output,
+                                                    NULL);
 
-        int witness_utxo_len = call_get_merkleized_map_value(dc,
-                                                             &state->cur.in_out.map,
-                                                             (uint8_t[]){PSBT_IN_WITNESS_UTXO},
-                                                             1,
-                                                             witness_utxo,
-                                                             sizeof(witness_utxo));
-        if (witness_utxo_len < 8) {
+        if (res < 0) {
+            PRINTF("Parsing witness UTXO failed\n");
             SEND_SW(dc, SW_INCORRECT_DATA);
             return;
         }
 
-        crypto_hash_update(&sighash_context.header,
-                           witness_utxo,
-                           8);  // only the first 8 bytes (amount)
+        if(parser_output.amount.is_blinded) {
+            crypto_hash_update(&sighash_context.header,
+                               parser_output.amount.commitment,
+                               sizeof(parser_output.amount.commitment));
+        } else {
+            tmp[0] = 0x01;
+            write_u64_be(tmp, 1, parser_output.amount.value);
+            crypto_hash_update(&sighash_context.header, tmp, 9);
+        }
     }
+    PRINT_HASH("value", &sighash_context);
 
     // nSequence
     {
@@ -1681,23 +2332,90 @@ static void sign_segwit_v0(dispatcher_context_t *dc) {
         }
         crypto_hash_update(&sighash_context.header, nSequence_raw, 4);
     }
+    PRINT_HASH("sequence", &sighash_context);
 
-    {
-        // compute hashOutputs = sha256(sha_outputs)
-
-        uint8_t hashOutputs[32];
-        cx_hash_sha256(state->hashes.sha_outputs, 32, hashOutputs, 32);
-
-        crypto_hash_update(&sighash_context.header, hashOutputs, 32);
+    if (!hash_output_issuance(dc,
+                              &state->cur.in_out.map,
+                              state->cur.key_presence,
+                              &sighash_context.header)) {
+        PRINTF("Hashing issuance information failed\n");
+        SEND_SW(dc, SW_INCORRECT_DATA);
+        return;
     }
+    PRINT_HASH("issuance", &sighash_context);
+
+    if (sighash_base != SIGHASH_NONE && sighash_base != SIGHASH_SINGLE) {
+        PRINT_HEX("sha_outputs = ", state->hashes.sha_outputs, 32);
+        // compute hashOutputs = sha256(sha_outputs)
+        uint8_t dbl_hash[32];
+        cx_hash_sha256(state->hashes.sha_outputs, 32, dbl_hash, 32);
+        crypto_hash_update(&sighash_context.header, dbl_hash, 32);
+        // compute hashRangeproofs = sha256(sha_rangeproofs)
+        if (sighash_rangeproof) {
+            cx_hash_sha256(state->hashes.sha_rangeproofs, 32, dbl_hash, 32);
+            crypto_hash_update(&sighash_context.header, dbl_hash, 32);
+        }
+    } else if (sighash_base == SIGHASH_SINGLE) {
+        if(state->cur_input_index >= state->n_outputs) {
+            PRINTF("SIGHASH_SINGLE: corresponding output is missing for input %u\n",
+                   state->cur_input_index);
+            SEND_SW(dc, SW_INCORRECT_DATA);
+            return;
+        }
+
+        uint8_t hash[32], dbl_hash[32];
+
+        // hash single output
+        {
+            cx_sha256_t sha_output;
+            cx_sha256_init(&sha_output);
+            int res = hash_output(dc,
+                                  state->cur_input_index,
+                                  &sha_output.header,
+                                  NULL,
+                                  OUT_WITNESS_ORDER_SINGLE);
+            if (res < 0) {
+                SEND_SW(dc, SW_INCORRECT_DATA);
+                return;
+            }
+            crypto_hash_digest(&sha_output.header, hash, sizeof(hash));
+            cx_hash_sha256(hash, sizeof(hash), dbl_hash, sizeof(dbl_hash));
+            crypto_hash_update(&sighash_context.header, dbl_hash, sizeof(dbl_hash));
+        }
+
+        // hash range proof of the single output
+        if (sighash_rangeproof) {
+            cx_sha256_t sha_rangeproof;
+            cx_sha256_init(&sha_rangeproof);
+            int res = hash_output(dc,
+                                  state->cur_input_index,
+                                  NULL,
+                                  &sha_rangeproof.header,
+                                  OUT_WITNESS_ORDER_SINGLE);
+            if (res < 0) {
+                SEND_SW(dc, SW_INCORRECT_DATA);
+                return;
+            }
+            crypto_hash_digest(&sha_rangeproof.header, hash, sizeof(hash));
+            cx_hash_sha256(hash, sizeof(hash), dbl_hash, sizeof(dbl_hash));
+            crypto_hash_update(&sighash_context.header, dbl_hash, sizeof(dbl_hash));
+        }
+    } else {
+        crypto_hash_update_zeros(&sighash_context.header, 32);
+    }
+    PRINT_HASH("outputs", &sighash_context);
 
     // nLocktime
     write_u32_le(tmp, 0, state->locktime);
     crypto_hash_update(&sighash_context.header, tmp, 4);
 
+    PRINT_HASH("locktime", &sighash_context);
+
     // sighash type
     write_u32_le(tmp, 0, state->cur.input.sighash_type);
     crypto_hash_update(&sighash_context.header, tmp, 4);
+
+    PRINT_HASH("sighasg_type", &sighash_context);
 
     // compute sighash
     crypto_hash_digest(&sighash_context.header, state->sighash, 32);
@@ -1706,6 +2424,7 @@ static void sign_segwit_v0(dispatcher_context_t *dc) {
     dc->next(sign_sighash_ecdsa);
 }
 
+// TODO: modify for Liquid Network
 static void sign_segwit_v1(dispatcher_context_t *dc) {
     sign_pset_state_t *state = (sign_pset_state_t *) &G_command_state;
 
@@ -1770,6 +2489,7 @@ static void sign_segwit_v1(dispatcher_context_t *dc) {
         crypto_hash_update(&sighash_context.header, tmp, 4);
 
         // amount
+        // TODO: add support of amount commitment
         write_u64_le(tmp, 0, state->cur.input.prevout_amount);
         crypto_hash_update(&sighash_context.header, tmp, 8);
 

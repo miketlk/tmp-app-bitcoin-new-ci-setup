@@ -43,3 +43,29 @@ static inline int call_get_merkleized_map_value_u32_le(dispatcher_context_t *dis
 
     return 4;
 }
+
+/**
+ * Convenience shortcut to read a little-endian unsigned 64-bit int.
+ * TODO: more docs
+ */
+static inline int call_get_merkleized_map_value_u64_le(dispatcher_context_t *dispatcher_context,
+                                                       const merkleized_map_commitment_t *map,
+                                                       const uint8_t *key,
+                                                       int key_len,
+                                                       uint64_t *out) {
+    uint8_t result_raw[8];
+
+    int res = call_get_merkleized_map_value(dispatcher_context,
+                                            map,
+                                            key,
+                                            key_len,
+                                            result_raw,
+                                            sizeof(result_raw));
+    if (res != sizeof(result_raw)) {
+        return -1;
+    }
+
+    *out = read_u64_le(result_raw, 0);
+
+    return sizeof(result_raw);
+}

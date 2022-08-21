@@ -189,6 +189,20 @@ int bip32_CKDpub(const serialized_extended_pubkey_t *parent,
     return 0;
 }
 
+int crypto_hash_update_zeros(cx_hash_t *hash_context, size_t n_zeros) {
+    int ret = 0;
+    uint8_t data[8] = { 0 };
+    size_t i;
+
+    for (i = 0; i < (n_zeros >> 3) && 0 == ret; ++i) {
+        ret = crypto_hash_update(hash_context, &data, 8);
+    }
+    for (i = 0; i < (n_zeros & 7) && 0 == ret; ++i) {
+        ret = crypto_hash_update(hash_context, &data, 1);
+    }
+    return ret;
+}
+
 #ifndef _NR_cx_hash_ripemd160
 /** Missing in some SDKs, we implement it using the cxram section if needed. */
 static size_t cx_hash_ripemd160(const uint8_t *in, size_t in_len, uint8_t *out, size_t out_len) {
