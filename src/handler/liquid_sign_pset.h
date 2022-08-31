@@ -66,6 +66,7 @@ typedef struct  {
         output_info_t output;
     };
     uint32_t key_presence;
+    uint32_t key_read_status;
 } overlayed_in_out_info_t;
 
 typedef struct {

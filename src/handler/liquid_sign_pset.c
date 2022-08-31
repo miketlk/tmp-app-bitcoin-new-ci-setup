@@ -45,6 +45,7 @@
 #include "lib/pset_parse_rawtx.h"
 
 #include "liquid_sign_pset.h"
+#include "../liquid/liquid_proofs.h"
 
 #include "sign_psbt/compare_wallet_script_at_path.h"
 #include "sign_psbt/get_fingerprint_and_path.h"
@@ -78,7 +79,10 @@ typedef enum {
     HAS_TOKEN_VALUE = (1 << 19),
     HAS_ISSUE_PROOF = (1 << 20),
     HAS_TOKEN_PROOF = (1 << 21),
-    HAS_AMOUNT = (1 << 22)
+    HAS_AMOUNT = (1 << 22),
+    HAS_VALUE_PROOF = (1 << 23),
+    HAS_ASSET_PROOF = (1 << 24),
+    HAS_ASSET_SURJECTION_PROOF = (1 << 25),
 } key_presence_flags_t;
 
 /// Order in which witness fields are hashed
@@ -112,6 +116,7 @@ static void alert_external_inputs(dispatcher_context_t *dc);
 // Output validation
 static void verify_outputs_init(dispatcher_context_t *dc);
 static void process_output_map(dispatcher_context_t *dc);
+static void check_output_commitments(dispatcher_context_t *dc);
 static void check_output_owned(dispatcher_context_t *dc);
 static void output_validate_external(dispatcher_context_t *dc);
 static void output_next(dispatcher_context_t *dc);
@@ -207,6 +212,84 @@ static bool test_proprietary_key(buffer_t *buffer, const uint8_t *ref_key) {
  * Callback to process all the keys of the current input map.
  * Keeps track if the current input has a witness_utxo and/or a redeemScript.
  */
+static void input_keys_callback(input_keys_callback_state_t *state, buffer_t *data) {
+    size_t data_len = data->size - data->offset;
+    if (data_len >= 1) {
+        uint8_t keytype;
+        buffer_read_u8(data, &keytype);
+        if (keytype == PSBT_IN_WITNESS_UTXO) {
+            state->key_presence |= HAS_WITNESSUTXO;
+        } else if (keytype == PSBT_IN_NON_WITNESS_UTXO) {
+            state->key_presence |= HAS_NONWITNESSUTXO;
+        } else if (keytype == PSBT_IN_REDEEM_SCRIPT) {
+            state->key_presence |= HAS_REDEEMSCRIPT;
+        } else if (keytype == PSBT_IN_SIGHASH_TYPE) {
+            state->key_presence |= HAS_SIGHASH_TYPE;
+        } else if ((keytype == PSBT_IN_BIP32_DERIVATION ||
+                    keytype == PSBT_IN_TAP_BIP32_DERIVATION) &&
+                   !(state->key_presence & HAS_BIP32_DERIVATION)) {
+            // The first time that we encounter a PSBT_IN_BIP32_DERIVATION or
+            // PSBT_IN_TAP_BIP32_DERIVATION (handled below) key, we store the pubkey. Since we only
+            // use this to identify the change and address_index, it does not matter which of the
+            // keys we use here (if there are multiple), as per the assumptions above.
+            state->key_presence |= HAS_BIP32_DERIVATION;
+
+            // Check if storage of public key is requested
+            if(state->out_pubkey && state->pubkey_size) {
+                // x-only pubkeys for taproot, normal compressed pubkeys otherwise
+                size_t key_len = (keytype == PSBT_IN_TAP_BIP32_DERIVATION ? 32 : 33);
+
+                if(state->pubkey_size >= key_len) {
+                    if (!buffer_read_bytes(data,
+                                           state->out_pubkey,
+                                           key_len)  // read compressed pubkey or x-only pubkey
+                        || buffer_can_read(data, 1)  // ...but should not be able to read more
+                    ) {
+                        state->error = true;
+                    } else {
+                        state->pubkey_size = key_len;
+                    }
+                } else {
+                    state->error = true;
+                }
+            }
+        } else if (keytype == PSBT_IN_PROPRIETARY) {
+            if (test_proprietary_key(data, PSBT_ELEMENTS_LEGACY_IN_VALUE)) {
+                state->key_presence |= HAS_PREVOUT_AMOUNT;
+            } else if (test_proprietary_key(data, PSBT_ELEMENTS_LEGACY_IN_VALUE_BLINDER)) {
+                state->key_presence |= HAS_VALUE_BLINDING_FACTOR;
+            } else if (test_proprietary_key(data, PSBT_ELEMENTS_LEGACY_IN_ASSET)) {
+                state->key_presence |= HAS_ASSET;
+            } else if (test_proprietary_key(data, PSBT_ELEMENTS_LEGACY_IN_ASSET_BLINDER)) {
+                state->key_presence |= HAS_ASSET_BLINDING_FACTOR;
+            } else if (test_proprietary_key(data, PSBT_ELEMENTS_IN_ISSUANCE_VALUE)) {
+                state->key_presence |= HAS_ISSUE_VALUE;
+            } else if (test_proprietary_key(data, PSBT_ELEMENTS_IN_ISSUANCE_VALUE_COMMITMENT)) {
+                state->key_presence |= HAS_ISSUE_COMMITMENT;
+            } else if (test_proprietary_key(data, PSBT_ELEMENTS_IN_ISSUANCE_BLIND_VALUE_PROOF)) {
+                state->key_presence |= HAS_ISSUE_PROOF;
+            } else if (test_proprietary_key(data,
+                                            PSBT_ELEMENTS_IN_ISSUANCE_INFLATION_KEYS_AMOUNT)) {
+                state->key_presence |= HAS_TOKEN_VALUE;
+            } else if (test_proprietary_key(data,
+                                            PSBT_ELEMENTS_IN_ISSUANCE_INFLATION_KEYS_COMMITMENT)) {
+                state->key_presence |= HAS_TOKEN_COMMITMENT;
+            } else if (test_proprietary_key(data, PSBT_ELEMENTS_IN_ISSUANCE_BLINDING_NONCE)) {
+                state->key_presence |= HAS_ISSUE_NONCE;
+            } else if (test_proprietary_key(data, PSBT_ELEMENTS_IN_ISSUANCE_ASSET_ENTROPY)) {
+                state->key_presence |= HAS_ISSUE_ENTROPY;
+            } else if (test_proprietary_key(data,
+                                            PSBT_ELEMENTS_IN_ISSUANCE_BLIND_INFLATION_KEYS_PROOF)) {
+                state->key_presence |= HAS_TOKEN_PROOF;
+            }
+        }
+    }
+}
+
+/**
+ * Callback to process all the keys of the current input map.
+ * Keeps track if the current input has a witness_utxo and/or a redeemScript.
+ */
 static void output_keys_callback(output_keys_callback_state_t *state, buffer_t *data) {
     size_t data_len = data->size - data->offset;
     if (data_len >= 1) {
@@ -251,12 +334,18 @@ static void output_keys_callback(output_keys_callback_state_t *state, buffer_t *
                 state->key_presence |= HAS_ASSET_COMMITMENT;
             } else if (test_proprietary_key(data, PSBT_ELEMENTS_LEGACY_OUT_ASSET_BLINDER)) {
                 state->key_presence |= HAS_ASSET_BLINDING_FACTOR;
+            } else if (test_proprietary_key(data, PSBT_ELEMENTS_OUT_ASSET_SURJECTION_PROOF)) {
+                state->key_presence |= HAS_ASSET_SURJECTION_PROOF;
             } else if (test_proprietary_key(data, PSBT_ELEMENTS_OUT_BLINDING_PUBKEY)) {
                 state->key_presence |= HAS_BLINDING_PUBKEY;
             } else if (test_proprietary_key(data, PSBT_ELEMENTS_OUT_ECDH_PUBKEY)) {
                 state->key_presence |= HAS_ECDH_PUBKEY;
             } else if (test_proprietary_key(data, PSBT_ELEMENTS_OUT_BLINDER_INDEX)) {
                 state->key_presence |= HAS_BLINDER_INDEX;
+            } else if (test_proprietary_key(data, PSBT_ELEMENTS_OUT_BLIND_VALUE_PROOF)) {
+                state->key_presence |= HAS_VALUE_PROOF;
+            } else if (test_proprietary_key(data, PSBT_ELEMENTS_OUT_BLIND_ASSET_PROOF)) {
+                state->key_presence |= HAS_ASSET_PROOF;
             }
         }
     }
@@ -692,15 +781,15 @@ static bool set_input_amount(overlayed_in_out_info_t *p_info, tx_amount_t *p_amo
     }
 
     if(!p_amount->is_blinded) {
-        if(!(p_info->key_presence & HAS_PREVOUT_AMOUNT)) {
+        if(!(p_info->key_read_status & HAS_PREVOUT_AMOUNT)) {
             p_info->input.prevout_amount = p_amount->value;
-            p_info->key_presence |= HAS_PREVOUT_AMOUNT;
+            p_info->key_read_status |= HAS_PREVOUT_AMOUNT;
         } else if(p_amount->value != p_info->input.prevout_amount) {
             // new value does not match with the previous initialization
             return false;
         }
     } else {
-        if(p_info->key_presence & HAS_VALUE_COMMITMENT) {
+        if(p_info->key_read_status & HAS_VALUE_COMMITMENT) {
             if(0 != memcmp(p_info->in_out.value_commitment,
                            p_amount->commitment,
                            sizeof(p_info->in_out.value_commitment))) {
@@ -710,7 +799,7 @@ static bool set_input_amount(overlayed_in_out_info_t *p_info, tx_amount_t *p_amo
             memcpy(p_info->in_out.value_commitment,
                    p_amount->commitment,
                    sizeof(p_info->in_out.value_commitment));
-            p_info->key_presence |= HAS_VALUE_COMMITMENT;
+            p_info->key_read_status |= HAS_VALUE_COMMITMENT;
         }
     }
 
@@ -976,86 +1065,6 @@ void handler_liquid_sign_pset(dispatcher_context_t *dc) {
  *  - detect internal inputs that should be signed, and external inputs that shouldn't
  */
 
-
-
-/**
- * Callback to process all the keys of the current input map.
- * Keeps track if the current input has a witness_utxo and/or a redeemScript.
- */
-static void input_keys_callback(input_keys_callback_state_t *state, buffer_t *data) {
-    size_t data_len = data->size - data->offset;
-    if (data_len >= 1) {
-        uint8_t keytype;
-        buffer_read_u8(data, &keytype);
-        if (keytype == PSBT_IN_WITNESS_UTXO) {
-            state->key_presence |= HAS_WITNESSUTXO;
-        } else if (keytype == PSBT_IN_NON_WITNESS_UTXO) {
-            state->key_presence |= HAS_NONWITNESSUTXO;
-        } else if (keytype == PSBT_IN_REDEEM_SCRIPT) {
-            state->key_presence |= HAS_REDEEMSCRIPT;
-        } else if (keytype == PSBT_IN_SIGHASH_TYPE) {
-            state->key_presence |= HAS_SIGHASH_TYPE;
-        } else if ((keytype == PSBT_IN_BIP32_DERIVATION ||
-                    keytype == PSBT_IN_TAP_BIP32_DERIVATION) &&
-                   !(state->key_presence & HAS_BIP32_DERIVATION)) {
-            // The first time that we encounter a PSBT_IN_BIP32_DERIVATION or
-            // PSBT_IN_TAP_BIP32_DERIVATION (handled below) key, we store the pubkey. Since we only
-            // use this to identify the change and address_index, it does not matter which of the
-            // keys we use here (if there are multiple), as per the assumptions above.
-            state->key_presence |= HAS_BIP32_DERIVATION;
-
-            // Check if storage of public key is requested
-            if(state->out_pubkey && state->pubkey_size) {
-                // x-only pubkeys for taproot, normal compressed pubkeys otherwise
-                size_t key_len = (keytype == PSBT_IN_TAP_BIP32_DERIVATION ? 32 : 33);
-
-                if(state->pubkey_size >= key_len) {
-                    if (!buffer_read_bytes(data,
-                                           state->out_pubkey,
-                                           key_len)  // read compressed pubkey or x-only pubkey
-                        || buffer_can_read(data, 1)  // ...but should not be able to read more
-                    ) {
-                        state->error = true;
-                    } else {
-                        state->pubkey_size = key_len;
-                    }
-                } else {
-                    state->error = true;
-                }
-            }
-        } else if (keytype == PSBT_IN_PROPRIETARY) {
-            if (test_proprietary_key(data, PSBT_ELEMENTS_LEGACY_IN_VALUE)) {
-                state->key_presence |= HAS_PREVOUT_AMOUNT;
-            } else if (test_proprietary_key(data, PSBT_ELEMENTS_LEGACY_IN_VALUE_BLINDER)) {
-                state->key_presence |= HAS_VALUE_BLINDING_FACTOR;
-            } else if (test_proprietary_key(data, PSBT_ELEMENTS_LEGACY_IN_ASSET)) {
-                state->key_presence |= HAS_ASSET;
-            } else if (test_proprietary_key(data, PSBT_ELEMENTS_LEGACY_IN_ASSET_BLINDER)) {
-                state->key_presence |= HAS_ASSET_BLINDING_FACTOR;
-            } else if (test_proprietary_key(data, PSBT_ELEMENTS_IN_ISSUANCE_VALUE)) {
-                state->key_presence |= HAS_ISSUE_VALUE;
-            } else if (test_proprietary_key(data, PSBT_ELEMENTS_IN_ISSUANCE_VALUE_COMMITMENT)) {
-                state->key_presence |= HAS_ISSUE_COMMITMENT;
-            } else if (test_proprietary_key(data, PSBT_ELEMENTS_IN_ISSUANCE_BLIND_VALUE_PROOF)) {
-                state->key_presence |= HAS_ISSUE_PROOF;
-            } else if (test_proprietary_key(data,
-                                            PSBT_ELEMENTS_IN_ISSUANCE_INFLATION_KEYS_AMOUNT)) {
-                state->key_presence |= HAS_TOKEN_VALUE;
-            } else if (test_proprietary_key(data,
-                                            PSBT_ELEMENTS_IN_ISSUANCE_INFLATION_KEYS_COMMITMENT)) {
-                state->key_presence |= HAS_TOKEN_COMMITMENT;
-            } else if (test_proprietary_key(data, PSBT_ELEMENTS_IN_ISSUANCE_BLINDING_NONCE)) {
-                state->key_presence |= HAS_ISSUE_NONCE;
-            } else if (test_proprietary_key(data, PSBT_ELEMENTS_IN_ISSUANCE_ASSET_ENTROPY)) {
-                state->key_presence |= HAS_ISSUE_ENTROPY;
-            } else if (test_proprietary_key(data,
-                                            PSBT_ELEMENTS_IN_ISSUANCE_BLIND_INFLATION_KEYS_PROOF)) {
-                state->key_presence |= HAS_TOKEN_PROOF;
-            }
-        }
-    }
-}
-
 static void process_input_map(dispatcher_context_t *dc) {
     sign_pset_state_t *state = (sign_pset_state_t *) &G_command_state;
 
@@ -1107,6 +1116,7 @@ static void process_input_map(dispatcher_context_t *dc) {
             SEND_SW(dc, SW_INCORRECT_DATA);
             return;
         }
+        state->cur.key_read_status |= HAS_PREVOUT_AMOUNT;
     }
 
     // either witness utxo or non-witness utxo (or both) must be present.
@@ -1189,7 +1199,7 @@ static void process_input_map(dispatcher_context_t *dc) {
         }
     }
 
-    if(!(state->cur.key_presence & HAS_PREVOUT_AMOUNT)) {
+    if(!(state->cur.key_read_status & HAS_PREVOUT_AMOUNT)) {
         PRINTF("Non-blinded amount is not provided for input %u\n", state->cur_input_index);
         SEND_SW(dc, SW_INCORRECT_DATA);
     }
@@ -1217,7 +1227,7 @@ static void check_input_owned(dispatcher_context_t *dc) {
         PRINTF("INPUT %d is external\n", state->cur_input_index);
     } else {
         bitvector_set(state->internal_inputs, state->cur_input_index, 1);
-        if(!(state->cur.key_presence & HAS_PREVOUT_AMOUNT)) {
+        if(!(state->cur.key_read_status & HAS_PREVOUT_AMOUNT)) {
             PRINTF("Non-blinded amount is not provided for input %u\n", state->cur_input_index);
             SEND_SW(dc, SW_INCORRECT_DATA);
         }
@@ -1383,8 +1393,93 @@ static void process_output_map(dispatcher_context_t *dc) {
     if (is_fee_output) {
         dc->next(confirm_transaction);
     } else {
-        dc->next(check_output_owned);
+        dc->next(check_output_commitments);
     }
+}
+
+static void check_output_commitments(dispatcher_context_t *dc) {
+    sign_pset_state_t *state = (sign_pset_state_t *) &G_command_state;
+
+    LOG_PROCESSOR(dc, __FILE__, __LINE__, __func__);
+
+    uint8_t blinded_asset_gen[LIQUID_GENERATOR_LEN];
+    bool blinded_asset_gen_init = false;
+
+    if (state->cur.key_presence & HAS_ASSET_COMMITMENT) {
+        uint8_t commitment[LIQUID_COMMITMENT_LEN];
+
+        int commitment_len =
+            call_get_merkleized_map_value(dc,
+                                          &state->cur.in_out.map,
+                                          PSBT_ELEMENTS_OUT_ASSET_COMMITMENT,
+                                          sizeof(PSBT_ELEMENTS_OUT_ASSET_COMMITMENT),
+                                          commitment,
+                                          sizeof(commitment));
+        if (commitment_len != sizeof(commitment)) {
+            PRINTF("Error fetching asset commitment\n");
+            SEND_SW(dc, SW_INCORRECT_DATA);
+            return;
+        }
+
+        if (!liquid_generator_parse(blinded_asset_gen, commitment)) {
+            PRINTF("Error parsing asset commitment\n");
+            SEND_SW(dc, SW_INCORRECT_DATA);
+            return;
+        }
+        blinded_asset_gen_init = true;
+    }
+
+    // Verify value commitment
+    if (state->cur.key_presence & HAS_VALUE_COMMITMENT) {
+        if (!blinded_asset_gen_init) {
+            PRINTF("Asset commitment is required to verify value commitment\n");
+            SEND_SW(dc, SW_INCORRECT_DATA);
+            return;
+        }
+
+        uint8_t commitment[LIQUID_COMMITMENT_LEN];
+        uint8_t proof[LIQUID_MAX_VALUE_PROOF_LEN];
+
+        int commitment_len =
+            call_get_merkleized_map_value(dc,
+                                          &state->cur.in_out.map,
+                                          PSBT_ELEMENTS_OUT_VALUE_COMMITMENT,
+                                          sizeof(PSBT_ELEMENTS_OUT_VALUE_COMMITMENT),
+                                          commitment,
+                                          sizeof(commitment));
+        if (commitment_len != sizeof(commitment)) {
+            PRINTF("Error fetching value commitment\n");
+            SEND_SW(dc, SW_INCORRECT_DATA);
+            return;
+        }
+
+        int proof_len =
+            call_get_merkleized_map_value(dc,
+                                          &state->cur.in_out.map,
+                                          PSBT_ELEMENTS_OUT_BLIND_VALUE_PROOF,
+                                          sizeof(PSBT_ELEMENTS_OUT_BLIND_VALUE_PROOF),
+                                          proof,
+                                          sizeof(proof));
+        if (proof_len <= 0) {
+            PRINTF("Error fetching value proof\n");
+            SEND_SW(dc, SW_INCORRECT_DATA);
+            return;
+        }
+
+        bool result = liquid_rangeproof_verify_value(proof,
+                                                     (size_t)proof_len,
+                                                     state->cur.output.value,
+                                                     commitment,
+                                                     (size_t)commitment_len,
+                                                     blinded_asset_gen);
+        if (!result) {
+            PRINTF("Invalid value commitment for output %u\n", state->cur_output_index);
+            SEND_SW(dc, SW_INCORRECT_DATA);
+            return;
+        }
+    }
+
+    dc->next(check_output_owned);
 }
 
 static void check_output_owned(dispatcher_context_t *dc) {
@@ -1845,6 +1940,7 @@ static void sign_process_input_map(dispatcher_context_t *dc) {
             SEND_SW(dc, SW_INCORRECT_DATA);
             return;
         }
+        state->cur.key_read_status |= HAS_PREVOUT_AMOUNT;
     }
 
     if (!(state->cur.key_presence & HAS_SIGHASH_TYPE)) {
@@ -2082,7 +2178,7 @@ static void sign_segwit(dispatcher_context_t *dc) {
             PRINTF("Amount in witness utxo doesn't match externally provided one\n");
             SEND_SW(dc, SW_INCORRECT_DATA);
         }
-        if(!(state->cur.key_presence & HAS_PREVOUT_AMOUNT)) {
+        if(!(state->cur.key_read_status & HAS_PREVOUT_AMOUNT)) {
             PRINTF("Non-blinded amount is not provided for input %u\n", state->cur_input_index);
             SEND_SW(dc, SW_INCORRECT_DATA);
         }

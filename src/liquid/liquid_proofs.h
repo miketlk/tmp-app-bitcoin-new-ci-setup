@@ -8,8 +8,12 @@
 #include <stdint.h>   // uint*_t
 #include <stdbool.h>  // bool
 
+#define LIQUID_MAX_VALUE_PROOF_LEN 73
+#define LIQUID_GENERATOR_LEN 65
+#define LIQUID_COMMITMENT_LEN 33
+
 /// Alternative generator for secp256k1
-extern const uint8_t secp256k1_generator_h[65];
+extern const uint8_t secp256k1_generator_h[LIQUID_GENERATOR_LEN];
 /// Maximum allowed value for scalar
 extern const uint8_t secp256k1_scalar_max[32];
 
@@ -36,4 +40,19 @@ bool liquid_rangeproof_verify_value(const uint8_t *proof,
                                     uint64_t value,
                                     const uint8_t *commit,
                                     size_t commit_len,
-                                    const uint8_t generator[static 65]);
+                                    const uint8_t generator[static LIQUID_GENERATOR_LEN]);
+
+/**
+ * Parses a 33-byte generator byte sequence into a generator object
+ *
+ * Generator is encoded as: 04 x y, where x and y are encoded as big endian raw value.
+ *
+ * @param[out] generator
+ *    Pointer to 65-byte buffer receiving parsed generator.
+ * @param[in] input
+ *    Input byte sequence, 33 bytes.
+ *
+ * @return true if generator parsed successfully
+ */
+bool liquid_generator_parse(uint8_t generator[static LIQUID_GENERATOR_LEN],
+                            const uint8_t input[static LIQUID_COMMITMENT_LEN]);

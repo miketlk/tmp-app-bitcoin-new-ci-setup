@@ -35,7 +35,7 @@
     H = EllipticCurve ([F (0), F (7)]).lift_x(F(int(hashlib.sha256(G.decode('hex')).hexdigest(),16)))
     print('%x %x' % H.xy())
  */
-const uint8_t secp256k1_generator_h[] = {
+const uint8_t secp256k1_generator_h[LIQUID_GENERATOR_LEN] = {
     0x04,
     0x50, 0x92, 0x9b, 0x74, 0xc1, 0xa0, 0x49, 0x54, 0xb7, 0x8b, 0x4b, 0x60, 0x35, 0xe9, 0x7a, 0x5e,
     0x07, 0x8a, 0x5a, 0x0f, 0x28, 0xec, 0x96, 0xd5, 0x47, 0xbf, 0xee, 0x9a, 0xce, 0x80, 0x3a, 0xc0,
@@ -228,7 +228,7 @@ bool liquid_rangeproof_verify_value(const uint8_t *proof,
                                     uint64_t value,
                                     const uint8_t *commit,
                                     size_t commit_len,
-                                    const uint8_t generator[static 65]) {
+                                    const uint8_t generator[static LIQUID_GENERATOR_LEN]) {
     if(!proof || !(plen == 73 || plen == 65) || !commit || commit_len != 33 || !generator ||
        generator[0] != 0x04) {
         return false;
@@ -330,6 +330,32 @@ bool liquid_rangeproof_verify_value(const uint8_t *proof,
 
             // 3. Check computed e against original e
             result = (0 == memcmp(tmpch, &proof[offset], 32));
+        }
+        CATCH_ALL {
+            result = false;
+        }
+        FINALLY {
+            // Zeroize sensitive data here
+        }
+    }
+    END_TRY;
+    return result;
+}
+
+bool liquid_generator_parse(uint8_t generator[static LIQUID_GENERATOR_LEN],
+                            const uint8_t input[static LIQUID_COMMITMENT_LEN]) {
+    if (!generator || !input || (input[0] & 0xFE) != 10) {
+        return false;
+    }
+
+    bool result = false;
+    BEGIN_TRY {
+        TRY {
+            ge_set_xquad(generator, &input[1]);
+            if (input[0] & 1) {
+                ge_neg(generator, generator);
+            }
+            result = true;
         }
         CATCH_ALL {
             result = false;
