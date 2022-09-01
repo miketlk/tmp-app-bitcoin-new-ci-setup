@@ -213,7 +213,7 @@ static void test_rangeproof_single_value(test_ctx_t *test_ctx) {
 
     for(int i = 0; i < n_vectors; ++i, p_vect++) {
         // Test with correct parameters
-        res = liquid_rangeproof_verify_value(p_vect->proof,
+        res = liquid_rangeproof_verify_exact(p_vect->proof,
                                              p_vect->proof_len,
                                              p_vect->value,
                                              p_vect->commit,
@@ -222,7 +222,7 @@ static void test_rangeproof_single_value(test_ctx_t *test_ctx) {
         TEST_ASSERT(res);
 
         // Test with wrong value
-        res = liquid_rangeproof_verify_value(p_vect->proof,
+        res = liquid_rangeproof_verify_exact(p_vect->proof,
                                              p_vect->proof_len,
                                              p_vect->value ^ (1 << (i & 63)), /* corrupt */
                                              p_vect->commit,
@@ -232,7 +232,7 @@ static void test_rangeproof_single_value(test_ctx_t *test_ctx) {
         // Test with wrong commitment
         memcpy(wrong_commit, p_vect->commit, sizeof(wrong_commit));
         wrong_commit[1 + (i & 31)] ^= 1;
-        res = liquid_rangeproof_verify_value(p_vect->proof,
+        res = liquid_rangeproof_verify_exact(p_vect->proof,
                                              p_vect->proof_len,
                                              p_vect->value,
                                              wrong_commit,

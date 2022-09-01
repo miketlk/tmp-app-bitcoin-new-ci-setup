@@ -1466,7 +1466,7 @@ static void check_output_commitments(dispatcher_context_t *dc) {
             return;
         }
 
-        bool result = liquid_rangeproof_verify_value(proof,
+        bool result = liquid_rangeproof_verify_exact(proof,
                                                      (size_t)proof_len,
                                                      state->cur.output.value,
                                                      commitment,

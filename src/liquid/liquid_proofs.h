@@ -35,7 +35,7 @@ extern const uint8_t secp256k1_scalar_max[32];
  *
  * @return true if proof was valid and proved the given value, false otherwise
  */
-bool liquid_rangeproof_verify_value(const uint8_t *proof,
+bool liquid_rangeproof_verify_exact(const uint8_t *proof,
                                     size_t plen,
                                     uint64_t value,
                                     const uint8_t *commit,

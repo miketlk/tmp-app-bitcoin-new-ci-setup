@@ -223,7 +223,7 @@ static void borromean_hash(uint8_t hash[static 32],
     crypto_hash_digest(&sha256_en.header, hash, 32);
 }
 
-bool liquid_rangeproof_verify_value(const uint8_t *proof,
+bool liquid_rangeproof_verify_exact(const uint8_t *proof,
                                     size_t plen,
                                     uint64_t value,
                                     const uint8_t *commit,
