@@ -36,11 +36,23 @@ typedef void (*test_fn_t)(test_ctx_t *test_ctx);
 #define RUN_TEST(fn) test_run_internal(test_ctx, fn, #fn)
 
 /// Tests a condition and breaks test execution if failed
-#define TEST_ASSERT(cond) do { if(!(cond)) { \
-                                   test_handle_assert_fail(test_ctx, #cond, __FILE__, __LINE__); \
-                                   return; \
-                               } \
-                          } while(0)
+#define TEST_ASSERT(cond) \
+    do { if(!(cond)) { \
+            test_handle_assert_fail(test_ctx, #cond, true, __FILE__, __LINE__); \
+            return; \
+        } \
+    } while(0)
+
+/// Tests if a condition is true and breaks test execution otherwise
+#define TEST_ASSERT_TRUE(cond) TEST_ASSERT(cond)
+
+/// Tests if a condition is false and breaks test execution otherwise
+#define TEST_ASSERT_FALSE(cond) \
+    do { if((cond)) { \
+            test_handle_assert_fail(test_ctx, #cond, false, __FILE__, __LINE__); \
+            return; \
+        } \
+    } while(0)
 
 /**
  * Test runner
@@ -72,6 +84,8 @@ extern void test_run_internal(test_ctx_t *test_ctx, test_fn_t test_fn, const cha
  *   Context of test environment.
  * @param[in] condition
  *   Evaluated condition as a text string.
+ * @param[in] expected_res
+ *   Expected result of evaluated condition: true or false.
  * @param[in] file
  *   Name of source code file.
  * @param[in] line
@@ -79,6 +93,7 @@ extern void test_run_internal(test_ctx_t *test_ctx, test_fn_t test_fn, const cha
  */
 extern void test_handle_assert_fail(test_ctx_t *test_ctx,
                                     const char *condition,
+                                    bool expected_res,
                                     const char *file,
                                     int line);
 
@@ -90,6 +105,8 @@ extern void test_handle_assert_fail(test_ctx_t *test_ctx,
 
 #define RUN_TEST(fn)
 #define TEST_ASSERT(cond)
+#define TEST_ASSERT_TRUE(cond)
+#define TEST_ASSERT_FALSE(cond)
 
 static inline void run_on_device_tests(void) {
 }

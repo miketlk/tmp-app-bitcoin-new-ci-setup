@@ -37,7 +37,7 @@ void run_on_device_tests(void) {
 
     PRINTF("\nRunning tests...\n");
 
-    for(size_t idx = 0; idx < n_suites; ++idx) {
+    for (size_t idx = 0; idx < n_suites; ++idx) {
         test_ctx.suite_name = test_suites[idx].name;
         test_suites[idx].fn(&test_ctx);
         if(test_ctx.global_error) {
@@ -46,7 +46,7 @@ void run_on_device_tests(void) {
     }
 
     PRINTF("============================================================================\n");
-    if(test_ctx.global_error) {
+    if (test_ctx.global_error) {
         PRINTF("Testing aborted because of error\n\n");
     } else {
         PRINTF("Test summary: %i test passed, %i test failed out of %i\n\n",
@@ -61,16 +61,16 @@ void run_on_device_tests(void) {
 }
 
 void test_run_internal(test_ctx_t *test_ctx, test_fn_t test_fn, const char *test_name) {
-    if(test_ctx->global_error) {
+    if (test_ctx->global_error) {
         return;
     }
 
-    if(test_ctx->n_tests == INT_MAX || test_ctx->n_passed == INT_MAX) {
+    if (test_ctx->n_tests == INT_MAX || test_ctx->n_passed == INT_MAX) {
         PRINTF("ERROR: test counter overflow");
         test_ctx->global_error = true;
     }
 
-    if(test_ctx->lock) {
+    if (test_ctx->lock) {
         PRINTF("ERROR: %s/%s: nested tests are not supported!\n", test_ctx->suite_name, test_name);
         test_ctx->global_error = true;
         return;
@@ -82,7 +82,7 @@ void test_run_internal(test_ctx_t *test_ctx, test_fn_t test_fn, const char *test
     test_fn(test_ctx);
     test_ctx->lock = false;
 
-    if(!test_ctx->global_error) {
+    if (!test_ctx->global_error) {
         PRINTF(test_ctx->assert_fails ? "FAIL" : "PASS");
         PRINTF(": %s/%s\n", test_ctx->suite_name, test_name);
         ++test_ctx->n_tests;
@@ -92,10 +92,13 @@ void test_run_internal(test_ctx_t *test_ctx, test_fn_t test_fn, const char *test
 
 void test_handle_assert_fail(test_ctx_t *test_ctx,
                              const char *condition,
+                             bool expected_res,
                              const char *file,
                              int line) {
-    PRINTF("%s:%i: test condition failed: %s\n", file, line, condition);
-    if(test_ctx->assert_fails < INT_MAX) {
+    PRINTF("%s:%i: test condition failed: %s%.64s", file, line, expected_res ? "" : "!(", condition);
+    PRINTF(strlen(condition) > 64 ? "...%s\n" : "%s\n", expected_res ? "" : ")");
+
+    if (test_ctx->assert_fails < INT_MAX) {
         ++test_ctx->assert_fails;
     } else {
         PRINTF("ERROR: assert counter overflow");
