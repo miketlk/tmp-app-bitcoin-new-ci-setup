@@ -56,3 +56,22 @@ bool liquid_rangeproof_verify_exact(const uint8_t *proof,
  */
 bool liquid_generator_parse(uint8_t generator[static LIQUID_GENERATOR_LEN],
                             const uint8_t input[static LIQUID_COMMITMENT_LEN]);
+
+/**
+ * Verifies a single-input surjectionproof
+ *
+ * @param[in] proof
+ *   Pointer to character array with the proof to be verified.
+ * @param[in] plen
+ *   Length of proof in bytes.
+ * @param[in] input_tag
+ *   The ephemeral asset tag of the sole input, a curve point encoded as 04 x y.
+ * @param[in] output_tag
+ *   The ephemeral asset tag of the output, a curve point encoded as 04 x y.
+ *
+ * @return true if proof was valid, false otherwise
+ */
+bool liquid_surjectionproof_verify_single(const uint8_t *proof,
+                                          size_t plen,
+                                          const uint8_t input_tag[static LIQUID_GENERATOR_LEN],
+                                          const uint8_t output_tag[static LIQUID_GENERATOR_LEN]);

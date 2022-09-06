@@ -70,7 +70,7 @@ bool secp256k1_scalar_check_overflow(const uint8_t a[static 32]) {
  * @param[in] x
  *   X coordinate of a point.
  */
-static void ge_set_xquad(uint8_t r[static 65], const uint8_t x[static 32]) {
+static void secp256k1_ge_set_xquad(uint8_t r[static 65], const uint8_t x[static 32]) {
     uint8_t *res_x = &r[1], *res_y = &r[1 + 32];
     uint8_t *scalar = res_x;
 
@@ -100,10 +100,46 @@ static void ge_set_xquad(uint8_t r[static 65], const uint8_t x[static 32]) {
  * @param[in] a
  *   Point to compute inverse encoded as 04 x y.
  */
-static inline void ge_neg(uint8_t r[static 65], const uint8_t a[static 65]) {
+static inline void secp256k1_ge_neg(uint8_t r[static 65], const uint8_t a[static 65]) {
     uint8_t *res_y = &r[1 + 32];
     const uint8_t *arg_y = &a[1 + 32];
+    if (r != a) {
+        memcpy(r, a, 1 + 32); // copy 0x04 byte and x coordinate
+    }
     cx_math_sub(res_y, secp256k1_p, arg_y, 32);
+}
+
+/**
+ * Set r equal to the sum of a and b
+ *
+ * @param[out] r
+ *    Resulting point encoded as 04 x y.
+ * @param[in] a
+ *    First operand: point on curve encoded as 04 x y.
+ * @param[in] b
+ *    Second operand: point on curve encoded as 04 x y.
+ */
+static inline void secp256k1_add(uint8_t r[static 65],
+                                 const uint8_t a[static 65],
+                                 const uint8_t b[static 65]) {
+    if(0 == cx_ecfp_add_point(CX_CURVE_SECP256K1, r, a, b, 32)) {
+        THROW(CX_EC_INFINITE_POINT);
+    }
+}
+
+/**
+ * Performs a scalar multiplication over an elliptic curve.
+ *
+ * @param[in, out] point
+ *    Point on curve encoded as 04 x y. Also used for the result.
+ * @param[in] scalar
+ *    Scalar encoded as big endian integer.
+ */
+static inline void secp256k1_scalar_mult(uint8_t point[static 65],
+                                         const uint8_t scalar[static 32]) {
+    if(0 == cx_ecfp_scalar_mult(CX_CURVE_SECP256K1, point, 65, scalar, 32)) {
+        THROW(CX_EC_INFINITE_POINT);
+    }
 }
 
 /**
@@ -116,9 +152,9 @@ static inline void ge_neg(uint8_t r[static 65], const uint8_t a[static 65]) {
  */
 static void pedersen_commitment_load(uint8_t ge[static 65],
                                      const uint8_t commit[static 33]) {
-    ge_set_xquad(ge, &commit[1]);
+    secp256k1_ge_set_xquad(ge, &commit[1]);
     if (commit[0] & 1) {
-        ge_neg(ge, ge);
+        secp256k1_ge_neg(ge, ge);
     }
 }
 
@@ -262,9 +298,7 @@ bool liquid_rangeproof_verify_exact(const uint8_t *proof,
 
     uint8_t commitp[65];
     uint8_t tmp[65];
-    uint8_t tmp2[65];
     uint8_t tmpch[33];
-    cx_sha256_t sha2;
     uint8_t pp_comm[32];
     uint8_t es[32];
     uint8_t ss[32];
@@ -277,26 +311,26 @@ bool liquid_rangeproof_verify_exact(const uint8_t *proof,
             // Let's check if value is 0 and multiplication will result in point at infinity
             if(value) {
                 pedersen_ecmult_small(tmp, value, generator);
-                ge_neg(tmp, tmp);
-                if(0 == cx_ecfp_add_point(CX_CURVE_SECP256K1, tmp, tmp, commitp, sizeof(tmp))) {
-                    THROW(CX_EC_INFINITE_POINT);
-                }
+                secp256k1_ge_neg(tmp, tmp);
+                secp256k1_add(tmp, tmp, commitp);
             } else {
                 // Value is 0 thus we just keep commitment point "as is" because infinity point is
                 // an identity element
                 memcpy(tmp, commitp, sizeof(tmp));
             }
 
-
             // Now we just have a Schnorr signature in (e, s) form. The verification equation is:
             // e == H(sG - eX || proof params)
 
             // 1. Compute slow/overwrought commitment to proof params
-            cx_sha256_init(&sha2);
-            hash_update_point(&sha2.header, commitp);
-            hash_update_point(&sha2.header, generator);
-            crypto_hash_update(&sha2.header, proof, offset);
-            crypto_hash_digest(&sha2.header, pp_comm, sizeof(pp_comm));
+            {
+                cx_sha256_t sha2;
+                cx_sha256_init(&sha2);
+                hash_update_point(&sha2.header, commitp);
+                hash_update_point(&sha2.header, generator);
+                crypto_hash_update(&sha2.header, proof, offset);
+                crypto_hash_digest(&sha2.header, pp_comm, sizeof(pp_comm));
+            }
 
             // ... feed this into our hash
             borromean_hash(es, pp_comm, 32, &proof[offset], 32, 0, 0);
@@ -309,24 +343,25 @@ bool liquid_rangeproof_verify_exact(const uint8_t *proof,
             if(secp256k1_scalar_check_overflow(ss) || cx_math_is_zero(ss, sizeof(ss))) {
                 THROW(CX_OVERFLOW);
             }
+
             // Double multiply: tmp = es*tmp + ss*G
-            if(0 == cx_ecfp_scalar_mult(CX_CURVE_SECP256K1, tmp, 65, es, 32)) {
-                THROW(CX_EC_INFINITE_POINT);
+            {
+                uint8_t tmp2[65];
+                secp256k1_scalar_mult(tmp, es);
+                memcpy(tmp2, secp256k1_generator, sizeof(tmp2));
+                secp256k1_scalar_mult(tmp2, ss);
+                secp256k1_add(tmp, tmp, tmp2);
+                crypto_get_compressed_pubkey(tmp, tmpch);
             }
-            memcpy(tmp2, secp256k1_generator, sizeof(tmp2));
-            if(0 == cx_ecfp_scalar_mult(CX_CURVE_SECP256K1, tmp2, 65, ss, 32)) {
-                THROW(CX_EC_INFINITE_POINT);
-            }
-            if(0 == cx_ecfp_add_point(CX_CURVE_SECP256K1, tmp, tmp, tmp2, 65)) {
-                THROW(CX_EC_INFINITE_POINT);
-            }
-            crypto_get_compressed_pubkey(tmp, tmpch);
 
             // 2. Compute e = H(R || proof params)
-            cx_sha256_init(&sha2);
-            crypto_hash_update(&sha2.header, tmpch, 33);
-            crypto_hash_update(&sha2.header, pp_comm, sizeof(pp_comm));
-            crypto_hash_digest(&sha2.header, tmpch, sizeof(tmpch));
+            {
+                cx_sha256_t sha2;
+                cx_sha256_init(&sha2);
+                crypto_hash_update(&sha2.header, tmpch, 33);
+                crypto_hash_update(&sha2.header, pp_comm, sizeof(pp_comm));
+                crypto_hash_digest(&sha2.header, tmpch, sizeof(tmpch));
+            }
 
             // 3. Check computed e against original e
             result = (0 == memcmp(tmpch, &proof[offset], 32));
@@ -351,9 +386,9 @@ bool liquid_generator_parse(uint8_t generator[static LIQUID_GENERATOR_LEN],
     bool result = false;
     BEGIN_TRY {
         TRY {
-            ge_set_xquad(generator, &input[1]);
+            secp256k1_ge_set_xquad(generator, &input[1]);
             if (input[0] & 1) {
-                ge_neg(generator, generator);
+                secp256k1_ge_neg(generator, generator);
             }
             result = true;
         }
@@ -368,4 +403,108 @@ bool liquid_generator_parse(uint8_t generator[static LIQUID_GENERATOR_LEN],
     return result;
 }
 
+/**
+ * Computes a hash message from a single input asset tag and an output tag
+ *
+ * @param[out] msg32
+ *    Resulting message.
+ * @param input_tag
+ *    The ephemeral asset tag of the sole input, a point encoded as 04 x y.
+ * @param output_tag
+ *    The ephemeral asset tag of the output, a point encoded as 04 x y.
+ */
+static void secp256k1_surjection_genmessage_single(
+    uint8_t msg32[static 32],
+    const uint8_t input_tag[static LIQUID_GENERATOR_LEN],
+    const uint8_t output_tag[static LIQUID_GENERATOR_LEN]) {
+
+    cx_sha256_t sha256_en;
+    cx_sha256_init(&sha256_en);
+
+    crypto_hash_update_u8(&sha256_en.header, 2 + (input_tag[64] & 1)); // LSB of y coordinate
+    crypto_hash_update(&sha256_en.header, &input_tag[1], 32); // x coordinate
+
+    crypto_hash_update_u8(&sha256_en.header, 2 + (output_tag[64] & 1)); // LSB of y coordinate
+    crypto_hash_update(&sha256_en.header, &output_tag[1], 32); // x coordinate
+
+    crypto_hash_digest(&sha256_en.header, msg32, 32);
+}
+
+bool liquid_surjectionproof_verify_single(const uint8_t *proof,
+                                          size_t plen,
+                                          const uint8_t input_tag[static LIQUID_GENERATOR_LEN],
+                                          const uint8_t output_tag[static LIQUID_GENERATOR_LEN]) {
+
+    if(!proof || plen != 67 ||
+       proof[0] != 0x01 || proof[1] != 0x00 || // n_inputs, LE 16-bit integer
+       proof[2] != 0x01 ||                     // used_inputs, bitmap, 1 byte for single input
+       !input_tag || !output_tag || input_tag[0] != 0x04 || output_tag[0] != 0x04) {
+        return false;
+    }
+
+    const uint8_t *proof_data = proof + 3;
+    uint8_t tmp[65];
+    uint8_t es[32];
+    uint8_t ss[32];
+    uint8_t tmpch[33];
+    uint8_t pp_comm[32];
+
+    bool result = false;
+    BEGIN_TRY {
+        TRY {
+            secp256k1_ge_neg(tmp, input_tag);
+            secp256k1_add(tmp, tmp, output_tag);
+
+            /* Now we just have a Schnorr signature in (e, s) form. The verification
+            * equation is e == H(sG - eX || proof params), where X is the difference
+            * between the output and input. */
+
+            // 1. Compute slow/overwrought commitment to proof params
+            secp256k1_surjection_genmessage_single(pp_comm, input_tag, output_tag);
+            // (past this point the code is identical to rangeproof_verify_value)
+
+            // ... feed this into our hash
+            borromean_hash(es, pp_comm, 32, &proof_data[0], 32, 0, 0);
+            if(secp256k1_scalar_check_overflow(es) || cx_math_is_zero(es, sizeof(es))) {
+                THROW(CX_OVERFLOW);
+            }
+
+            // 1. Compute R = sG - eX
+            memcpy(ss, &proof_data[32], sizeof(ss));
+            if(secp256k1_scalar_check_overflow(ss) || cx_math_is_zero(ss, sizeof(ss))) {
+                THROW(CX_OVERFLOW);
+            }
+
+            // Double multiply: tmp = es*tmp + ss*G
+            {
+                uint8_t tmp2[65];
+                secp256k1_scalar_mult(tmp, es);
+                memcpy(tmp2, secp256k1_generator, sizeof(tmp2));
+                secp256k1_scalar_mult(tmp2, ss);
+                secp256k1_add(tmp, tmp, tmp2);
+                crypto_get_compressed_pubkey(tmp, tmpch);
+            }
+
+            // 2. Compute e = H(R || proof params)
+            {
+                cx_sha256_t sha2;
+                cx_sha256_init(&sha2);
+                crypto_hash_update(&sha2.header, tmpch, 33);
+                crypto_hash_update(&sha2.header, pp_comm, sizeof(pp_comm));
+                crypto_hash_digest(&sha2.header, tmpch, sizeof(tmpch));
+            }
+
+            // 3. Check computed e against original e
+            result = (0 == memcmp(tmpch, &proof_data[0], 32));
+        }
+        CATCH_ALL {
+            result = false;
+        }
+        FINALLY {
+            // Zeroize sensitive data here
+        }
+    }
+    END_TRY;
+    return result;
+}
 #endif // HAVE_LIQUID
