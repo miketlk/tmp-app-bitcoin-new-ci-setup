@@ -75,3 +75,16 @@ bool liquid_surjectionproof_verify_single(const uint8_t *proof,
                                           size_t plen,
                                           const uint8_t input_tag[static LIQUID_GENERATOR_LEN],
                                           const uint8_t output_tag[static LIQUID_GENERATOR_LEN]);
+
+/**
+ * Generates a generator for the curve.
+ *
+ * @param[out] gen
+ *   Buffer receiving produced generator encoded as: 04 x y.
+ * @param[in] seed32
+ *   A 32-byte seed.
+ *
+ * @return false in the highly unlikely case the seed is not acceptable, true otherwise
+ */
+bool liquid_generator_generate(uint8_t gen[static LIQUID_GENERATOR_LEN],
+                               const uint8_t seed32[static 32]);

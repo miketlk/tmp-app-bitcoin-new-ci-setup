@@ -23,6 +23,42 @@
 #include "crypto.h"
 #include "liquid.h"
 #include "liquid_proofs.h"
+#include "tests.h"
+
+/// Unpacks a constant into an array of 32 bytes
+#define SECP256K1_FE_CONST(d7, d6, d5, d4, d3, d2, d1, d0) { .n = { \
+    (d7) >> 24 & 0xff, (d7) >> 16 & 0xff, (d7) >> 8 & 0xff, (d7) & 0xff, \
+    (d6) >> 24 & 0xff, (d6) >> 16 & 0xff, (d6) >> 8 & 0xff, (d6) & 0xff, \
+    (d5) >> 24 & 0xff, (d5) >> 16 & 0xff, (d5) >> 8 & 0xff, (d5) & 0xff, \
+    (d4) >> 24 & 0xff, (d4) >> 16 & 0xff, (d4) >> 8 & 0xff, (d4) & 0xff, \
+    (d3) >> 24 & 0xff, (d3) >> 16 & 0xff, (d3) >> 8 & 0xff, (d3) & 0xff, \
+    (d2) >> 24 & 0xff, (d2) >> 16 & 0xff, (d2) >> 8 & 0xff, (d2) & 0xff, \
+    (d1) >> 24 & 0xff, (d1) >> 16 & 0xff, (d1) >> 8 & 0xff, (d1) & 0xff, \
+    (d0) >> 24 & 0xff, (d0) >> 16 & 0xff, (d0) >> 8 & 0xff, (d0) & 0xff } }
+
+/// Offsets withing 65-byte curve point
+typedef enum {
+    GE_OFFSET_PREFIX = 0,   ///< Prefix: 0x04
+    GE_OFFSET_X = 1,        ///< X-coordinate
+    GE_OFFSET_Y = (1 + 32)  ///< Y-coordinate
+} ge_offset_t;
+
+/// A scalar modulo the group order of the secp256k1 curve. */
+typedef struct {
+    uint8_t n[32];
+} secp256k1_scalar;
+
+/// A field element
+typedef secp256k1_scalar secp256k1_fe;
+
+/**
+ * A group element in affine coordinates on the secp256k1 curve, or occasionally on an isomorphic
+ * curve of the form y^2 = x^3 + 7*t^6
+ */
+typedef struct {
+    /// Curve point encoded as 04 x y, where x and y are encoded as big endian raw value
+    uint8_t n[65];
+} secp256k1_ge;
 
 /** Alternative generator for secp256k1.
  *  This is the sha256 of 'g' after standard encoding (without compression),
@@ -57,9 +93,23 @@ const uint8_t secp256k1_scalar_max[32] = {
  *
  * @return true if overflow is detected
  */
-bool secp256k1_scalar_check_overflow(const uint8_t a[static 32]) {
+static inline bool secp256k1_scalar_check_overflow(const uint8_t a[static 32]) {
     return cx_math_cmp(a, secp256k1_scalar_max, 32) > 0;
 }
+
+/**
+ * Check whether a scalar equals zero
+ *
+ * @param[in] a
+ *   Scalar to check
+ *
+ * @return true if scalar is zero
+ */
+#if 0
+static inline bool secp256k1_scalar_is_zero(const secp256k1_scalar *a) {
+    return !!cx_math_is_zero(a->n, sizeof(a->n));
+}
+#endif
 
 /**
  * Sets a group element (affine) equal to the point with the given X coordinate and a Y coordinate
@@ -109,6 +159,7 @@ static inline void secp256k1_ge_neg(uint8_t r[static 65], const uint8_t a[static
     cx_math_sub(res_y, secp256k1_p, arg_y, 32);
 }
 
+// TODO: remove
 /**
  * Set r equal to the sum of a and b
  *
@@ -123,6 +174,24 @@ static inline void secp256k1_add(uint8_t r[static 65],
                                  const uint8_t a[static 65],
                                  const uint8_t b[static 65]) {
     if(0 == cx_ecfp_add_point(CX_CURVE_SECP256K1, r, a, b, 32)) {
+        THROW(CX_EC_INFINITE_POINT);
+    }
+}
+
+/**
+ * Set r equal to the sum of a and b
+ *
+ * @param[out] r
+ *    Resulting group element.
+ * @param[in] a
+ *    First operand.
+ * @param[in] b
+ *    Second operand.
+ */
+static inline void secp256k1_ge_add(secp256k1_ge *r,
+                                    secp256k1_ge *a,
+                                    secp256k1_ge *b) {
+    if(0 == cx_ecfp_add_point(CX_CURVE_SECP256K1, r->n, a->n, b->n, 32)) {
         THROW(CX_EC_INFINITE_POINT);
     }
 }
@@ -192,7 +261,7 @@ static void pedersen_ecmult_small(uint8_t r[static 65], uint64_t gn,
  *
  * @return true a field element is a quadratic residue.
  */
-bool secp256k1_fe_is_quad_var(const uint8_t a[static 32]) {
+static bool secp256k1_fe_is_quad_var(const uint8_t a[static 32]) {
 	static const uint8_t p_one_shr[32] = {
         0x7f, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
         0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
@@ -209,6 +278,144 @@ bool secp256k1_fe_is_quad_var(const uint8_t a[static 32]) {
 		return false;
 	}
 	return res[31] == 1;
+}
+
+/**
+ * Sets a field element to be the product of two others
+ *
+ * @param[out] r
+ *    Resulting field element.
+ * @param[in] a
+ *    First field element to multiply.
+ * @param[in] b
+ *    Second field element to multiply.
+ */
+static inline void secp256k1_fe_mul(secp256k1_fe *r,
+                                    const secp256k1_fe *a,
+                                    const secp256k1_fe *b) {
+    cx_math_multm(r->n, a->n, b->n, secp256k1_p, 32);
+}
+
+/**
+ * Sets a field element to be the square of another
+ *
+ * @param[out] r
+ *    Resulting field element.
+ * @param[in] a
+ *    Argument field element.
+ */
+static inline void secp256k1_fe_sqr(secp256k1_fe *r, const secp256k1_fe *a) {
+    uint8_t e = 2;
+    cx_math_powm(r->n, a->n, &e, 1, secp256k1_p, 32);
+}
+
+/**
+ * Adds a field element to another
+ *
+ * @param[in, out] r
+ *    First argument, also receives results.
+ * @param[in] a
+ *    Second argument.
+ */
+static inline void secp256k1_fe_add(secp256k1_fe *r, const secp256k1_fe *a) {
+    cx_math_addm(r->n, r->n, a->n, secp256k1_p, 32);
+}
+
+/**
+ * Sets a field element equal to the additive inverse of another
+ *
+ * @param[out] r
+ *    Resulting field element.
+ * @param[in] a
+ *    Argument field element.
+ */
+static inline void secp256k1_fe_negate(secp256k1_fe *r, const secp256k1_fe *a) {
+    cx_math_sub(r->n, secp256k1_p, a->n, 32);
+}
+
+/**
+ * Sets a field element to be the (modular) inverse of another.
+ *
+ * @param[out] r
+ *    Resulting field element.
+ * @param[in] a
+ *    Argument field element.
+ */
+static void secp256k1_fe_inv(secp256k1_fe *r, const secp256k1_fe *a) {
+    cx_math_invprimem(r->n, a->n, secp256k1_p, 32);
+}
+
+/**
+ * Computes a square root of a given field element
+ *
+ * @param[out] r
+ *    Resulting field element.
+ * @param[in] a
+ *    Argument field element.
+ *
+ * @return 1 if square root is successfully computed, otherwise 0
+ */
+static int secp256k1_fe_sqrt(secp256k1_fe *r, const secp256k1_fe *a) {
+    cx_math_powm(r->n, a->n, secp256k1_sqr_exponent, 32, secp256k1_p, 32);  // y = sqrt(a) (mod p)
+
+    secp256k1_fe y_2;
+    secp256k1_fe_sqr(&y_2, r);
+    return 0 == cx_math_cmp(y_2.n, a->n, 32);
+}
+
+/**
+ * If flag is true, sets *r equal to *a; otherwise leaves it as is
+ *
+ * @param[out] r
+ *    Resulting field element.
+ * @param[in] a
+ *    Argument field element.
+ * @param[in] flag
+ *    Flag controlling assignment.
+ */
+static void secp256k1_fe_cmov(secp256k1_fe *r, const secp256k1_fe *a, int flag) {
+    uint32_t mask0, mask1;
+    uint32_t *r_words = (uint32_t *)r->n;
+    uint32_t *a_words = (uint32_t *)a->n;
+    mask0 = flag + ~((uint32_t)0);
+    mask1 = ~mask0;
+
+    r_words[0] = (r_words[0] & mask0) | (a_words[0] & mask1);
+    r_words[1] = (r_words[1] & mask0) | (a_words[1] & mask1);
+    r_words[2] = (r_words[2] & mask0) | (a_words[2] & mask1);
+    r_words[3] = (r_words[3] & mask0) | (a_words[3] & mask1);
+    r_words[4] = (r_words[4] & mask0) | (a_words[4] & mask1);
+    r_words[5] = (r_words[5] & mask0) | (a_words[5] & mask1);
+    r_words[6] = (r_words[6] & mask0) | (a_words[6] & mask1);
+    r_words[7] = (r_words[7] & mask0) | (a_words[7] & mask1);
+}
+
+/**
+ * Initializes group elements with given x and y coordinates
+ *
+ * @param[out] r
+ *   Resulting group element.
+ * @param[in] x
+ *   Field element representing x coordinate
+ * @param y
+ *   Field element representing y coordinate
+ */
+static inline void secp256k1_ge_set_xy(secp256k1_ge *r, const secp256k1_fe *x, const secp256k1_fe *y) {
+    r->n[GE_OFFSET_PREFIX] = 0x04;
+    memcpy(r->n + GE_OFFSET_X, x->n, 32);
+    memcpy(r->n + GE_OFFSET_Y, y->n, 32);
+}
+
+/**
+ * Checks the "oddness" of a field element
+ *
+ * @param[in] a
+ *   Field element to check.
+ *
+ * @return 1 if field element is odd, 0 otherwise
+ */
+static inline int secp256k1_fe_is_odd(const secp256k1_fe *a) {
+    return a->n[31] & 1;
 }
 
 /**
@@ -507,4 +714,153 @@ bool liquid_surjectionproof_verify_single(const uint8_t *proof,
     END_TRY;
     return result;
 }
+
+// TODO: document
+static void shallue_van_de_woestijne(secp256k1_ge* ge, const secp256k1_fe* t) {
+    /* Implements the algorithm from:
+     *    Indifferentiable Hashing to Barreto-Naehrig Curves
+     *    Pierre-Alain Fouque and Mehdi Tibouchi
+     *    Latincrypt 2012
+     */
+
+    /* Basic algorithm:
+
+       c = sqrt(-3)
+       d = (c - 1)/2
+
+       w = c * t / (1 + b + t^2)  [with b = 7]
+       x1 = d - t*w
+       x2 = -(x1 + 1)
+       x3 = 1 + 1/w^2
+
+       To avoid the 2 divisions, compute the above in numerator/denominator form:
+       wn = c * t
+       wd = 1 + 7 + t^2
+       x1n = d*wd - t*wn
+       x1d = wd
+       x2n = -(x1n + wd)
+       x2d = wd
+       x3n = wd^2 + c^2 + t^2
+       x3d = (c * t)^2
+
+       The joint denominator j = wd * c^2 * t^2, and
+       1 / x1d = 1/j * c^2 * t^2
+       1 / x2d = x3d = 1/j * wd
+    */
+
+    static const secp256k1_fe c = SECP256K1_FE_CONST(0x0a2d2ba9, 0x3507f1df, 0x233770c2, 0xa797962c, 0xc61f6d15, 0xda14ecd4, 0x7d8d27ae, 0x1cd5f852);
+    static const secp256k1_fe d = SECP256K1_FE_CONST(0x851695d4, 0x9a83f8ef, 0x919bb861, 0x53cbcb16, 0x630fb68a, 0xed0a766a, 0x3ec693d6, 0x8e6afa40);
+    static const secp256k1_fe b = SECP256K1_FE_CONST(0, 0, 0, 0, 0, 0, 0, 7);
+    static const secp256k1_fe b_plus_one = SECP256K1_FE_CONST(0, 0, 0, 0, 0, 0, 0, 8);
+
+    secp256k1_fe tmp, x1, x2, x3;
+    int alphaquad, betaquad;
+
+    {
+        secp256k1_fe wn, wd, x1n, x2n, x3n, x3d, jinv;
+        secp256k1_fe_mul(&wn, &c, t); /* mag 1 */
+        secp256k1_fe_sqr(&wd, t); /* mag 1 */
+        secp256k1_fe_add(&wd, &b_plus_one); /* mag 2 */
+        secp256k1_fe_mul(&tmp, t, &wn); /* mag 1 */
+        secp256k1_fe_negate(&tmp, &tmp); // 1 /* mag 2 */
+        secp256k1_fe_mul(&x1n, &d, &wd); /* mag 1 */
+        secp256k1_fe_add(&x1n, &tmp); /* mag 3 */
+        x2n = x1n; /* mag 3 */
+        secp256k1_fe_add(&x2n, &wd); /* mag 5 */
+        secp256k1_fe_negate(&x2n, &x2n); // 5 /* mag 6 */
+        secp256k1_fe_mul(&x3d, &c, t); /* mag 1 */
+        secp256k1_fe_sqr(&x3d, &x3d); /* mag 1 */
+        secp256k1_fe_sqr(&x3n, &wd); /* mag 1 */
+        secp256k1_fe_add(&x3n, &x3d); /* mag 2 */
+        secp256k1_fe_mul(&jinv, &x3d, &wd); /* mag 1 */
+        secp256k1_fe_inv(&jinv, &jinv); /* mag 1 */
+        secp256k1_fe_mul(&x1, &x1n, &x3d); /* mag 1 */
+        secp256k1_fe_mul(&x1, &x1, &jinv); /* mag 1 */
+        secp256k1_fe_mul(&x2, &x2n, &x3d); /* mag 1 */
+        secp256k1_fe_mul(&x2, &x2, &jinv); /* mag 1 */
+        secp256k1_fe_mul(&x3, &x3n, &wd); /* mag 1 */
+        secp256k1_fe_mul(&x3, &x3, &jinv); /* mag 1 */
+    }
+
+    {
+        secp256k1_fe alphain, betain, gammain, y1, y2, y3;
+        secp256k1_fe_sqr(&alphain, &x1); /* mag 1 */
+        secp256k1_fe_mul(&alphain, &alphain, &x1); /* mag 1 */
+        secp256k1_fe_add(&alphain, &b); /* mag 2 */
+        secp256k1_fe_sqr(&betain, &x2); /* mag 1 */
+        secp256k1_fe_mul(&betain, &betain, &x2); /* mag 1 */
+        secp256k1_fe_add(&betain, &b); /* mag 2 */
+        secp256k1_fe_sqr(&gammain, &x3); /* mag 1 */
+        secp256k1_fe_mul(&gammain, &gammain, &x3); /* mag 1 */
+        secp256k1_fe_add(&gammain, &b); /* mag 2 */
+        alphaquad = secp256k1_fe_sqrt(&y1, &alphain);
+        betaquad = secp256k1_fe_sqrt(&y2, &betain);
+        secp256k1_fe_sqrt(&y3, &gammain);
+
+        secp256k1_fe_cmov(&x1, &x2, (!alphaquad) & betaquad);
+        secp256k1_fe_cmov(&y1, &y2, (!alphaquad) & betaquad);
+        secp256k1_fe_cmov(&x1, &x3, (!alphaquad) & !betaquad);
+        secp256k1_fe_cmov(&y1, &y3, (!alphaquad) & !betaquad);
+
+        secp256k1_ge_set_xy(ge, &x1, &y1);
+    }
+
+    /* The linked algorithm from the paper uses the Jacobi symbol of t to
+     * determine the Jacobi symbol of the produced y coordinate. Since the
+     * rest of the algorithm only uses t^2, we can safely use another criterion
+     * as long as negation of t results in negation of the y coordinate. Here
+     * we choose to use t's oddness, as it is faster to determine. */
+    secp256k1_fe_negate(&tmp, (secp256k1_fe*)&ge->n[GE_OFFSET_Y]); // 1
+    secp256k1_fe_cmov((secp256k1_fe*)&ge->n[GE_OFFSET_Y], &tmp, secp256k1_fe_is_odd(t));
+}
+
+bool liquid_generator_generate(uint8_t gen[static LIQUID_GENERATOR_LEN],
+                               const uint8_t seed32[static 32]) {
+    static const uint8_t prefix1[17] = "1st generation: ";
+    static const uint8_t prefix2[17] = "2nd generation: ";
+    secp256k1_fe t;
+    secp256k1_ge add;
+    secp256k1_ge accum;
+    cx_sha256_t sha256;
+
+    bool result = false;
+    BEGIN_TRY {
+        TRY {
+            cx_sha256_init(&sha256);
+            crypto_hash_update(&sha256.header, prefix1, 16);
+            crypto_hash_update(&sha256.header, seed32, 32);
+            crypto_hash_digest(&sha256.header, t.n, sizeof(t.n));
+            if(secp256k1_scalar_check_overflow(t.n)) {
+                THROW(CX_OVERFLOW);
+            }
+            shallue_van_de_woestijne(&accum, &t);
+
+            cx_sha256_init(&sha256);
+            crypto_hash_update(&sha256.header, prefix2, 16);
+            crypto_hash_update(&sha256.header, seed32, 32);
+            crypto_hash_digest(&sha256.header, t.n, sizeof(t.n));
+            if(secp256k1_scalar_check_overflow(t.n)) {
+                THROW(CX_OVERFLOW);
+            }
+            shallue_van_de_woestijne(&add, &t);
+            secp256k1_ge_add(&accum, &accum, &add);
+            memcpy(gen, accum.n, sizeof(accum.n));
+
+            result = true;
+        }
+        CATCH_ALL {
+            result = false;
+        }
+        FINALLY {
+            // Zeroize sensitive data here
+        }
+    }
+    END_TRY;
+    return result;
+}
+
+#ifdef IMPLEMENT_ON_DEVICE_TESTS
+#include "liquid_proofs_tests.h"
+#endif
+
 #endif // HAVE_LIQUID
