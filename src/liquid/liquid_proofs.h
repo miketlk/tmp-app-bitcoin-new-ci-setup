@@ -9,8 +9,7 @@
 #include <stdbool.h>  // bool
 
 #define LIQUID_MAX_VALUE_PROOF_LEN 73
-#define LIQUID_GENERATOR_LEN 65
-#define LIQUID_COMMITMENT_LEN 33
+#define LIQUID_MAX_SINGLE_SURJECTION_PROOF_LEN 67
 
 /// Alternative generator for secp256k1
 extern const uint8_t secp256k1_generator_h[LIQUID_GENERATOR_LEN];

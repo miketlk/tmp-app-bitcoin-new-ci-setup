@@ -19,7 +19,15 @@ typedef struct {
 } tx_amount_t;
 
 typedef struct {
-    uint8_t asset_commitment[33];
+    bool is_blinded;   // true if asset is blinded and stored as commitment[], otherwise as tag
+    union {
+        uint8_t tag[32];
+        uint8_t commitment[33];
+    };
+} tx_asset_t;
+
+typedef struct {
+    tx_asset_t asset;
     tx_amount_t amount;
 #if RAWTX_DECODE_ECDH_PUBKEY
     uint8_t ecdh_pubkey[33];        // ECDH public key of of the requested output

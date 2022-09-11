@@ -168,11 +168,11 @@ static int parse_rawtxinput_vout(parse_rawtxinput_state_t *state, buffer_t *buff
     uint8_t vout_bytes[4];
     bool result = dbuffer_read_bytes(buffers, vout_bytes, 4);
     if (result) {
-        parse_rawtx_state_t *p_parent = state->parent_state;
+        parse_rawtx_state_t *parent = state->parent_state;
         state->vout = read_u32_le(vout_bytes, 0);
-        crypto_hash_update(&p_parent->hash_context->header, vout_bytes, 4);
-        if (p_parent->issuance_hash_context && !(state->vout & VOUT_FLAG_HAS_ISSUANCE)) {
-            crypto_hash_update_u8(&p_parent->issuance_hash_context->header, 0x00);
+        crypto_hash_update(&parent->hash_context->header, vout_bytes, 4);
+        if (parent->issuance_hash_context && !(state->vout & VOUT_FLAG_HAS_ISSUANCE)) {
+            crypto_hash_update_u8(&parent->issuance_hash_context->header, 0x00);
         }
     }
     return result;
@@ -242,10 +242,10 @@ static int parse_rawtxinput_asset_issuance_nonce(parse_rawtxinput_state_t *state
     uint8_t nonce[32];
     bool result = dbuffer_read_bytes(buffers, nonce, 32);
     if (result) {
-        parse_rawtx_state_t *p_parent = state->parent_state;
-        crypto_hash_update(&p_parent->hash_context->header, nonce, 32);
-        if (p_parent->issuance_hash_context) {
-            crypto_hash_update(&p_parent->issuance_hash_context->header, nonce, 32);
+        parse_rawtx_state_t *parent = state->parent_state;
+        crypto_hash_update(&parent->hash_context->header, nonce, 32);
+        if (parent->issuance_hash_context) {
+            crypto_hash_update(&parent->issuance_hash_context->header, nonce, 32);
         }
     }
     return result;
@@ -259,10 +259,10 @@ static int parse_rawtxinput_asset_issuance_entropy(parse_rawtxinput_state_t *sta
     uint8_t entropy[32];
     bool result = dbuffer_read_bytes(buffers, entropy, 32);
     if (result) {
-        parse_rawtx_state_t *p_parent = state->parent_state;
-        crypto_hash_update(&p_parent->hash_context->header, entropy, 32);
-        if (p_parent->issuance_hash_context) {
-            crypto_hash_update(&p_parent->issuance_hash_context->header, entropy, 32);
+        parse_rawtx_state_t *parent = state->parent_state;
+        crypto_hash_update(&parent->hash_context->header, entropy, 32);
+        if (parent->issuance_hash_context) {
+            crypto_hash_update(&parent->issuance_hash_context->header, entropy, 32);
         }
     }
     return result;
@@ -300,10 +300,10 @@ static int parse_rawtxinput_asset_issuance_commitment(parse_rawtxinput_state_t *
         if (result) {
             // handle commitment here if needed
             // state->commitment_id = {AMOUNT_COMMITMENT, TOKEN_COMMITMENT}
-            parse_rawtx_state_t *p_parent = state->parent_state;
-            crypto_hash_update(&p_parent->hash_context->header, data, data_len);
-            if (p_parent->issuance_hash_context) {
-                crypto_hash_update(&p_parent->issuance_hash_context->header, data, data_len);
+            parse_rawtx_state_t *parent = state->parent_state;
+            crypto_hash_update(&parent->hash_context->header, data, data_len);
+            if (parent->issuance_hash_context) {
+                crypto_hash_update(&parent->issuance_hash_context->header, data, data_len);
             }
             ++state->commitment_id;
         }
@@ -331,18 +331,32 @@ const int n_parse_rawtxinput_steps =
 /*   PARSER FOR A RAWTX OUTPUT */
 
 static int parse_rawtxoutput_asset(parse_rawtxoutput_state_t *state, buffer_t *buffers[2]) {
-    uint8_t asset[33];
-    bool result = dbuffer_read_bytes(buffers, asset, sizeof(asset));
+    uint8_t header;
+    bool result = dbuffer_peek(buffers, &header); // peek first byte
+
     if (result) {
-        if(state->parent_state->hash_context) {
-            crypto_hash_update(&state->parent_state->hash_context->header, asset, sizeof(asset));
+        if (header != 0x01 && header != 0x0a && header != 0x0b) {
+            return -1; // parser error
         }
-        if (state->parent_state->output_index != -1) {
-            unsigned int relevant_output_index = (unsigned int) state->parent_state->output_index;
-            if (state->parent_state->out_counter == relevant_output_index) {
-                memcpy(state->parent_state->parser_output_vout->asset_commitment,
-                       asset,
-                       sizeof(state->parent_state->parser_output_vout->asset_commitment));
+
+        uint8_t asset[33];
+        result = dbuffer_read_bytes(buffers, asset, sizeof(asset));
+
+        if (result) {
+            parse_rawtx_state_t *parent = state->parent_state;
+            if (parent->hash_context) {
+                crypto_hash_update(&parent->hash_context->header, asset, sizeof(asset));
+            }
+            if (parent->output_index != -1 &&
+                parent->out_counter == (unsigned int) parent->output_index) {
+                txid_parser_vout_t *vout = parent->parser_output_vout;
+                if (header == 0x01) {
+                    vout->asset.is_blinded = false;
+                    memcpy(vout->asset.tag, asset + 1, sizeof(vout->asset.tag));
+                } else {
+                    vout->asset.is_blinded = true;
+                    memcpy(vout->asset.commitment, asset, sizeof(vout->asset.commitment));
+                }
             }
         }
     }
@@ -350,35 +364,31 @@ static int parse_rawtxoutput_asset(parse_rawtxoutput_state_t *state, buffer_t *b
 }
 
 static int parse_rawtxoutput_value(parse_rawtxoutput_state_t *state, buffer_t *buffers[2]) {
-    uint8_t data[33];
-    size_t data_len = 0;
-
-    uint8_t flag;
-    bool result = dbuffer_peek(buffers, &flag); // peek first byte
+    uint8_t header;
+    bool result = dbuffer_peek(buffers, &header); // peek first byte
     if(result) {
-        if (flag == 0x01) { // non-confidential
-            data_len = 9;
-        } else { // confidential
-            data_len = 33;
+        if (header != 0x01 && header != 0x08 && header != 0x09) {
+            return -1; // parser error
         }
+
+        uint8_t data[33];
+        size_t data_len = (header == 0x01) ? 9 : 33;
         result = dbuffer_read_bytes(buffers, data, data_len);
+
         if (result) {
-            parse_rawtx_state_t *p_parent = state->parent_state;
-            txid_parser_vout_t *p_vout = p_parent->parser_output_vout;
-            if(p_parent->hash_context) {
-                crypto_hash_update(&p_parent->hash_context->header, data, data_len);
+            parse_rawtx_state_t *parent = state->parent_state;
+            txid_parser_vout_t *vout = parent->parser_output_vout;
+            if(parent->hash_context) {
+                crypto_hash_update(&parent->hash_context->header, data, data_len);
             }
-            if (p_parent->output_index != -1) {
-                if (p_parent->out_counter == (unsigned int) p_parent->output_index) {
-                    if(data_len == 9) {
-                        p_vout->amount.value = read_u64_be(data, 1);
-                        p_vout->amount.is_blinded = false;
-                    } else if(data_len == 33) {
-                        memcpy(p_vout->amount.commitment, data, sizeof(p_vout->amount.commitment));
-                        p_vout->amount.is_blinded = true;
-                    } else {
-                        return -1; // parser error
-                    }
+            if (parent->output_index != -1 &&
+                parent->out_counter == (unsigned int) parent->output_index) {
+                if (data_len == 9) {
+                    vout->amount.is_blinded = false;
+                    vout->amount.value = read_u64_be(data, 1);
+                } else {
+                    vout->amount.is_blinded = true;
+                    memcpy(vout->amount.commitment, data, sizeof(vout->amount.commitment));
                 }
             }
         }
@@ -393,7 +403,7 @@ static int parse_rawtxoutput_ecdh_pubkey(parse_rawtxoutput_state_t *state, buffe
     uint8_t flag;
     bool result = dbuffer_peek(buffers, &flag); // peek first byte
     if(result) {
-        parse_rawtx_state_t *p_parent = state->parent_state;
+        parse_rawtx_state_t *parent = state->parent_state;
         if (flag == 0x00) { // no ECDH public key
             data_len = 1;
         } else { // ECDH public key is provided
@@ -401,18 +411,18 @@ static int parse_rawtxoutput_ecdh_pubkey(parse_rawtxoutput_state_t *state, buffe
         }
         result = dbuffer_read_bytes(buffers, data, data_len);
         if (result) {
-            if(p_parent->hash_context) {
-                crypto_hash_update(&p_parent->hash_context->header, data, data_len);
+            if(parent->hash_context) {
+                crypto_hash_update(&parent->hash_context->header, data, data_len);
             }
 #if RAWTX_DECODE_ECDH_PUBKEY
-            txid_parser_vout_t *p_vout = p_parent->parser_output_vout;
-            if (p_parent->output_index != -1) {
-                if (p_parent->out_counter == (unsigned int) p_parent->output_index) {
+            txid_parser_vout_t *vout = parent->parser_output_vout;
+            if (parent->output_index != -1) {
+                if (parent->out_counter == (unsigned int) parent->output_index) {
                     if (data_len == 33) {
-                        memcpy(p_vout->ecdh_pubkey, data, sizeof(p_vout->ecdh_pubkey));
-                        p_vout->ecdh_pubkey_valid = true;
+                        memcpy(vout->ecdh_pubkey, data, sizeof(vout->ecdh_pubkey));
+                        vout->ecdh_pubkey_valid = true;
                     } else {
-                        p_vout->ecdh_pubkey_valid = false;
+                        vout->ecdh_pubkey_valid = false;
                     }
                 }
             }

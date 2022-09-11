@@ -20,6 +20,16 @@
 #define GET_BLINDING_KEY_MAX_SCRIPT_LEN 252
 
 /**
+ * Size of generator in bytes
+ */
+#define LIQUID_GENERATOR_LEN 65
+
+/**
+ * Size of commitment in bytes
+ */
+#define LIQUID_COMMITMENT_LEN 33
+
+/**
  * Type of blinding key derivation
  */
 typedef enum {
