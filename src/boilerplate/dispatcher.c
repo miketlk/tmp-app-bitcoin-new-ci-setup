@@ -17,6 +17,12 @@
 
 #include <stdint.h>
 #include <stdbool.h>
+#ifdef HAVE_CCMD_PRINTF
+#include <string.h>
+#include <stdio.h>
+#include <stdarg.h>
+#include "printf.h"
+#endif
 
 #include "dispatcher.h"
 #include "constants.h"
@@ -119,18 +125,7 @@ static int process_interruption(dispatcher_context_t *dc) {
         return -1;
     }
 
-#ifdef HAVE_APDU_LOG
-    PRINTF("=> CLA=%02X | INS=%02X | P1=%02X | P2=%02X | Lc=%02X | CData=",
-           cmd.cla,
-           cmd.ins,
-           cmd.p1,
-           cmd.p2,
-           cmd.lc);
-    for (int i = 0; i < cmd.lc; i++) {
-        PRINTF("%02X", cmd.data[i]);
-    }
-    PRINTF("\n");
-#endif
+    LOG_APDU(&cmd);
 
     // INS_CONTINUE is the only valid apdu here
     if (cmd.cla != CLA_FRAMEWORK || cmd.ins != INS_CONTINUE) {
@@ -276,7 +271,7 @@ static void dispatcher_loop() {
     io_clear_processing_timeout();
 }
 
-#if !(DEBUG == 0) || defined(HAVE_LOG_PROCESSOR)
+#ifdef HAVE_LOG_PROCESSOR
 // Print current filename, line number and function name.
 // Indents according to the nesting depth for subprocessors.
 void print_dispatcher_info(dispatcher_context_t *dc,
@@ -300,6 +295,51 @@ void print_dispatcher_info(dispatcher_context_t *dc,
     debug_write_dec(line);
     debug_write(": ");
     debug_write(func);
+    debug_write("\n");
+}
+#endif
+
+#ifdef HAVE_CCMD_PRINTF
+
+#define CCMD_DEBUG 0xEE
+
+int ccmd_printf(dispatcher_context_t *dc, const char *format, ... ) {
+    char buf[1 + 128 + 1];
+
+    va_list args;
+    va_start(args, format);
+    int ret = vsnprintf(buf + 1, sizeof(buf) - 2, format, args);
+    va_end(args);
+
+    if (ret > 0) {
+        buf[0] = CCMD_DEBUG;
+        buf[1 + ret] = '\0';
+        dc->add_to_response(buf, 1 + ret);
+        dc->finalize_response(SW_INTERRUPTED_EXECUTION);
+        return dc->process_interruption(dc);
+    }
+
+    return 0;
+}
+#endif // HAVE_CCMD_PRINTF
+
+#ifdef HAVE_APDU_LOG
+void log_apdu(const command_t* cmd) {
+    debug_write("=> CLA=");
+    debug_write_hex(cmd->cla, 1);
+    debug_write(" | INS=");
+    debug_write_hex(cmd->ins, 1);
+    debug_write(" | P1=");
+    debug_write_hex(cmd->p1, 1);
+    debug_write(" | P2=");
+    debug_write_hex(cmd->p2, 1);
+    debug_write(" | Lc=");
+    debug_write_hex(cmd->lc, 1);
+    debug_write(" | CData=");
+
+    for (int i = 0; i < cmd->lc; i++) {
+        debug_write_hex(cmd->data[i], 1);
+    }
     debug_write("\n");
 }
 #endif

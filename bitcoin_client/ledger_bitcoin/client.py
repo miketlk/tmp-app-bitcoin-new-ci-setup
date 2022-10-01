@@ -4,7 +4,7 @@ from io import BytesIO, BufferedReader
 
 from .command_builder import BitcoinCommandBuilder, BitcoinInsType
 from .common import Chain, read_varint
-from .client_command import ClientCommandInterpreter
+from .client_command import ClientCommandInterpreter, ClientCommandCode
 from .client_base import Client, TransportClient
 from .client_legacy import LegacyClient
 from .exception import DeviceException
@@ -47,13 +47,17 @@ class NewClient(Client):
         sw, response = self._apdu_exchange(apdu)
 
         while sw == 0xE000:
-            if not client_intepreter:
-                raise RuntimeError("Unexpected SW_INTERRUPTED_EXECUTION received.")
+            if response and response[0] == ClientCommandCode.DEBUG:
+                print("** DEBUG:", response[1:].decode('utf-8'))
+                sw, response = self._apdu_exchange(self.builder.continue_interrupted(b""))
+            else:
+                if not client_intepreter:
+                    raise RuntimeError("Unexpected SW_INTERRUPTED_EXECUTION received.")
 
-            command_response = client_intepreter.execute(response)
-            sw, response = self._apdu_exchange(
-                self.builder.continue_interrupted(command_response)
-            )
+                command_response = client_intepreter.execute(response)
+                sw, response = self._apdu_exchange(
+                    self.builder.continue_interrupted(command_response)
+                )
 
         return sw, response
 

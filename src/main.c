@@ -262,18 +262,8 @@ void app_main() {
                 return;
             }
 
-#ifdef HAVE_APDU_LOG
-            PRINTF("=> CLA=%02X | INS=%02X | P1=%02X | P2=%02X | Lc=%02X | CData=",
-                   cmd.cla,
-                   cmd.ins,
-                   cmd.p1,
-                   cmd.p2,
-                   cmd.lc);
-            for (int i = 0; i < cmd.lc; i++) {
-                PRINTF("%02X", cmd.data[i]);
-            }
-            PRINTF("\n");
-#endif
+            LOG_APDU(&cmd);
+
             if (G_swap_state.called_from_swap &&
                 (cmd.ins != SIGN_PSBT && cmd.ins != GET_MASTER_FINGERPRINT)) {
                 PRINTF("Only SIGN_PSBT and GET_MASTER_FINGERPRINT can be called during swap\n");

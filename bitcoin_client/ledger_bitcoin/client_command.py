@@ -13,6 +13,7 @@ class ClientCommandCode(IntEnum):
     GET_MERKLE_LEAF_PROOF = 0x41
     GET_MERKLE_LEAF_INDEX = 0x42
     GET_MORE_ELEMENTS = 0xA0
+    DEBUG = 0xEE
 
 
 class ClientCommand:
@@ -318,7 +319,7 @@ class ClientCommandInterpreter:
         of a mapping of bytes to bytes.
 
         Adds the Merkle tree of the list of keys, and the Merkle tree of the list of corresponding
-        values, with the same semantics as the `add_known_list` applied separately to the two lists. 
+        values, with the same semantics as the `add_known_list` applied separately to the two lists.
 
         Parameters
         ----------
