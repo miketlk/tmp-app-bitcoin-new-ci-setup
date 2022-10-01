@@ -374,20 +374,14 @@ static int secp256k1_fe_sqrt(secp256k1_fe *r, const secp256k1_fe *a) {
  *    Flag controlling assignment.
  */
 static void secp256k1_fe_cmov(secp256k1_fe *r, const secp256k1_fe *a, int flag) {
-    uint32_t mask0, mask1;
-    uint32_t *r_words = (uint32_t *)r->n;
-    uint32_t *a_words = (uint32_t *)a->n;
-    mask0 = flag + ~((uint32_t)0);
-    mask1 = ~mask0;
+    uint8_t *p_r = r->n;
+    const uint8_t *p_a = a->n;
+    uint8_t mask0 = flag + ~((uint8_t)0);
+    uint8_t mask1 = ~mask0;
 
-    r_words[0] = (r_words[0] & mask0) | (a_words[0] & mask1);
-    r_words[1] = (r_words[1] & mask0) | (a_words[1] & mask1);
-    r_words[2] = (r_words[2] & mask0) | (a_words[2] & mask1);
-    r_words[3] = (r_words[3] & mask0) | (a_words[3] & mask1);
-    r_words[4] = (r_words[4] & mask0) | (a_words[4] & mask1);
-    r_words[5] = (r_words[5] & mask0) | (a_words[5] & mask1);
-    r_words[6] = (r_words[6] & mask0) | (a_words[6] & mask1);
-    r_words[7] = (r_words[7] & mask0) | (a_words[7] & mask1);
+    for(int i = 0; i < 32; ++i, p_r++) {
+        *p_r = (*p_r & mask0) | (*(p_a++) & mask1);
+    }
 }
 
 /**
