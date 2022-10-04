@@ -79,7 +79,7 @@ def test_register_wallet_accept_wit(client: Client, speculos_globals):
 @has_automation("automations/register_wallet_reject.json")
 def test_register_wallet_reject_header(client: Client):
     wallet = MultisigWallet(
-        name="Cold storage",
+        name="Reject me!",
         address_type=AddressType.WIT,
         threshold=2,
         keys_info=[

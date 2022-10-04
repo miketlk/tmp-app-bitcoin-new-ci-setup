@@ -57,7 +57,7 @@ def test_register_blinded_wallet_accept_wit(client: Client, speculos_globals):
 @has_automation("automations/register_wallet_reject.json")
 def test_register_blinded_wallet_reject_header(client: Client):
     wallet = BlindedMultisigWallet(
-        name="Cold storage",
+        name="Reject me!",
         blinding_key="L1XvKmnKWuC4a5sbz3Ez6LCfMCbaXMBCcQk7C62ziN5NjoEgjN5N",
         address_type=AddressType.WIT,
         threshold=2,
