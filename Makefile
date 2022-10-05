@@ -36,7 +36,7 @@ APP_STACK_SIZE = 1500
 
 # simplify for tests
 ifndef COIN
-COIN=bitcoin_testnet
+COIN=liquid_regtest
 endif
 
 # Custom NanoS linking script to overlap legacy globals and new globals
@@ -203,7 +203,7 @@ DEFINES   += COIN_NATIVE_SEGWIT_PREFIX=\"ert\"
 DEFINES   += COIN_NATIVE_SEGWIT_PREFIX_CONFIDENTIAL=\"el\"
 DEFINES   += COIN_KIND=COIN_KIND_BITCOIN
 DEFINES   += COIN_FLAGS=FLAG_SEGWIT_CHANGE_SUPPORT
-APPNAME ="Liquid Test"
+APPNAME = "Liquid Regtest"
 APP_LOAD_PARAMS += --path $(APP_PATH) --path_slip21 "SLIP-0077"
 
 else ifeq ($(COIN),liquid_regtest_headless)
@@ -234,7 +234,7 @@ DEFINES   += COIN_NATIVE_SEGWIT_PREFIX_CONFIDENTIAL=\"el\"
 DEFINES   += COIN_KIND=COIN_KIND_BITCOIN
 DEFINES   += COIN_FLAGS=FLAG_SEGWIT_CHANGE_SUPPORT
 DEFINES   += HAVE_LIQUID_HEADLESS
-APPNAME ="Liquid Test Hless"
+APPNAME = "Liquid Regtest Hless"
 APP_LOAD_PARAMS += --path $(APP_PATH) --path_slip21 "SLIP-0077"
 
 else ifeq ($(COIN),liquid)
@@ -263,7 +263,7 @@ DEFINES   += COIN_NATIVE_SEGWIT_PREFIX=\"ex\"
 DEFINES   += COIN_NATIVE_SEGWIT_PREFIX_CONFIDENTIAL=\"lq\"
 DEFINES   += COIN_KIND=COIN_KIND_BITCOIN
 DEFINES   += COIN_FLAGS=FLAG_SEGWIT_CHANGE_SUPPORT
-APPNAME ="Liquid"
+APPNAME = "Liquid"
 APP_LOAD_PARAMS += --path $(APP_PATH) --path_slip21 "SLIP-0077"
 
 else ifeq ($(COIN),liquid_headless)
@@ -295,7 +295,7 @@ DEFINES   += COIN_NATIVE_SEGWIT_PREFIX_CONFIDENTIAL=\"lq\"
 DEFINES   += COIN_KIND=COIN_KIND_BITCOIN
 DEFINES   += COIN_FLAGS=FLAG_SEGWIT_CHANGE_SUPPORT
 DEFINES   += HAVE_LIQUID_HEADLESS
-APPNAME ="Liquid Hless"
+APPNAME = "Liquid Hless"
 APP_LOAD_PARAMS += --path $(APP_PATH) --path_slip21 "SLIP-0077"
 
 else ifeq ($(COIN),bitcoin_cash)
@@ -831,11 +831,15 @@ endif
 ifeq ($(DEBUG),0)
         DEFINES   += PRINTF\(...\)=
 else
-        #DEFINES += DEBUG=$(DEBUG)
         ifeq ($(DEBUG),10)
                 $(warning Using semihosted PRINTF. Only run with Speculos!)
-                DEFINES += HAVE_PRINTF HAVE_SEMIHOSTED_PRINTF PRINTF=semihosted_printf HAVE_LOG_PROCESSOR
-                # DEFINES += HAVE_APDU_LOG HAVE_PRINT_STACK_POINTER
+                DEFINES += HAVE_PRINTF HAVE_SEMIHOSTED_PRINTF PRINTF=semihosted_printf
+                # DEFINES += HAVE_LOG_PROCESSOR
+                # DEFINES += HAVE_APDU_LOG
+                # DEFINES += HAVE_PRINT_STACK_POINTER
+        else ifeq ($(DEBUG),11)
+                $(warning CCMD PRINTF is used! APDU exchage is affected.)
+                DEFINES += HAVE_CCMD_PRINTF
         else
                 ifeq ($(TARGET_NAME),TARGET_NANOS)
                         DEFINES += HAVE_PRINTF PRINTF=screen_printf
@@ -890,6 +894,12 @@ load: all
 	python3 -m ledgerblue.loadApp $(APP_LOAD_PARAMS)
 
 load-offline: all
+	python3 -m ledgerblue.loadApp $(APP_LOAD_PARAMS) --offline
+
+load-no-build:
+	python3 -m ledgerblue.loadApp $(APP_LOAD_PARAMS)
+
+load-offline-no-build:
 	python3 -m ledgerblue.loadApp $(APP_LOAD_PARAMS) --offline
 
 delete:
