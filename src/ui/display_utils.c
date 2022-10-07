@@ -29,9 +29,15 @@ static uint64_t div10(uint64_t n) {
     }
 }
 
-static uint64_t div100000000(uint64_t n) {
+static uint64_t div_pow10(uint64_t n, uint8_t pow10) {
     uint64_t res = n;
-    for (int i = 0; i < 8; i++) res = div10(res);
+    for (int i = 0; i < pow10; i++) res = div10(res);
+    return res;
+}
+
+static uint64_t mul_pow10(uint64_t n, uint8_t pow10) {
+    uint64_t res = n;
+    for (int i = 0; i < pow10; i++) res = res * (uint8_t)10;
     return res;
 }
 
@@ -48,20 +54,29 @@ static size_t n_digits(uint64_t number) {
     return count;
 }
 
-void format_sats_amount(const char *coin_name,
-                        uint64_t amount,
-                        char out[static MAX_AMOUNT_LENGTH + 1]) {
+void format_amount(const char *coin_name,
+                   uint64_t amount,
+                   uint8_t decimals,
+                   char out[static MAX_AMOUNT_LENGTH + 1]) {
+    if (!out) {
+        return;
+    }
+    if (!coin_name || strlen(coin_name) > MAX_ASSET_TICKER_LENGTH || decimals > 19) {
+        strcpy(out, "<ERROR>");
+        return;
+    }
+
     size_t coin_name_len = strlen(coin_name);
-    strcpy(out, coin_name);
+    strncpy(out, coin_name, coin_name_len);
     out[coin_name_len] = ' ';
 
     char *amount_str = out + coin_name_len + 1;
 
     // HACK: avoid __udivmoddi4
-    // uint64_t integral_part = amount / 100000000;
-    // uint32_t fractional_part = (uint32_t) (amount % 100000000);
-    uint64_t integral_part = div100000000(amount);
-    uint32_t fractional_part = (uint32_t) (amount - integral_part * 100000000);
+    // uint64_t integral_part = amount / (10 ^ decimals);
+    // uint32_t fractional_part = (uint32_t) (amount % (10 ^ decimals));
+    uint64_t integral_part = div_pow10(amount, decimals);
+    uint64_t fractional_part = amount - mul_pow10(integral_part, decimals);
 
     // format the integral part, starting from the least significant digit
     size_t integral_part_digit_count = n_digits(integral_part);
@@ -76,16 +91,27 @@ void format_sats_amount(const char *coin_name,
         integral_part = tmp_quotient;
     }
 
-    if (fractional_part == 0) {
+    if (fractional_part == 0 || decimals == 0) {
         amount_str[integral_part_digit_count] = '\0';
     } else {
-        // format the fractional part (exactly 8 digits, possibly with trailing zeros)
         amount_str[integral_part_digit_count] = '.';
+        size_t fractional_part_digit_count = n_digits(fractional_part);
         char *fract_part_str = amount_str + integral_part_digit_count + 1;
-        snprintf(fract_part_str, 8 + 1, "%08u", fractional_part);
-
+        // add leading zeroes according to specified `decimals`
+        for (unsigned int i = 0; i < decimals - fractional_part_digit_count; i++) {
+            *fract_part_str++ = '0';
+        }
+        // convert fractional part to characters
+        for (unsigned int i = 0; i < fractional_part_digit_count; i++) {
+            uint64_t tmp_quotient = div10(fractional_part);
+            char tmp_remainder = (char) (fractional_part - 10 * tmp_quotient);
+            fract_part_str[fractional_part_digit_count - 1 - i] = '0' + tmp_remainder;
+            fractional_part = tmp_quotient;
+        }
+        fract_part_str[fractional_part_digit_count] = '\0';
         // drop trailing zeros
-        for (int i = 7; i > 0 && fract_part_str[i] == '0'; i--) {
+        fract_part_str = amount_str + integral_part_digit_count + 1;
+        for (int i = decimals - 1; i > 0 && fract_part_str[i] == '0'; i--) {
             fract_part_str[i] = '\0';
         }
     }

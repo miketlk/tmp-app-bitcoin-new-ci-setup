@@ -255,8 +255,9 @@ static void input_keys_callback(input_keys_callback_state_t *state, buffer_t *da
                 }
             }
         } else if (keytype == PSBT_IN_PROPRIETARY) {
-            if (test_proprietary_key(data, PSBT_ELEMENTS_LEGACY_IN_VALUE)) {
-                state->key_presence |= HAS_PREVOUT_AMOUNT;
+            if (test_proprietary_key(data, PSBT_ELEMENTS_LEGACY_IN_VALUE) ||
+                test_proprietary_key(data, PSBT_ELEMENTS_IN_EXPLICIT_VALUE)) {
+                state->key_presence |= HAS_VALUE;
             } else if (test_proprietary_key(data, PSBT_ELEMENTS_LEGACY_IN_VALUE_BLINDER)) {
                 state->key_presence |= HAS_VALUE_BLINDING_FACTOR;
             } else if (test_proprietary_key(data, PSBT_ELEMENTS_LEGACY_IN_ASSET) ||
@@ -283,8 +284,6 @@ static void input_keys_callback(input_keys_callback_state_t *state, buffer_t *da
             } else if (test_proprietary_key(data,
                                             PSBT_ELEMENTS_IN_ISSUANCE_BLIND_INFLATION_KEYS_PROOF)) {
                 state->key_presence |= HAS_TOKEN_PROOF;
-            } else if (test_proprietary_key(data, PSBT_ELEMENTS_IN_EXPLICIT_VALUE)) {
-                state->key_presence |= HAS_VALUE;
             } else if (test_proprietary_key(data, PSBT_ELEMENTS_IN_VALUE_PROOF)) {
                 state->key_presence |= HAS_VALUE_PROOF;
             } else if (test_proprietary_key(data, PSBT_ELEMENTS_IN_ASSET_PROOF)) {
@@ -860,14 +859,16 @@ static bool handle_input_asset(sign_pset_state_t *state, tx_asset_t *asset) {
             return 0 == memcmp(state->global_asset_tag, asset->tag, sizeof(state->global_asset_tag));
         } else {
             memcpy(state->global_asset_tag, asset->tag, sizeof(state->global_asset_tag));
+            // Look for asset information (if known)
+            state->global_asset_info = liquid_get_asset_info(asset->tag);
             // Prepare asset generator
             if (!liquid_generator_generate(state->global_asset_gen, asset->tag)) {
-                return false;
+                 return false;
             }
-            state->global_asset_init = true;
+             state->global_asset_init = true;
         }
     }
-    return true;
+     return true;
 }
 
 // TODO: document
@@ -894,6 +895,8 @@ static void sha_context_free(sign_pset_state_t *state, const cx_sha256_t *contex
  */
 void handler_liquid_sign_pset(dispatcher_context_t *dc) {
     sign_pset_state_t *state = (sign_pset_state_t *) &G_command_state;
+
+    LOG_PROCESSOR(dc, __FILE__, __LINE__, __func__);
 
     // Initialize state variables
     state->global_asset_init = false;
@@ -1199,18 +1202,31 @@ static void process_input_map(dispatcher_context_t *dc) {
         }
     }
 
-    if(state->cur.key_presence & HAS_PREVOUT_AMOUNT) {
+    if(state->cur.key_presence & HAS_VALUE) {
+        tx_amount_t prevout_amount;
+        prevout_amount.is_blinded = false;
+
         // Obtain input value from PSET field
-        if (8 != call_get_merkleized_map_value_u64_le(dc,
+        if (8 == call_get_merkleized_map_value_u64_le(dc,
+                                                      &state->cur.in_out.map,
+                                                      PSBT_ELEMENTS_IN_EXPLICIT_VALUE,
+                                                      sizeof(PSBT_ELEMENTS_IN_EXPLICIT_VALUE),
+                                                      &prevout_amount.value) ||
+            8 == call_get_merkleized_map_value_u64_le(dc,
                                                       &state->cur.in_out.map,
                                                       PSBT_ELEMENTS_LEGACY_IN_VALUE,
                                                       sizeof(PSBT_ELEMENTS_LEGACY_IN_VALUE),
-                                                      &state->cur.input.prevout_amount)) {
+                                                      &prevout_amount.value)) {
+            if (!set_input_amount(&state->cur, &prevout_amount)) {
+                PRINTF("Amount is invalid\n");
+                SEND_SW(dc, SW_INCORRECT_DATA);
+                return;
+            }
+        } else {
             PRINTF("Failed to obtain value for input %u\n", state->cur_input_index);
             SEND_SW(dc, SW_INCORRECT_DATA);
             return;
         }
-        state->cur.key_read_status |= HAS_PREVOUT_AMOUNT;
     }
 
     // either witness utxo or non-witness utxo (or both) must be present.
@@ -1325,7 +1341,12 @@ static void process_input_map(dispatcher_context_t *dc) {
         return;
     }
 
-    dc->next(check_input_commitments);
+    if(!state->global_asset_info) {
+        // Warn the user about unknown asset
+        ui_warn_unknown_asset(dc, state->global_asset_tag, check_input_commitments);
+    } else {
+        dc->next(check_input_commitments);
+    }
 }
 
 static void check_input_commitments(dispatcher_context_t *dc) {
@@ -1333,8 +1354,86 @@ static void check_input_commitments(dispatcher_context_t *dc) {
 
     LOG_PROCESSOR(dc, __FILE__, __LINE__, __func__);
 
-    // TODO: implement (!!!)
+    // TODO: re-enable commitment check when adequate tests become be available (!!!)
+#if 0
+    uint8_t blinded_asset_gen[LIQUID_GENERATOR_LEN];
+    bool blinded_asset_gen_init = false;
 
+    // Verify asset commitment.
+    // Also save blinded asset generator for value commitment verification.
+    if (state->cur.key_read_status & HAS_ASSET_COMMITMENT) {
+        if (!liquid_generator_parse(blinded_asset_gen, state->cur.in_out.asset_commitment)) {
+            PRINTF("Error parsing asset commitment\n");
+            SEND_SW(dc, SW_INCORRECT_DATA);
+            return;
+        }
+        blinded_asset_gen_init = true;
+
+        if (state->global_asset_init) {
+            uint8_t proof[LIQUID_MAX_SINGLE_SURJECTION_PROOF_LEN];
+
+            int proof_len = call_get_merkleized_map_value(dc,
+                                                          &state->cur.in_out.map,
+                                                          PSBT_ELEMENTS_IN_ASSET_PROOF,
+                                                          sizeof(PSBT_ELEMENTS_IN_ASSET_PROOF),
+                                                          proof,
+                                                          sizeof(proof));
+            if (proof_len <= 0) {
+                PRINTF("Error fetching asset proof\n");
+                SEND_SW(dc, SW_INCORRECT_DATA);
+                return;
+            }
+
+            bool result = liquid_surjectionproof_verify_single(proof,
+                                                               proof_len,
+                                                               state->global_asset_gen,
+                                                               blinded_asset_gen);
+            if (!result) {
+                PRINTF("Invalid asset commitment for output %u\n", state->cur_output_index);
+                SEND_SW(dc, SW_INCORRECT_DATA);
+                return;
+            }
+        } else {
+            PRINTF("Asset generator not initialized\n");
+            SEND_SW(dc, SW_INCORRECT_DATA);
+            return;
+        }
+    }
+
+    // Verify value commitment
+    if (state->cur.key_read_status & HAS_VALUE_COMMITMENT) {
+        if (!blinded_asset_gen_init) {
+            PRINTF("Asset commitment is required to verify value commitment\n");
+            SEND_SW(dc, SW_INCORRECT_DATA);
+            return;
+        }
+
+        uint8_t proof[LIQUID_MAX_VALUE_PROOF_LEN];
+        int proof_len = call_get_merkleized_map_value(dc,
+                                                      &state->cur.in_out.map,
+                                                      PSBT_ELEMENTS_IN_VALUE_PROOF,
+                                                      sizeof(PSBT_ELEMENTS_IN_VALUE_PROOF),
+                                                      proof,
+                                                      sizeof(proof));
+        if (proof_len <= 0) {
+            PRINTF("Error fetching value proof\n");
+            SEND_SW(dc, SW_INCORRECT_DATA);
+            return;
+        }
+
+        bool result = liquid_rangeproof_verify_exact(proof,
+                                                     (size_t)proof_len,
+                                                     state->cur.output.value,
+                                                     state->cur.in_out.value_commitment,
+                                                     sizeof(state->cur.in_out.value_commitment),
+                                                     blinded_asset_gen);
+        if (!result) {
+            PRINTF("Invalid value commitment for output %u\n", state->cur_output_index);
+            SEND_SW(dc, SW_INCORRECT_DATA);
+            return;
+        }
+    }
+#endif
     dc->next(check_input_owned);
 }
 
@@ -1562,8 +1661,8 @@ static void check_output_commitments(dispatcher_context_t *dc) {
                 SEND_SW(dc, SW_INCORRECT_DATA);
                 return;
             }
-            blinded_asset_gen_init = true;
         }
+        blinded_asset_gen_init = true;
 
         if (state->global_asset_init) {
             uint8_t proof[LIQUID_MAX_SINGLE_SURJECTION_PROOF_LEN];
@@ -1731,12 +1830,23 @@ static void output_validate_external(dispatcher_context_t *dc) {
     } else {
 #endif // LIQUID_HAS_SWAP
         // Show address to the user
-        ui_validate_output(dc,
-                           state->external_outputs_count,
-                           output_address,
-                           G_coin_config->name_short,
-                           state->cur.output.value,
-                           output_next);
+        if(state->global_asset_info) {
+            ui_validate_output(dc,
+                               state->external_outputs_count,
+                               output_address,
+                               state->global_asset_info->ticker,
+                               state->cur.output.value,
+                               state->global_asset_info->decimals,
+                               output_next);
+        } else { // Unknown asset
+            ui_validate_output(dc,
+                               state->external_outputs_count,
+                               output_address,
+                               UNKNOWN_ASSET_TICKER,
+                               state->cur.output.value,
+                               UNKNOWN_ASSET_DECIMALS,
+                               output_next);
+        }
         return;
 #ifdef LIQUID_HAS_SWAP
     }
@@ -1802,7 +1912,19 @@ static void confirm_transaction(dispatcher_context_t *dc) {
     } else {
 #endif // LIQUID_HAS_SWAP
         // Show final user validation UI
-        ui_validate_transaction(dc, G_coin_config->name_short, state->fee_value, sign_init);
+        if(state->global_asset_info) {
+            ui_validate_transaction(dc,
+                                    state->global_asset_info->ticker,
+                                    state->fee_value,
+                                    state->global_asset_info->decimals,
+                                    sign_init);
+        } else { // Unknown asset
+            ui_validate_transaction(dc,
+                                    UNKNOWN_ASSET_TICKER,
+                                    state->fee_value,
+                                    UNKNOWN_ASSET_DECIMALS,
+                                    sign_init);
+        }
 #ifdef LIQUID_HAS_SWAP
     }
 #endif
@@ -2098,18 +2220,31 @@ static void sign_process_input_map(dispatcher_context_t *dc) {
         state->cur.key_presence = callback_state.key_presence;
     }
 
-    if(state->cur.key_presence & HAS_PREVOUT_AMOUNT) {
+    if(state->cur.key_presence & HAS_VALUE) {
+        tx_amount_t prevout_amount;
+        prevout_amount.is_blinded = false;
+
         // Obtain input value from PSET field
-        if (8 != call_get_merkleized_map_value_u64_le(dc,
+        if (8 == call_get_merkleized_map_value_u64_le(dc,
+                                                      &state->cur.in_out.map,
+                                                      PSBT_ELEMENTS_IN_EXPLICIT_VALUE,
+                                                      sizeof(PSBT_ELEMENTS_IN_EXPLICIT_VALUE),
+                                                      &prevout_amount.value) ||
+            8 == call_get_merkleized_map_value_u64_le(dc,
                                                       &state->cur.in_out.map,
                                                       PSBT_ELEMENTS_LEGACY_IN_VALUE,
                                                       sizeof(PSBT_ELEMENTS_LEGACY_IN_VALUE),
-                                                      &state->cur.input.prevout_amount)) {
+                                                      &prevout_amount.value)) {
+            if (!set_input_amount(&state->cur, &prevout_amount)) {
+                PRINTF("Amount is invalid\n");
+                SEND_SW(dc, SW_INCORRECT_DATA);
+                return;
+            }
+        } else {
             PRINTF("Failed to obtain value for input %u\n", state->cur_input_index);
             SEND_SW(dc, SW_INCORRECT_DATA);
             return;
         }
-        state->cur.key_read_status |= HAS_PREVOUT_AMOUNT;
     }
 
     if (!(state->cur.key_presence & HAS_SIGHASH_TYPE)) {

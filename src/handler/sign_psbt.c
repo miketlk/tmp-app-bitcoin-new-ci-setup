@@ -940,6 +940,7 @@ static void output_validate_external(dispatcher_context_t *dc) {
                            output_address,
                            G_coin_config->name_short,
                            state->cur.output.value,
+                           BITCOIN_DECIMALS,
                            output_next);
         return;
     }
@@ -1003,7 +1004,7 @@ static void confirm_transaction(dispatcher_context_t *dc) {
         dc->next(sign_init);
     } else {
         // Show final user validation UI
-        ui_validate_transaction(dc, G_coin_config->name_short, fee, sign_init);
+        ui_validate_transaction(dc, G_coin_config->name_short, fee, BITCOIN_DECIMALS, sign_init);
     }
 }
 

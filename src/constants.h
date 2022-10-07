@@ -93,3 +93,18 @@
 #ifdef HAVE_LIQUID
 #define SIGHASH_RANGEPROOF   0x00000040
 #endif
+
+/**
+ * Number of decimal digits in fractional part of Bitcoin amount
+ * (Satoshis per Bitcoin expressed as a power of 10)
+ */
+#define BITCOIN_DECIMALS 8
+
+/**
+ * Maximum length (characters) of an asset ticker
+ */
+#ifdef HAVE_LIQUID
+#define MAX_ASSET_TICKER_LENGTH 10
+#else
+#define MAX_ASSET_TICKER_LENGTH 5
+#endif

@@ -8,6 +8,7 @@
 #include "../common/merkle.h"
 #include "../common/wallet.h"
 #include "../liquid/liquid.h"
+#include "../liquid/liquid_assets.h"
 
 #define MAX_N_INPUTS_CAN_SIGN 512
 #define SIGN_PSET_SHA_CONTEXT_POOL_SIZE 3
@@ -135,6 +136,7 @@ typedef struct {
 
     uint8_t global_asset_tag[32];                    // transaction-global asset tag
     uint8_t global_asset_gen[LIQUID_GENERATOR_LEN];  // transaction-global asset generator
+    const asset_definition_t *global_asset_info;     // asset information (if available)
     bool global_asset_init;  // flag indicating that global_asset_tag[] and global_asset_gen[]
                              // hold a valid values.
 } sign_pset_state_t;
