@@ -70,42 +70,42 @@ static void test_liquid_rangeproof_verify_exact(test_ctx_t *test_ctx) {
 }
 
 static void test_secp256k1_fe_is_quad_var(test_ctx_t *test_ctx) {
-    unsigned char in[32] = { 0 };
+    secp256k1_fe in = { .n = { 0 } };
     int iter;
-    int is_quad;
+    bool is_quad;
     uint64_t res;
 
     // test with small numbers 0...63
     res = 0;
     for(iter = 0; iter < 64; ++iter) {
-        in[31] = iter;
-        is_quad = secp256k1_fe_is_quad_var(in) ? 1 : 0;
+        in.n[31] = iter;
+        TEST_ASSERT( secp256k1_fe_is_quad_var(&in, &is_quad) );
         res = (res << 1) | is_quad;
     }
     TEST_ASSERT(res == 0xe8d1f647bb39603eLLU);
 
     // pseudo-random values starting with 0xffff...ff
     res = 0;
-    memset(in, 0xff, sizeof(in));
+    memset(in.n, 0xff, sizeof(in.n));
     for(iter = 0; iter < 64; ++iter) {
-        is_quad = secp256k1_fe_is_quad_var(in) ? 1 : 0;
+        TEST_ASSERT( secp256k1_fe_is_quad_var(&in, &is_quad) );
         res = (res << 1) | is_quad;
-        cx_hash_sha256(in, 32, in, 32);
+        cx_hash_sha256(in.n, 32, in.n, 32);
     }
     TEST_ASSERT(res == 0x94aff530bc06c53fLLU);
 }
 
 static void test_secp256k1_scalar_check_overflow(test_ctx_t *test_ctx) {
-    uint8_t in[32];
+    secp256k1_scalar in;
     int iter;
     uint32_t res = 0;
-    int ovf_flag;
+    bool ovf_flag;
 
-    memcpy(in, secp256k1_scalar_max, sizeof(in));
+    memcpy(in.n, secp256k1_scalar_max, sizeof(in.n));
     for(iter = 0x31; iter < 0x31 + 32; ++iter) {
-        in[31] = iter;
-        ovf_flag = secp256k1_scalar_check_overflow(in) ? 1 : 0;
-        res = (res << 1) | ovf_flag;
+        in.n[31] = iter;
+        TEST_ASSERT( secp256k1_scalar_check_overflow(&in, &ovf_flag) );
+        res = (res << 1) | (int)ovf_flag;
     }
     TEST_ASSERT(res == 0x0000ffffLU);
 }
@@ -188,7 +188,7 @@ static void test_shallue_van_de_woestijne(test_ctx_t *test_ctx) {
     secp256k1_ge ge;
 
     for(int i = 0; i < n_vectors; ++i, p_vect++) {
-        shallue_van_de_woestijne(&ge, (const secp256k1_fe*)p_vect->fe);
+        TEST_ASSERT( shallue_van_de_woestijne(&ge, (const secp256k1_fe*)p_vect->fe) );
         TEST_ASSERT( 0 == memcmp(&ge, p_vect->ge, sizeof(p_vect->ge)) );
     }
 }

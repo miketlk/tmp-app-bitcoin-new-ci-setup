@@ -874,19 +874,20 @@ static bool handle_input_asset(sign_pset_state_t *state, tx_asset_t *asset) {
 // TODO: document
 static cx_sha256_t* sha_context_alloc(sign_pset_state_t *state) {
     if(state->sha_context_index >= SIGN_PSET_SHA_CONTEXT_POOL_SIZE) {
-        THROW(EXCEPTION);
+        return NULL;
     }
     return &state->sha_context_pool[state->sha_context_index++];
 }
 
 // TODO: document
 // contexts must be freed in reverse order
-static void sha_context_free(sign_pset_state_t *state, const cx_sha256_t *context) {
+static bool sha_context_free(sign_pset_state_t *state, const cx_sha256_t *context) {
     if(!state->sha_context_index ||
        context != &state->sha_context_pool[state->sha_context_index - 1]) {
-        THROW(EXCEPTION);
+        return false;
     }
     state->sha_context_index--;
+    return true;
 }
 
 /**
@@ -2018,6 +2019,10 @@ static void compute_segwit_hashes(dispatcher_context_t *dc) {
         // compute sha_prevouts and sha_sequences
         cx_sha256_t *sha_prevouts_context = sha_context_alloc(state);
         cx_sha256_t *sha_sequences_context = sha_context_alloc(state);
+        if (!sha_prevouts_context || !sha_sequences_context) {
+            SEND_SW(dc, SW_BAD_STATE);
+            return;
+        }
 
         // compute hashPrevouts and hashSequence
         cx_sha256_init(sha_prevouts_context);
@@ -2078,14 +2083,21 @@ static void compute_segwit_hashes(dispatcher_context_t *dc) {
         crypto_hash_digest(&sha_prevouts_context->header, state->hashes.sha_prevouts, 32);
         crypto_hash_digest(&sha_sequences_context->header, state->hashes.sha_sequences, 32);
 
-        sha_context_free(state, sha_sequences_context);
-        sha_context_free(state, sha_prevouts_context);
+        if ( !sha_context_free(state, sha_sequences_context) ||
+             !sha_context_free(state, sha_prevouts_context) ) {
+            SEND_SW(dc, SW_BAD_STATE);
+            return;
+        }
     }
 
     {
         // compute sha_outputs and sha_rangeproofs (if needed)
         cx_sha256_t *sha_outputs_context = sha_context_alloc(state);
         cx_sha256_t *sha_rangeproofs_context = sha_context_alloc(state);
+        if (!sha_outputs_context || !sha_rangeproofs_context) {
+            SEND_SW(dc, SW_BAD_STATE);
+            return;
+        }
         cx_sha256_init(sha_outputs_context);
         cx_sha256_init(sha_rangeproofs_context);
 
@@ -2100,8 +2112,11 @@ static void compute_segwit_hashes(dispatcher_context_t *dc) {
         crypto_hash_digest(&sha_outputs_context->header, state->hashes.sha_outputs, 32);
         crypto_hash_digest(&sha_rangeproofs_context->header, state->hashes.sha_rangeproofs, 32);
 
-        sha_context_free(state, sha_rangeproofs_context);
-        sha_context_free(state, sha_outputs_context);
+        if ( !sha_context_free(state, sha_rangeproofs_context) ||
+             !sha_context_free(state, sha_outputs_context) ) {
+            SEND_SW(dc, SW_BAD_STATE);
+            return;
+        }
     }
 
     {
@@ -2111,6 +2126,10 @@ static void compute_segwit_hashes(dispatcher_context_t *dc) {
         cx_sha256_t *sha_amounts_context = sha_context_alloc(state);
         cx_sha256_t *sha_scriptpubkeys_context = sha_context_alloc(state);
         cx_sha256_t *sha_issuances_context = sha_context_alloc(state);
+        if (!sha_amounts_context || !sha_scriptpubkeys_context || !sha_issuances_context) {
+            SEND_SW(dc, SW_BAD_STATE);
+            return;
+        }
 
         cx_sha256_init(sha_amounts_context);
         cx_sha256_init(sha_scriptpubkeys_context);
@@ -2165,9 +2184,12 @@ static void compute_segwit_hashes(dispatcher_context_t *dc) {
                             32);
         crypto_hash_digest(&sha_issuances_context->header, state->hashes.sha_issuances, 32);
 
-        sha_context_free(state, sha_issuances_context);
-        sha_context_free(state, sha_scriptpubkeys_context);
-        sha_context_free(state, sha_amounts_context);
+        if ( !sha_context_free(state, sha_issuances_context) ||
+             !sha_context_free(state, sha_scriptpubkeys_context) ||
+             !sha_context_free(state, sha_amounts_context) ) {
+            SEND_SW(dc, SW_BAD_STATE);
+            return;
+        }
     }
 
     state->cur_input_index = 0;

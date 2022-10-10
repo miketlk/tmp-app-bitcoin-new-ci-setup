@@ -90,11 +90,18 @@ const uint8_t secp256k1_scalar_max[32] = {
  *
  * @param[in] a
  *   Scalar value to check.
+ * @param[out] ovf_flag
+ *   Pointer to variable receiving overflow status (true - overflow)
  *
- * @return true if overflow is detected
+ * @return true - OK, false - error
  */
-static inline bool secp256k1_scalar_check_overflow(const uint8_t a[static 32]) {
-    return cx_math_cmp(a, secp256k1_scalar_max, 32) > 0;
+static bool secp256k1_scalar_check_overflow(const secp256k1_scalar* a, bool *ovf_flag) {
+    int diff;
+    if (a && ovf_flag && CX_OK == cx_math_cmp_no_throw(a->n, secp256k1_scalar_max, 32, &diff)) {
+        *ovf_flag = diff > 0;
+        return true;
+    }
+    return false;
 }
 
 /**
@@ -105,41 +112,45 @@ static inline bool secp256k1_scalar_check_overflow(const uint8_t a[static 32]) {
  *
  * @return true if scalar is zero
  */
-#if 0
 static inline bool secp256k1_scalar_is_zero(const secp256k1_scalar *a) {
     return !!cx_math_is_zero(a->n, sizeof(a->n));
 }
-#endif
 
 /**
  * Sets a group element (affine) equal to the point with the given X coordinate and a Y coordinate
  * that is a quadratic residue modulo p.
  *
  * @param[out] r
- *   Resulting group element encoded as 04 x y.
+ *   Resulting group element.
  * @param[in] x
  *   X coordinate of a point.
+ *
+ * @return true - OK, false - error
  */
-static void secp256k1_ge_set_xquad(uint8_t r[static 65], const uint8_t x[static 32]) {
-    uint8_t *res_x = &r[1], *res_y = &r[1 + 32];
+static bool secp256k1_ge_set_xquad(secp256k1_ge* r, const secp256k1_fe* x) {
+    uint8_t *res_x = &r->n[GE_OFFSET_X], *res_y = &r->n[GE_OFFSET_Y];
     uint8_t *scalar = res_x;
+    bool ok = true;
 
     // We use res_x and res_y for intermediate results, in order to save memory
 
     // tmp = x^3 (mod p)
     uint8_t e = 3;
-    cx_math_powm(res_y, x, &e, 1, secp256k1_p, 32);
+    ok = CX_OK == cx_math_powm_no_throw(res_y, x->n, &e, 1, secp256k1_p, 32);
 
     // tmp = x^3 + 7 (mod p)
     memset(scalar, 0, 31);
     scalar[31] = 7;
-    cx_math_addm(res_y, res_y, scalar, secp256k1_p, 32);
+    ok = ok && CX_OK == cx_math_addm_no_throw(res_y, res_y, scalar, secp256k1_p, 32);
 
     // y = sqrt(x^3 + 7) (mod p)
-    cx_math_powm(res_y, res_y, secp256k1_sqr_exponent, 32, secp256k1_p, 32);
+    ok = ok &&
+        CX_OK == cx_math_powm_no_throw(res_y, res_y, secp256k1_sqr_exponent, 32, secp256k1_p, 32);
 
     memmove(res_x, x, 32);  // copy x
-    r[0] = 0x04;
+    r->n[GE_OFFSET_PREFIX] = 0x04;
+
+    return ok;
 }
 
 /**
@@ -149,108 +160,94 @@ static void secp256k1_ge_set_xquad(uint8_t r[static 65], const uint8_t x[static 
  *   Resulting point encoded as 04 x y.
  * @param[in] a
  *   Point to compute inverse encoded as 04 x y.
+ *
+ * @return true - OK, false - error
  */
-static inline void secp256k1_ge_neg(uint8_t r[static 65], const uint8_t a[static 65]) {
-    uint8_t *res_y = &r[1 + 32];
-    const uint8_t *arg_y = &a[1 + 32];
+static bool secp256k1_ge_neg(secp256k1_ge* r, const secp256k1_ge* a) {
     if (r != a) {
-        memcpy(r, a, 1 + 32); // copy 0x04 byte and x coordinate
+        memcpy(r->n, a->n, GE_OFFSET_Y); // copy 0x04 byte and x coordinate
     }
-    cx_math_sub(res_y, secp256k1_p, arg_y, 32);
-}
-
-// TODO: remove
-/**
- * Set r equal to the sum of a and b
- *
- * @param[out] r
- *    Resulting point encoded as 04 x y.
- * @param[in] a
- *    First operand: point on curve encoded as 04 x y.
- * @param[in] b
- *    Second operand: point on curve encoded as 04 x y.
- */
-static inline void secp256k1_add(uint8_t r[static 65],
-                                 const uint8_t a[static 65],
-                                 const uint8_t b[static 65]) {
-    if(0 == cx_ecfp_add_point(CX_CURVE_SECP256K1, r, a, b, 32)) {
-        THROW(CX_EC_INFINITE_POINT);
-    }
+    cx_err_t res = cx_math_sub_no_throw(&r->n[GE_OFFSET_Y], secp256k1_p, &a->n[GE_OFFSET_Y], 32);
+    return res == CX_OK || res == CX_CARRY;
 }
 
 /**
  * Set r equal to the sum of a and b
  *
  * @param[out] r
- *    Resulting group element.
+ *    Resulting point.
  * @param[in] a
- *    First operand.
+ *    First operand: point on curve.
  * @param[in] b
- *    Second operand.
+ *    Second operand: point on curve.
+ *
+ * @return true - OK, false - error
  */
-static inline void secp256k1_ge_add(secp256k1_ge *r,
-                                    secp256k1_ge *a,
-                                    secp256k1_ge *b) {
-    if(0 == cx_ecfp_add_point(CX_CURVE_SECP256K1, r->n, a->n, b->n, 32)) {
-        THROW(CX_EC_INFINITE_POINT);
-    }
+static inline bool secp256k1_ge_add(secp256k1_ge* r,
+                                 const secp256k1_ge* a,
+                                 const secp256k1_ge* b) {
+    return CX_OK == cx_ecfp_add_point_no_throw(CX_CURVE_SECP256K1, r->n, a->n, b->n);
 }
 
 /**
  * Performs a scalar multiplication over an elliptic curve.
  *
  * @param[in, out] point
- *    Point on curve encoded as 04 x y. Also used for the result.
+ *    Point on curve, also used for the result.
  * @param[in] scalar
- *    Scalar encoded as big endian integer.
+ *    Scalar.
+ *
+ * @return true - OK, false - error
  */
-static inline void secp256k1_scalar_mult(uint8_t point[static 65],
-                                         const uint8_t scalar[static 32]) {
-    if(0 == cx_ecfp_scalar_mult(CX_CURVE_SECP256K1, point, 65, scalar, 32)) {
-        THROW(CX_EC_INFINITE_POINT);
-    }
+static inline bool secp256k1_scalar_mult(secp256k1_ge* point,
+                                         const secp256k1_scalar* scalar) {
+    return CX_OK == cx_ecfp_scalar_mult_no_throw(CX_CURVE_SECP256K1, point->n, scalar->n, 32);
 }
 
 /**
  * Loads serialized Pedersen commitment
  *
  * @param[out] ge
- *   Resulting group element encoded as 04 x y.
+ *   Resulting group element.
  * @param[in] commit
  *   Serialized commitment, 33 bytes.
+ *
+ * @return true - OK, false - error
  */
-static void pedersen_commitment_load(uint8_t ge[static 65],
+static bool pedersen_commitment_load(secp256k1_ge* ge,
                                      const uint8_t commit[static 33]) {
-    secp256k1_ge_set_xquad(ge, &commit[1]);
+    bool ok = secp256k1_ge_set_xquad(ge, (secp256k1_fe*)&commit[1]);
     if (commit[0] & 1) {
-        secp256k1_ge_neg(ge, ge);
+        ok = ok && secp256k1_ge_neg(ge, ge);
     }
+    return ok;
 }
 
 /**
  * Multiplies a small number with the generator: r = gn*G2
  *
  * @param[out] r
- *   Resulting point encoded as 04 x y.
+ *   Resulting point.
  * @param gn
  *   Number to multiply.
  * @param genp
- *   Generator point encoded as 04 x y.
+ *   Generator point.
+ *
+ * @return true - OK, false - error
  */
-static void pedersen_ecmult_small(uint8_t r[static 65], uint64_t gn,
-                                  const uint8_t genp[static 65]) {
+static bool pedersen_ecmult_small(secp256k1_ge* r,
+                                  uint64_t gn,
+                                  const secp256k1_ge* genp) {
     uint8_t scalar[32];
     enum { GN_OFFSET = sizeof(scalar) - 8 };
 
     memset(scalar, 0, GN_OFFSET);
     write_u64_be(scalar, GN_OFFSET, gn);
-    memcpy(r, genp, 65);
-    bool ok = 0 != cx_ecfp_scalar_mult(CX_CURVE_SECP256K1, r, 65, scalar, sizeof(scalar));
+    *r = *genp;
+    bool ok =
+        CX_OK == cx_ecfp_scalar_mult_no_throw(CX_CURVE_SECP256K1, r->n, scalar, sizeof(scalar));
     explicit_bzero(&scalar, sizeof(scalar));
-
-    if(!ok) {
-        THROW(CX_EC_INFINITE_POINT);
-    }
+    return ok;
 }
 
 /**
@@ -258,10 +255,13 @@ static void pedersen_ecmult_small(uint8_t r[static 65], uint64_t gn,
  *
  * @param[in] a
  *   Value to check.
+ * @param[out] is_quad
+ *   Pointer to variable receiving result of check: true - field element is a quadratic residue,
+ *   false - otherwise.
  *
- * @return true a field element is a quadratic residue.
+ * @return true - OK, false - error
  */
-static bool secp256k1_fe_is_quad_var(const uint8_t a[static 32]) {
+static bool secp256k1_fe_is_quad_var(const secp256k1_fe* a, bool* is_quad) {
 	static const uint8_t p_one_shr[32] = {
         0x7f, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
         0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
@@ -270,14 +270,16 @@ static bool secp256k1_fe_is_quad_var(const uint8_t a[static 32]) {
     };
 	uint8_t res[32];
 
-    if (cx_math_is_zero(a, 32)) {
+    *is_quad = false;
+    if (secp256k1_scalar_is_zero(a)) {
+        *is_quad = true;
         return true;
     }
-	cx_math_powm(res, a, p_one_shr, 32, secp256k1_p, 32);
-	if (!cx_math_is_zero(res, 30)) {
-		return false;
-	}
-	return res[31] == 1;
+	if (CX_OK == cx_math_powm_no_throw(res, a->n, p_one_shr, 32, secp256k1_p, 32)) {
+        *is_quad = cx_math_is_zero(res, 30) ? res[31] == 1 : false;
+        return true;
+    }
+    return false;
 }
 
 /**
@@ -289,11 +291,13 @@ static bool secp256k1_fe_is_quad_var(const uint8_t a[static 32]) {
  *    First field element to multiply.
  * @param[in] b
  *    Second field element to multiply.
+ *
+ * @return true - OK, false - error
  */
-static inline void secp256k1_fe_mul(secp256k1_fe *r,
+static inline bool secp256k1_fe_mul(secp256k1_fe *r,
                                     const secp256k1_fe *a,
                                     const secp256k1_fe *b) {
-    cx_math_multm(r->n, a->n, b->n, secp256k1_p, 32);
+    return CX_OK == cx_math_multm_no_throw(r->n, a->n, b->n, secp256k1_p, 32);
 }
 
 /**
@@ -303,10 +307,12 @@ static inline void secp256k1_fe_mul(secp256k1_fe *r,
  *    Resulting field element.
  * @param[in] a
  *    Argument field element.
+ *
+ * @return true - OK, false - error
  */
-static inline void secp256k1_fe_sqr(secp256k1_fe *r, const secp256k1_fe *a) {
+static inline bool secp256k1_fe_sqr(secp256k1_fe *r, const secp256k1_fe *a) {
     uint8_t e = 2;
-    cx_math_powm(r->n, a->n, &e, 1, secp256k1_p, 32);
+    return CX_OK == cx_math_powm_no_throw(r->n, a->n, &e, 1, secp256k1_p, 32);
 }
 
 /**
@@ -316,9 +322,11 @@ static inline void secp256k1_fe_sqr(secp256k1_fe *r, const secp256k1_fe *a) {
  *    First argument, also receives results.
  * @param[in] a
  *    Second argument.
+ *
+ * @return true - OK, false - error
  */
-static inline void secp256k1_fe_add(secp256k1_fe *r, const secp256k1_fe *a) {
-    cx_math_addm(r->n, r->n, a->n, secp256k1_p, 32);
+static inline bool secp256k1_fe_add(secp256k1_fe *r, const secp256k1_fe *a) {
+    return CX_OK == cx_math_addm_no_throw(r->n, r->n, a->n, secp256k1_p, 32);
 }
 
 /**
@@ -328,9 +336,11 @@ static inline void secp256k1_fe_add(secp256k1_fe *r, const secp256k1_fe *a) {
  *    Resulting field element.
  * @param[in] a
  *    Argument field element.
+ *
+ * @return true - OK, false - error
  */
-static inline void secp256k1_fe_negate(secp256k1_fe *r, const secp256k1_fe *a) {
-    cx_math_sub(r->n, secp256k1_p, a->n, 32);
+static inline bool secp256k1_fe_negate(secp256k1_fe *r, const secp256k1_fe *a) {
+    return CX_OK == cx_math_sub_no_throw(r->n, secp256k1_p, a->n, 32);
 }
 
 /**
@@ -340,9 +350,11 @@ static inline void secp256k1_fe_negate(secp256k1_fe *r, const secp256k1_fe *a) {
  *    Resulting field element.
  * @param[in] a
  *    Argument field element.
+ *
+ * @return true - OK, false - error
  */
-static void secp256k1_fe_inv(secp256k1_fe *r, const secp256k1_fe *a) {
-    cx_math_invprimem(r->n, a->n, secp256k1_p, 32);
+static inline bool secp256k1_fe_inv(secp256k1_fe *r, const secp256k1_fe *a) {
+    return CX_OK == cx_math_invprimem_no_throw(r->n, a->n, secp256k1_p, 32);
 }
 
 /**
@@ -353,14 +365,18 @@ static void secp256k1_fe_inv(secp256k1_fe *r, const secp256k1_fe *a) {
  * @param[in] a
  *    Argument field element.
  *
- * @return 1 if square root is successfully computed, otherwise 0
+ * @return true - OK, false - error
  */
-static int secp256k1_fe_sqrt(secp256k1_fe *r, const secp256k1_fe *a) {
-    cx_math_powm(r->n, a->n, secp256k1_sqr_exponent, 32, secp256k1_p, 32);  // y = sqrt(a) (mod p)
+static bool secp256k1_fe_sqrt(secp256k1_fe *r, const secp256k1_fe *a) {
+    // y = sqrt(a) (mod p)
+    bool ok =
+        CX_OK == cx_math_powm_no_throw(r->n, a->n, secp256k1_sqr_exponent, 32, secp256k1_p, 32);
 
     secp256k1_fe y_2;
-    secp256k1_fe_sqr(&y_2, r);
-    return 0 == cx_math_cmp(y_2.n, a->n, 32);
+    ok = ok && secp256k1_fe_sqr(&y_2, r);
+    int diff = 0;
+    ok = ok && CX_OK == cx_math_cmp_no_throw(y_2.n, a->n, 32, &diff);
+    return ok && 0 == diff;
 }
 
 /**
@@ -373,10 +389,10 @@ static int secp256k1_fe_sqrt(secp256k1_fe *r, const secp256k1_fe *a) {
  * @param[in] flag
  *    Flag controlling assignment.
  */
-static void secp256k1_fe_cmov(secp256k1_fe *r, const secp256k1_fe *a, int flag) {
+static void secp256k1_fe_cmov(secp256k1_fe *r, const secp256k1_fe *a, bool flag) {
     uint8_t *p_r = r->n;
     const uint8_t *p_a = a->n;
-    uint8_t mask0 = flag + ~((uint8_t)0);
+    uint8_t mask0 = (flag ? 1 : 0) + ~((uint8_t)0);
     uint8_t mask1 = ~mask0;
 
     for(int i = 0; i < 32; ++i, p_r++) {
@@ -394,7 +410,9 @@ static void secp256k1_fe_cmov(secp256k1_fe *r, const secp256k1_fe *a, int flag) 
  * @param y
  *   Field element representing y coordinate
  */
-static inline void secp256k1_ge_set_xy(secp256k1_ge *r, const secp256k1_fe *x, const secp256k1_fe *y) {
+static inline void secp256k1_ge_set_xy(secp256k1_ge *r,
+                                       const secp256k1_fe *x,
+                                       const secp256k1_fe *y) {
     r->n[GE_OFFSET_PREFIX] = 0x04;
     memcpy(r->n + GE_OFFSET_X, x->n, 32);
     memcpy(r->n + GE_OFFSET_Y, y->n, 32);
@@ -413,17 +431,98 @@ static inline int secp256k1_fe_is_odd(const secp256k1_fe *a) {
 }
 
 /**
- * Convenience wrapper for crypto_hash_update, updating a hash with a point on elliptic curve.
+ * Convenience wrapper for cx_sha256_init_no_throw.
+ *
+ * @param[out] sha256_context
+ *   The context of SHA-256, which needs to be initialized.
+ *
+ * @return true - OK, false - error
+ */
+static inline bool hash_init_sha256(cx_sha256_t* sha256_context) {
+    return CX_OK == cx_sha256_init_no_throw(sha256_context);
+}
+
+/**
+ * Convenience wrapper for cx_hash to add some data to an initialized hash context.
+ *
+ * @param[in] hash_context
+ *   The context of the hash, which must already be initialized.
+ * @param[in] in
+ *   Pointer to the data to be added to the hash computation.
+ * @param[in] in_len
+ *   Size of the passed data.
+ *
+ * @return true - OK, false - error
+ */
+static inline bool hash_update(cx_hash_t *hash_context, const void *in, size_t in_len) {
+    return CX_OK == cx_hash_no_throw(hash_context, 0, in, in_len, NULL, 0);
+}
+
+/**
+ * Convenience wrapper for hash_update, updating a hash with an uint8_t.
+ *
+ * @param[in] hash_context
+ *  The context of the hash, which must already be initialized.
+ * @param[in] data
+ *  The uint8_t to be added to the hash.
+ *
+ * @return true - OK, false - error
+ */
+static inline bool hash_update_u8(cx_hash_t *hash_context, uint8_t data) {
+    return hash_update(hash_context, &data, 1);
+}
+
+/**
+ * Convenience wrapper for hash_update, updating a hash with an uint32_t,
+ * encoded in big-endian.
+ *
+ * @param[in] hash_context
+ *  The context of the hash, which must already be initialized.
+ * @param[in] data
+ *  The uint32_t to be added to the hash.
+ *
+ * @return true - OK, false - error
+ */
+static inline bool hash_update_u32(cx_hash_t *hash_context, uint32_t data) {
+    uint8_t buf[4];
+    write_u32_be(buf, 0, data);
+    return hash_update(hash_context, &buf, sizeof(buf));
+}
+
+/**
+ * Convenience wrapper for hash_update, updating a hash with a point on elliptic curve.
  *
  * @param[in] hash_context
  *   The context of the hash, which must already be initialized.
  * @param[in] point
- *   Point encoded as 04 x y.
+ *   Point on cureve to hash.
+ *
+ * @return true - OK, false - error
  */
-static void hash_update_point(cx_hash_t *hash_context, const uint8_t point[static 65]) {
-    const uint8_t *point_x = &point[1], *point_y = &point[1 + 32];
-    crypto_hash_update_u8(hash_context, !secp256k1_fe_is_quad_var(point_y));
-    crypto_hash_update(hash_context, point_x, 32);
+static bool hash_update_point(cx_hash_t *hash_context, const secp256k1_ge* point) {
+    bool is_quad = false;
+    if (secp256k1_fe_is_quad_var((const secp256k1_fe*)&point->n[GE_OFFSET_Y], &is_quad)) {
+        return hash_update_u8(hash_context, !is_quad) &&
+               hash_update(hash_context, &point->n[GE_OFFSET_X], 32);
+    }
+    return false;
+}
+
+/**
+ * Convenience wrapper for cx_hash to compute the final hash, without adding any extra data
+ * to the hash context.
+ *
+ * @param[in] hash_context
+ *   The context of the hash, which must already be initialized.
+ * @param[in] out
+ *   Pointer to the output buffer for the result.
+ * @param[in] out_len
+ *   Size of output buffer, which must be large enough to contain the result.
+ *
+ * @return true - OK, false - error
+ */
+static inline bool hash_digest(cx_hash_t *hash_context, uint8_t *out, size_t out_len) {
+    return CX_OK == cx_hash_no_throw(hash_context, CX_LAST, NULL, 0, out, out_len);
 }
 
 /**
@@ -443,8 +542,10 @@ static void hash_update_point(cx_hash_t *hash_context, const uint8_t point[stati
  *   Ring index.
  * @param[in] eidx
  *   Index of e.
+ *
+ * @return true - OK, false - error
  */
-static void borromean_hash(uint8_t hash[static 32],
+static bool borromean_hash(uint8_t hash[static 32],
                            const uint8_t *m,
                            size_t mlen,
                            const uint8_t *e,
@@ -452,12 +553,13 @@ static void borromean_hash(uint8_t hash[static 32],
                            size_t ridx,
                            size_t eidx) {
     cx_sha256_t sha256_en;
-    cx_sha256_init(&sha256_en);
-    crypto_hash_update(&sha256_en.header, e, elen);
-    crypto_hash_update(&sha256_en.header, m, mlen);
-    crypto_hash_update_u32(&sha256_en.header, ridx);
-    crypto_hash_update_u32(&sha256_en.header, eidx);
-    crypto_hash_digest(&sha256_en.header, hash, 32);
+    bool ok = hash_init_sha256(&sha256_en);
+    ok = ok && hash_update(&sha256_en.header, e, elen);
+    ok = ok && hash_update(&sha256_en.header, m, mlen);
+    ok = ok && hash_update_u32(&sha256_en.header, ridx);
+    ok = ok && hash_update_u32(&sha256_en.header, eidx);
+    ok = ok && hash_digest(&sha256_en.header, hash, 32);
+    return ok;
 }
 
 bool liquid_rangeproof_verify_exact(const uint8_t *proof,
@@ -497,85 +599,77 @@ bool liquid_rangeproof_verify_exact(const uint8_t *proof,
         offset = 9;
     }
 
-    uint8_t commitp[65];
-    uint8_t tmp[65];
+    _Static_assert(LIQUID_GENERATOR_LEN == sizeof(secp256k1_ge), "WRONG POINT FORMAT");
+    secp256k1_ge* generator_pt = (secp256k1_ge*)generator;
+
+    secp256k1_ge commitp;
+    secp256k1_ge tmp;
     uint8_t tmpch[33];
     uint8_t pp_comm[32];
-    uint8_t es[32];
-    uint8_t ss[32];
+    secp256k1_scalar es;
+    secp256k1_scalar ss;
+    bool ovf_flag;
+    bool ok = true;
 
-    bool result = false;
-    BEGIN_TRY {
-        TRY {
-            // Subtract value from commitment; store modified commitment in tmp
-            pedersen_commitment_load(commitp, commit);
-            // Let's check if value is 0 and multiplication will result in point at infinity
-            if(value) {
-                pedersen_ecmult_small(tmp, value, generator);
-                secp256k1_ge_neg(tmp, tmp);
-                secp256k1_add(tmp, tmp, commitp);
-            } else {
-                // Value is 0 thus we just keep commitment point "as is" because infinity point is
-                // an identity element
-                memcpy(tmp, commitp, sizeof(tmp));
-            }
-
-            // Now we just have a Schnorr signature in (e, s) form. The verification equation is:
-            // e == H(sG - eX || proof params)
-
-            // 1. Compute slow/overwrought commitment to proof params
-            {
-                cx_sha256_t sha2;
-                cx_sha256_init(&sha2);
-                hash_update_point(&sha2.header, commitp);
-                hash_update_point(&sha2.header, generator);
-                crypto_hash_update(&sha2.header, proof, offset);
-                crypto_hash_digest(&sha2.header, pp_comm, sizeof(pp_comm));
-            }
-
-            // ... feed this into our hash
-            borromean_hash(es, pp_comm, 32, &proof[offset], 32, 0, 0);
-            if(secp256k1_scalar_check_overflow(es) || cx_math_is_zero(es, sizeof(es))) {
-                THROW(CX_OVERFLOW);
-            }
-
-            // 1. Compute R = sG - eX
-            memcpy(ss, &proof[offset + 32], sizeof(ss));
-            if(secp256k1_scalar_check_overflow(ss) || cx_math_is_zero(ss, sizeof(ss))) {
-                THROW(CX_OVERFLOW);
-            }
-
-            // Double multiply: tmp = es*tmp + ss*G
-            {
-                uint8_t tmp2[65];
-                secp256k1_scalar_mult(tmp, es);
-                memcpy(tmp2, secp256k1_generator, sizeof(tmp2));
-                secp256k1_scalar_mult(tmp2, ss);
-                secp256k1_add(tmp, tmp, tmp2);
-                crypto_get_compressed_pubkey(tmp, tmpch);
-            }
-
-            // 2. Compute e = H(R || proof params)
-            {
-                cx_sha256_t sha2;
-                cx_sha256_init(&sha2);
-                crypto_hash_update(&sha2.header, tmpch, 33);
-                crypto_hash_update(&sha2.header, pp_comm, sizeof(pp_comm));
-                crypto_hash_digest(&sha2.header, tmpch, sizeof(tmpch));
-            }
-
-            // 3. Check computed e against original e
-            result = (0 == memcmp(tmpch, &proof[offset], 32));
-        }
-        CATCH_ALL {
-            result = false;
-        }
-        FINALLY {
-            // Zeroize sensitive data here
-        }
+    // Subtract value from commitment; store modified commitment in tmp
+    ok = ok && pedersen_commitment_load(&commitp, commit);
+    // Let's check if value is 0 and multiplication will result in point at infinity
+    if(value) {
+        ok = ok && pedersen_ecmult_small(&tmp, value, generator_pt);
+        ok = ok && secp256k1_ge_neg(&tmp, &tmp);
+        ok = ok && secp256k1_ge_add(&tmp, &tmp, &commitp);
+    } else {
+        // Value is 0 thus we just keep commitment point "as is" because infinity point is
+        // an identity element
+        tmp = commitp;
     }
-    END_TRY;
-    return result;
+
+    // Now we just have a Schnorr signature in (e, s) form. The verification equation is:
+    // e == H(sG - eX || proof params)
+
+    // 1. Compute slow/overwrought commitment to proof params
+    {
+        cx_sha256_t sha2;
+        ok = ok && hash_init_sha256(&sha2);
+        ok = ok && hash_update_point(&sha2.header, &commitp);
+        ok = ok && hash_update_point(&sha2.header, generator_pt);
+        ok = ok && hash_update(&sha2.header, proof, offset);
+        ok = ok && hash_digest(&sha2.header, pp_comm, sizeof(pp_comm));
+    }
+
+    // ... feed this into our hash
+    ok = ok && borromean_hash(es.n, pp_comm, 32, &proof[offset], 32, 0, 0);
+    ok = ok && secp256k1_scalar_check_overflow(&es, &ovf_flag);
+    ok = ok && !ovf_flag && !secp256k1_scalar_is_zero(&es);
+
+    // 1. Compute R = sG - eX
+    memcpy(ss.n, &proof[offset + 32], sizeof(ss.n));
+    ok = ok && secp256k1_scalar_check_overflow(&ss, &ovf_flag);
+    ok = ok && !ovf_flag && !secp256k1_scalar_is_zero(&ss);
+
+    // Double multiply: tmp = es*tmp + ss*G
+    {
+        secp256k1_ge tmp2;
+        ok = ok && secp256k1_scalar_mult(&tmp, &es);
+        memcpy(tmp2.n, secp256k1_generator, sizeof(tmp2.n));
+        ok = ok && secp256k1_scalar_mult(&tmp2, &ss);
+        ok = ok && secp256k1_ge_add(&tmp, &tmp, &tmp2);
+        ok = ok && 0 == crypto_get_compressed_pubkey(tmp.n, tmpch);
+    }
+
+    // 2. Compute e = H(R || proof params)
+    {
+        cx_sha256_t sha2;
+        ok = ok && hash_init_sha256(&sha2);
+        ok = ok && hash_update(&sha2.header, tmpch, 33);
+        ok = ok && hash_update(&sha2.header, pp_comm, sizeof(pp_comm));
+        ok = ok && hash_digest(&sha2.header, tmpch, sizeof(tmpch));
+    }
+
+    // 3. Check computed e against original e
+    ok = ok && (0 == memcmp(tmpch, &proof[offset], 32));
+
+    return ok;
 }
 
 bool liquid_generator_parse(uint8_t generator[static LIQUID_GENERATOR_LEN],
@@ -584,24 +678,15 @@ bool liquid_generator_parse(uint8_t generator[static LIQUID_GENERATOR_LEN],
         return false;
     }
 
-    bool result = false;
-    BEGIN_TRY {
-        TRY {
-            secp256k1_ge_set_xquad(generator, &input[1]);
-            if (input[0] & 1) {
-                secp256k1_ge_neg(generator, generator);
-            }
-            result = true;
-        }
-        CATCH_ALL {
-            result = false;
-        }
-        FINALLY {
-            // Zeroize sensitive data here
-        }
+    _Static_assert(LIQUID_GENERATOR_LEN == sizeof(secp256k1_ge), "WRONG POINT FORMAT");
+    secp256k1_ge* generator_pt = (secp256k1_ge*)generator;
+
+    bool ok = true;
+    ok = secp256k1_ge_set_xquad(generator_pt, (const secp256k1_fe*)&input[1]);
+    if (input[0] & 1) {
+        ok = ok && secp256k1_ge_neg(generator_pt, generator_pt);
     }
-    END_TRY;
-    return result;
+    return ok;
 }
 
 /**
@@ -610,25 +695,28 @@ bool liquid_generator_parse(uint8_t generator[static LIQUID_GENERATOR_LEN],
  * @param[out] msg32
  *    Resulting message.
  * @param input_tag
- *    The ephemeral asset tag of the sole input, a point encoded as 04 x y.
+ *    The ephemeral asset tag of the sole input.
  * @param output_tag
- *    The ephemeral asset tag of the output, a point encoded as 04 x y.
+ *    The ephemeral asset tag of the output.
+ *
+ * @return true - OK, false - error
  */
-static void secp256k1_surjection_genmessage_single(
-    uint8_t msg32[static 32],
-    const uint8_t input_tag[static LIQUID_GENERATOR_LEN],
-    const uint8_t output_tag[static LIQUID_GENERATOR_LEN]) {
+static bool secp256k1_surjection_genmessage_single(uint8_t msg32[static 32],
+                                                   const secp256k1_ge* input_tag,
+                                                   const secp256k1_ge* output_tag) {
 
     cx_sha256_t sha256_en;
-    cx_sha256_init(&sha256_en);
+    bool ok = hash_init_sha256(&sha256_en);
 
-    crypto_hash_update_u8(&sha256_en.header, 2 + (input_tag[64] & 1)); // LSB of y coordinate
-    crypto_hash_update(&sha256_en.header, &input_tag[1], 32); // x coordinate
+    ok = ok && hash_update_u8(&sha256_en.header, 2 + (input_tag->n[64] & 1)); // LSB of y coordinate
+    ok = ok && hash_update(&sha256_en.header, &input_tag->n[1], 32); // x coordinate
 
-    crypto_hash_update_u8(&sha256_en.header, 2 + (output_tag[64] & 1)); // LSB of y coordinate
-    crypto_hash_update(&sha256_en.header, &output_tag[1], 32); // x coordinate
+    ok = ok && hash_update_u8(&sha256_en.header, 2 + (output_tag->n[64] & 1)); // LSB of y coordinate
+    ok = ok && hash_update(&sha256_en.header, &output_tag->n[1], 32); // x coordinate
 
-    crypto_hash_digest(&sha256_en.header, msg32, 32);
+    ok = ok && hash_digest(&sha256_en.header, msg32, 32);
+
+    return ok;
 }
 
 bool liquid_surjectionproof_verify_single(const uint8_t *proof,
@@ -643,74 +731,68 @@ bool liquid_surjectionproof_verify_single(const uint8_t *proof,
         return false;
     }
 
+
+    _Static_assert(LIQUID_GENERATOR_LEN == sizeof(secp256k1_ge), "WRONG POINT FORMAT");
+    const secp256k1_ge* input_tag_pt = (const secp256k1_ge*)input_tag;
+    const secp256k1_ge* output_tag_pt = (const secp256k1_ge*)output_tag;
+
     const uint8_t *proof_data = proof + 3;
-    uint8_t tmp[65];
-    uint8_t es[32];
-    uint8_t ss[32];
+    secp256k1_ge tmp;
+    secp256k1_scalar es;
+    secp256k1_scalar ss;
     uint8_t tmpch[33];
     uint8_t pp_comm[32];
+    bool ovf_flag;
+    bool ok = true;
 
-    bool result = false;
-    BEGIN_TRY {
-        TRY {
-            secp256k1_ge_neg(tmp, input_tag);
-            secp256k1_add(tmp, tmp, output_tag);
+    ok = ok && secp256k1_ge_neg(&tmp, input_tag_pt);
+    ok = ok && secp256k1_ge_add(&tmp, &tmp, output_tag_pt);
 
-            /* Now we just have a Schnorr signature in (e, s) form. The verification
-            * equation is e == H(sG - eX || proof params), where X is the difference
-            * between the output and input. */
+    /* Now we just have a Schnorr signature in (e, s) form. The verification
+    * equation is e == H(sG - eX || proof params), where X is the difference
+    * between the output and input. */
 
-            // 1. Compute slow/overwrought commitment to proof params
-            secp256k1_surjection_genmessage_single(pp_comm, input_tag, output_tag);
-            // (past this point the code is identical to rangeproof_verify_value)
+    // 1. Compute slow/overwrought commitment to proof params
+    ok = ok && secp256k1_surjection_genmessage_single(pp_comm, input_tag_pt, output_tag_pt);
+    // (past this point the code is identical to rangeproof_verify_value)
 
-            // ... feed this into our hash
-            borromean_hash(es, pp_comm, 32, &proof_data[0], 32, 0, 0);
-            if(secp256k1_scalar_check_overflow(es) || cx_math_is_zero(es, sizeof(es))) {
-                THROW(CX_OVERFLOW);
-            }
+    // ... feed this into our hash
+    ok = ok && borromean_hash(es.n, pp_comm, 32, &proof_data[0], 32, 0, 0);
+    ok = ok && secp256k1_scalar_check_overflow(&es, &ovf_flag);
+    ok = ok && !ovf_flag && !secp256k1_scalar_is_zero(&es);
 
-            // 1. Compute R = sG - eX
-            memcpy(ss, &proof_data[32], sizeof(ss));
-            if(secp256k1_scalar_check_overflow(ss) || cx_math_is_zero(ss, sizeof(ss))) {
-                THROW(CX_OVERFLOW);
-            }
+    // 1. Compute R = sG - eX
+    memcpy(ss.n, &proof_data[32], sizeof(ss.n));
+    ok = ok && secp256k1_scalar_check_overflow(&ss, &ovf_flag);
+    ok = ok && !ovf_flag && !secp256k1_scalar_is_zero(&ss);
 
-            // Double multiply: tmp = es*tmp + ss*G
-            {
-                uint8_t tmp2[65];
-                secp256k1_scalar_mult(tmp, es);
-                memcpy(tmp2, secp256k1_generator, sizeof(tmp2));
-                secp256k1_scalar_mult(tmp2, ss);
-                secp256k1_add(tmp, tmp, tmp2);
-                crypto_get_compressed_pubkey(tmp, tmpch);
-            }
-
-            // 2. Compute e = H(R || proof params)
-            {
-                cx_sha256_t sha2;
-                cx_sha256_init(&sha2);
-                crypto_hash_update(&sha2.header, tmpch, 33);
-                crypto_hash_update(&sha2.header, pp_comm, sizeof(pp_comm));
-                crypto_hash_digest(&sha2.header, tmpch, sizeof(tmpch));
-            }
-
-            // 3. Check computed e against original e
-            result = (0 == memcmp(tmpch, &proof_data[0], 32));
-        }
-        CATCH_ALL {
-            result = false;
-        }
-        FINALLY {
-            // Zeroize sensitive data here
-        }
+    // Double multiply: tmp = es*tmp + ss*G
+    {
+        secp256k1_ge tmp2;
+        ok = ok && secp256k1_scalar_mult(&tmp, &es);
+        memcpy(tmp2.n, secp256k1_generator, sizeof(tmp2.n));
+        ok = ok && secp256k1_scalar_mult(&tmp2, &ss);
+        ok = ok && secp256k1_ge_add(&tmp, &tmp, &tmp2);
+        ok = ok && 0 == crypto_get_compressed_pubkey(tmp.n, tmpch);
     }
-    END_TRY;
-    return result;
+
+    // 2. Compute e = H(R || proof params)
+    {
+        cx_sha256_t sha2;
+        ok = ok && hash_init_sha256(&sha2);
+        ok = ok && hash_update(&sha2.header, tmpch, 33);
+        ok = ok && hash_update(&sha2.header, pp_comm, sizeof(pp_comm));
+        ok = ok && hash_digest(&sha2.header, tmpch, sizeof(tmpch));
+    }
+
+    // 3. Check computed e against original e
+    ok = ok && (0 == memcmp(tmpch, &proof_data[0], 32));
+
+    return ok;
 }
 
 // TODO: document
-static void shallue_van_de_woestijne(secp256k1_ge* ge, const secp256k1_fe* t) {
+static bool shallue_van_de_woestijne(secp256k1_ge* ge, const secp256k1_fe* t) {
     /* Implements the algorithm from:
      *    Indifferentiable Hashing to Barreto-Naehrig Curves
      *    Pierre-Alain Fouque and Mehdi Tibouchi
@@ -742,59 +824,62 @@ static void shallue_van_de_woestijne(secp256k1_ge* ge, const secp256k1_fe* t) {
        1 / x2d = x3d = 1/j * wd
     */
 
-    static const secp256k1_fe c = SECP256K1_FE_CONST(0x0a2d2ba9, 0x3507f1df, 0x233770c2, 0xa797962c, 0xc61f6d15, 0xda14ecd4, 0x7d8d27ae, 0x1cd5f852);
-    static const secp256k1_fe d = SECP256K1_FE_CONST(0x851695d4, 0x9a83f8ef, 0x919bb861, 0x53cbcb16, 0x630fb68a, 0xed0a766a, 0x3ec693d6, 0x8e6afa40);
+    static const secp256k1_fe c = SECP256K1_FE_CONST(0x0a2d2ba9, 0x3507f1df, 0x233770c2, 0xa797962c,
+                                                     0xc61f6d15, 0xda14ecd4, 0x7d8d27ae, 0x1cd5f852);
+    static const secp256k1_fe d = SECP256K1_FE_CONST(0x851695d4, 0x9a83f8ef, 0x919bb861, 0x53cbcb16,
+                                                     0x630fb68a, 0xed0a766a, 0x3ec693d6, 0x8e6afa40);
     static const secp256k1_fe b = SECP256K1_FE_CONST(0, 0, 0, 0, 0, 0, 0, 7);
     static const secp256k1_fe b_plus_one = SECP256K1_FE_CONST(0, 0, 0, 0, 0, 0, 0, 8);
 
     secp256k1_fe tmp, x1, x2, x3;
-    int alphaquad, betaquad;
+    bool alphaquad, betaquad;
+    bool ok = true;
 
     {
         secp256k1_fe wn, wd, x1n, x2n, x3n, x3d, jinv;
-        secp256k1_fe_mul(&wn, &c, t); /* mag 1 */
-        secp256k1_fe_sqr(&wd, t); /* mag 1 */
-        secp256k1_fe_add(&wd, &b_plus_one); /* mag 2 */
-        secp256k1_fe_mul(&tmp, t, &wn); /* mag 1 */
-        secp256k1_fe_negate(&tmp, &tmp); // 1 /* mag 2 */
-        secp256k1_fe_mul(&x1n, &d, &wd); /* mag 1 */
-        secp256k1_fe_add(&x1n, &tmp); /* mag 3 */
+        ok = ok && secp256k1_fe_mul(&wn, &c, t); /* mag 1 */
+        ok = ok && secp256k1_fe_sqr(&wd, t); /* mag 1 */
+        ok = ok && secp256k1_fe_add(&wd, &b_plus_one); /* mag 2 */
+        ok = ok && secp256k1_fe_mul(&tmp, t, &wn); /* mag 1 */
+        ok = ok && secp256k1_fe_negate(&tmp, &tmp); // 1 /* mag 2 */
+        ok = ok && secp256k1_fe_mul(&x1n, &d, &wd); /* mag 1 */
+        ok = ok && secp256k1_fe_add(&x1n, &tmp); /* mag 3 */
         x2n = x1n; /* mag 3 */
-        secp256k1_fe_add(&x2n, &wd); /* mag 5 */
-        secp256k1_fe_negate(&x2n, &x2n); // 5 /* mag 6 */
-        secp256k1_fe_mul(&x3d, &c, t); /* mag 1 */
-        secp256k1_fe_sqr(&x3d, &x3d); /* mag 1 */
-        secp256k1_fe_sqr(&x3n, &wd); /* mag 1 */
-        secp256k1_fe_add(&x3n, &x3d); /* mag 2 */
-        secp256k1_fe_mul(&jinv, &x3d, &wd); /* mag 1 */
-        secp256k1_fe_inv(&jinv, &jinv); /* mag 1 */
-        secp256k1_fe_mul(&x1, &x1n, &x3d); /* mag 1 */
-        secp256k1_fe_mul(&x1, &x1, &jinv); /* mag 1 */
-        secp256k1_fe_mul(&x2, &x2n, &x3d); /* mag 1 */
-        secp256k1_fe_mul(&x2, &x2, &jinv); /* mag 1 */
-        secp256k1_fe_mul(&x3, &x3n, &wd); /* mag 1 */
-        secp256k1_fe_mul(&x3, &x3, &jinv); /* mag 1 */
+        ok = ok && secp256k1_fe_add(&x2n, &wd); /* mag 5 */
+        ok = ok && secp256k1_fe_negate(&x2n, &x2n); // 5 /* mag 6 */
+        ok = ok && secp256k1_fe_mul(&x3d, &c, t); /* mag 1 */
+        ok = ok && secp256k1_fe_sqr(&x3d, &x3d); /* mag 1 */
+        ok = ok && secp256k1_fe_sqr(&x3n, &wd); /* mag 1 */
+        ok = ok && secp256k1_fe_add(&x3n, &x3d); /* mag 2 */
+        ok = ok && secp256k1_fe_mul(&jinv, &x3d, &wd); /* mag 1 */
+        ok = ok && secp256k1_fe_inv(&jinv, &jinv); /* mag 1 */
+        ok = ok && secp256k1_fe_mul(&x1, &x1n, &x3d); /* mag 1 */
+        ok = ok && secp256k1_fe_mul(&x1, &x1, &jinv); /* mag 1 */
+        ok = ok && secp256k1_fe_mul(&x2, &x2n, &x3d); /* mag 1 */
+        ok = ok && secp256k1_fe_mul(&x2, &x2, &jinv); /* mag 1 */
+        ok = ok && secp256k1_fe_mul(&x3, &x3n, &wd); /* mag 1 */
+        ok = ok && secp256k1_fe_mul(&x3, &x3, &jinv); /* mag 1 */
     }
 
     {
         secp256k1_fe alphain, betain, gammain, y1, y2, y3;
-        secp256k1_fe_sqr(&alphain, &x1); /* mag 1 */
-        secp256k1_fe_mul(&alphain, &alphain, &x1); /* mag 1 */
-        secp256k1_fe_add(&alphain, &b); /* mag 2 */
-        secp256k1_fe_sqr(&betain, &x2); /* mag 1 */
-        secp256k1_fe_mul(&betain, &betain, &x2); /* mag 1 */
-        secp256k1_fe_add(&betain, &b); /* mag 2 */
-        secp256k1_fe_sqr(&gammain, &x3); /* mag 1 */
-        secp256k1_fe_mul(&gammain, &gammain, &x3); /* mag 1 */
-        secp256k1_fe_add(&gammain, &b); /* mag 2 */
+        ok = ok && secp256k1_fe_sqr(&alphain, &x1); /* mag 1 */
+        ok = ok && secp256k1_fe_mul(&alphain, &alphain, &x1); /* mag 1 */
+        ok = ok && secp256k1_fe_add(&alphain, &b); /* mag 2 */
+        ok = ok && secp256k1_fe_sqr(&betain, &x2); /* mag 1 */
+        ok = ok && secp256k1_fe_mul(&betain, &betain, &x2); /* mag 1 */
+        ok = ok && secp256k1_fe_add(&betain, &b); /* mag 2 */
+        ok = ok && secp256k1_fe_sqr(&gammain, &x3); /* mag 1 */
+        ok = ok && secp256k1_fe_mul(&gammain, &gammain, &x3); /* mag 1 */
+        ok = ok && secp256k1_fe_add(&gammain, &b); /* mag 2 */
         alphaquad = secp256k1_fe_sqrt(&y1, &alphain);
         betaquad = secp256k1_fe_sqrt(&y2, &betain);
-        secp256k1_fe_sqrt(&y3, &gammain);
+        (void)secp256k1_fe_sqrt(&y3, &gammain);
 
-        secp256k1_fe_cmov(&x1, &x2, (!alphaquad) & betaquad);
-        secp256k1_fe_cmov(&y1, &y2, (!alphaquad) & betaquad);
-        secp256k1_fe_cmov(&x1, &x3, (!alphaquad) & !betaquad);
-        secp256k1_fe_cmov(&y1, &y3, (!alphaquad) & !betaquad);
+        secp256k1_fe_cmov(&x1, &x2, !alphaquad && betaquad);
+        secp256k1_fe_cmov(&y1, &y2, !alphaquad && betaquad);
+        secp256k1_fe_cmov(&x1, &x3, !alphaquad && !betaquad);
+        secp256k1_fe_cmov(&y1, &y3, !alphaquad && !betaquad);
 
         secp256k1_ge_set_xy(ge, &x1, &y1);
     }
@@ -804,8 +889,10 @@ static void shallue_van_de_woestijne(secp256k1_ge* ge, const secp256k1_fe* t) {
      * rest of the algorithm only uses t^2, we can safely use another criterion
      * as long as negation of t results in negation of the y coordinate. Here
      * we choose to use t's oddness, as it is faster to determine. */
-    secp256k1_fe_negate(&tmp, (secp256k1_fe*)&ge->n[GE_OFFSET_Y]); // 1
+    ok = ok && secp256k1_fe_negate(&tmp, (secp256k1_fe*)&ge->n[GE_OFFSET_Y]); // 1
     secp256k1_fe_cmov((secp256k1_fe*)&ge->n[GE_OFFSET_Y], &tmp, secp256k1_fe_is_odd(t));
+
+    return ok;
 }
 
 bool liquid_generator_generate(uint8_t gen[static LIQUID_GENERATOR_LEN],
@@ -816,41 +903,29 @@ bool liquid_generator_generate(uint8_t gen[static LIQUID_GENERATOR_LEN],
     secp256k1_ge add;
     secp256k1_ge accum;
     cx_sha256_t sha256;
+    bool ovf_flag;
 
-    bool result = false;
-    BEGIN_TRY {
-        TRY {
-            cx_sha256_init(&sha256);
-            crypto_hash_update(&sha256.header, prefix1, 16);
-            crypto_hash_update(&sha256.header, seed32, 32);
-            crypto_hash_digest(&sha256.header, t.n, sizeof(t.n));
-            if(secp256k1_scalar_check_overflow(t.n)) {
-                THROW(CX_OVERFLOW);
-            }
-            shallue_van_de_woestijne(&accum, &t);
+    bool ok = true;
 
-            cx_sha256_init(&sha256);
-            crypto_hash_update(&sha256.header, prefix2, 16);
-            crypto_hash_update(&sha256.header, seed32, 32);
-            crypto_hash_digest(&sha256.header, t.n, sizeof(t.n));
-            if(secp256k1_scalar_check_overflow(t.n)) {
-                THROW(CX_OVERFLOW);
-            }
-            shallue_van_de_woestijne(&add, &t);
-            secp256k1_ge_add(&accum, &accum, &add);
-            memcpy(gen, accum.n, sizeof(accum.n));
+    ok = ok && hash_init_sha256(&sha256);
+    ok = ok && hash_update(&sha256.header, prefix1, 16);
+    ok = ok && hash_update(&sha256.header, seed32, 32);
+    ok = ok && hash_digest(&sha256.header, t.n, sizeof(t.n));
+    ok = ok && secp256k1_scalar_check_overflow(&t, &ovf_flag);
+    ok = ok && !ovf_flag;
+    ok = ok && shallue_van_de_woestijne(&accum, &t);
 
-            result = true;
-        }
-        CATCH_ALL {
-            result = false;
-        }
-        FINALLY {
-            // Zeroize sensitive data here
-        }
-    }
-    END_TRY;
-    return result;
+    ok = ok && hash_init_sha256(&sha256);
+    ok = ok && hash_update(&sha256.header, prefix2, 16);
+    ok = ok && hash_update(&sha256.header, seed32, 32);
+    ok = ok && hash_digest(&sha256.header, t.n, sizeof(t.n));
+    ok = ok && secp256k1_scalar_check_overflow(&t, &ovf_flag);
+    ok = ok && !ovf_flag;
+    ok = ok && shallue_van_de_woestijne(&add, &t);
+    ok = ok && secp256k1_ge_add(&accum, &accum, &add);
+    memcpy(gen, accum.n, sizeof(accum.n));
+
+    return ok;
 }
 
 #ifdef IMPLEMENT_ON_DEVICE_TESTS

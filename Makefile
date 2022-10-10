@@ -834,9 +834,9 @@ else
         ifeq ($(DEBUG),10)
                 $(warning Using semihosted PRINTF. Only run with Speculos!)
                 DEFINES += HAVE_PRINTF HAVE_SEMIHOSTED_PRINTF PRINTF=semihosted_printf
-                # DEFINES += HAVE_LOG_PROCESSOR
-                # DEFINES += HAVE_APDU_LOG
-                # DEFINES += HAVE_PRINT_STACK_POINTER
+                #DEFINES += HAVE_LOG_PROCESSOR
+                #DEFINES += HAVE_APDU_LOG
+                #DEFINES += HAVE_PRINT_STACK_POINTER
         else ifeq ($(DEBUG),11)
                 $(warning CCMD PRINTF is used! APDU exchage is affected.)
                 DEFINES += HAVE_CCMD_PRINTF
