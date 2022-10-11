@@ -32,19 +32,8 @@ void handler_liquid_get_master_blinding_key(dispatcher_context_t *dc) {
         return;
     }
 
-    bool error = false;
     uint8_t mbk[32];
-    BEGIN_TRY {
-        TRY {
-            liquid_get_master_blinding_key(mbk);
-        }
-        CATCH_ALL {
-            error = true;
-        }
-        FINALLY {
-        }
-    }
-    END_TRY;
+    bool error = !liquid_get_master_blinding_key(mbk);
 
     if (error) {
         // Unexpected error

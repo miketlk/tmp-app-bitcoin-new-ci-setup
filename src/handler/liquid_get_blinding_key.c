@@ -47,25 +47,16 @@ void handler_liquid_get_blinding_key(dispatcher_context_t *dc) {
         return;
     }
 
-    bool error = false;
     uint8_t mbk[32];
     uint8_t blinding_key[32];
-    BEGIN_TRY {
-        TRY {
-            liquid_get_master_blinding_key(mbk);
-            uint8_t *script_ptr = dc->read_buffer.ptr + dc->read_buffer.offset;
-            liquid_get_blinding_key(mbk, script_ptr, script_length, blinding_key);
-        }
-        CATCH_ALL {
-            error = true;
-        }
-        FINALLY {
-            explicit_bzero(mbk, sizeof(mbk));
-        }
-    }
-    END_TRY;
+    
+    bool ok =  liquid_get_master_blinding_key(mbk);
+    uint8_t *script_ptr = dc->read_buffer.ptr + dc->read_buffer.offset;
+    ok = ok && liquid_get_blinding_key(mbk, script_ptr, script_length, blinding_key);
 
-    if (error) {
+    explicit_bzero(mbk, sizeof(mbk));
+
+    if (!ok) {
         // Unexpected error
         explicit_bzero(blinding_key, sizeof(blinding_key));
         SEND_SW(dc, SW_BAD_STATE);

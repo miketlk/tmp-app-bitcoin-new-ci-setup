@@ -26,15 +26,36 @@ const liquid_network_config_t G_liquid_network_config =  {
 
 #ifndef SKIP_FOR_CMOCKA
 
-void liquid_get_master_blinding_key(uint8_t mbk[static 32]) {
-    crypto_derive_symmetric_key(SLIP77_LABEL, SLIP77_LABEL_LEN, mbk);
+bool liquid_get_master_blinding_key(uint8_t mbk[static 32]) {
+    bool result = true;
+    // We cannot eliminate exception use here because there is no guarantee that
+    // crypto_derive_symmetric_key() will not throw some.
+    BEGIN_TRY {
+        TRY {
+            crypto_derive_symmetric_key(SLIP77_LABEL, SLIP77_LABEL_LEN, mbk);
+        }
+        CATCH_ALL {
+            result = false;
+        }
+        FINALLY {
+        }
+    }
+    END_TRY;
+    return result;
 }
 
-void liquid_get_blinding_key(const uint8_t mbk[static 32],
+bool liquid_get_blinding_key(const uint8_t mbk[static 32],
                              const uint8_t *script,
                              size_t script_length,
                              uint8_t blinding_key[static 32]) {
-    cx_hmac_sha256(mbk, 32, script, script_length, blinding_key, 32);
+    cx_hmac_sha256_t hmac;
+    return ( CX_OK == cx_hmac_sha256_init_no_throw(&hmac, mbk, 32) &&
+             CX_OK == cx_hmac_no_throw( (cx_hmac_t*)&hmac,
+                                        CX_LAST,
+                                        script,
+                                        script_length,
+                                        blinding_key,
+                                        32) );
 }
 
 bool liquid_get_blinding_public_key(const uint8_t mbk[static 32],
@@ -53,45 +74,38 @@ bool liquid_get_blinding_public_key(const uint8_t mbk[static 32],
     cx_ecfp_private_key_t privkey_inst = {0};
     cx_ecfp_public_key_t pubkey_inst = {0};
 
-    bool result = true;
-    BEGIN_TRY {
-        TRY {
-            // Get raw blinding key
-            liquid_get_blinding_key(mbk, script, script_length, raw_privkey);
+    // Get raw blinding key
+    bool ok = liquid_get_blinding_key(mbk, script, script_length, raw_privkey);
 
-            // New private key instance from raw private key
-            cx_ecfp_init_private_key(CX_CURVE_256K1,
-                                     raw_privkey,
-                                     sizeof(raw_privkey),
-                                     &privkey_inst);
+    // New private key instance from raw private key
+    ok = ok && CX_OK == cx_ecfp_init_private_key_no_throw(CX_CURVE_256K1,
+                                                          raw_privkey,
+                                                          sizeof(raw_privkey),
+                                                          &privkey_inst);
 
-            // Generate corresponding public key
-            cx_ecfp_generate_pair(CX_CURVE_256K1, &pubkey_inst, &privkey_inst, 1);
+    // Generate corresponding public key
+    ok = ok && CX_OK == cx_ecfp_generate_pair(CX_CURVE_256K1, &pubkey_inst, &privkey_inst, 1);
 
-            if(LIQUID_PUBKEY_COMPRESSED == pubkey_compression) {
-                pubkey[0] = ((pubkey_inst.W[64] & 1) ? 0x03 : 0x02);
-                memcpy(pubkey + 1, pubkey_inst.W + 1, 32);
-                *p_pubkey_len = 33;
-            } else if(LIQUID_PUBKEY_UNCOMPRESSED == pubkey_compression) {
-                memcpy(pubkey, pubkey_inst.W, 65);
-                *p_pubkey_len = 65;
-            } else {
-                result = false;
-            }
-        }
-        CATCH_ALL {
-            result = false;
-        }
-        FINALLY {
-            // Zeroize sensitive data
-            explicit_bzero(&raw_privkey, sizeof(raw_privkey));
-            explicit_bzero(&privkey_inst, sizeof(privkey_inst));
-            explicit_bzero(&pubkey_inst, sizeof(pubkey_inst));
+    // Save produced public key in compressed or uncompressed format
+    if (ok) {
+        if(LIQUID_PUBKEY_COMPRESSED == pubkey_compression) {
+            pubkey[0] = ((pubkey_inst.W[64] & 1) ? 0x03 : 0x02);
+            memcpy(pubkey + 1, pubkey_inst.W + 1, 32);
+            *p_pubkey_len = 33;
+        } else if(LIQUID_PUBKEY_UNCOMPRESSED == pubkey_compression) {
+            memcpy(pubkey, pubkey_inst.W, 65);
+            *p_pubkey_len = 65;
+        } else {
+            ok = false;
         }
     }
-    END_TRY;
 
-    return result;
+    // Zeroize sensitive data
+    explicit_bzero(&raw_privkey, sizeof(raw_privkey));
+    explicit_bzero(&privkey_inst, sizeof(privkey_inst));
+    explicit_bzero(&pubkey_inst, sizeof(pubkey_inst));
+
+    return ok;
 }
 
 #endif

@@ -63,8 +63,10 @@ extern const liquid_network_config_t G_liquid_network_config;
  *
  * @param[out] mbk
  *   Pointer to a 32-byte output buffer that will contain the generated key.
+ *
+ * @return true - OK, false - error
  */
-void liquid_get_master_blinding_key(uint8_t mbk[static 32]);
+bool liquid_get_master_blinding_key(uint8_t mbk[static 32]);
 
 
 /**
@@ -82,8 +84,9 @@ void liquid_get_master_blinding_key(uint8_t mbk[static 32]);
  * @param[out] blinding_key
  *   Pointer to a 32-byte output buffer that will contain the generated key.
  *
+ * @return true - OK, false - error
  */
-void liquid_get_blinding_key(const uint8_t mbk[static 32],
+bool liquid_get_blinding_key(const uint8_t mbk[static 32],
                              const uint8_t *script,
                              size_t script_length,
                              uint8_t blinding_key[static 32]);

@@ -458,34 +458,23 @@ int call_get_wallet_script(dispatcher_context_t *dispatcher_context,
 
 #ifdef HAVE_LIQUID
 bool is_master_blinding_key_ours(const policy_node_t *mbk_node) {
-    bool result = false;
-
     if(mbk_node->type == TOKEN_SLIP77) {
         const policy_node_blinding_key_t *slip77 =
             (const policy_node_blinding_key_t *)mbk_node;
-
         uint8_t in_mbk[32];
         uint8_t ours_mbk[32];
 
-        BEGIN_TRY {
-            TRY {
-                if(wif_decode_private_key(slip77->key_str,
-                                          slip77->key_str_len,
-                                          in_mbk,
-                                          sizeof(in_mbk),
-                                          NULL)) {
-                    liquid_get_master_blinding_key(ours_mbk);
-                    result = os_secure_memcmp((void *) in_mbk, (void *) ours_mbk, 32) == 0;
-                }
-            }
-            FINALLY {
-                explicit_bzero(in_mbk, sizeof(in_mbk));
-                explicit_bzero(ours_mbk, sizeof(ours_mbk));
-            }
-        }
-        END_TRY;
+        int key_len =
+            wif_decode_private_key(slip77->key_str,
+                                   slip77->key_str_len,
+                                   in_mbk,
+                                   sizeof(in_mbk),
+                                   NULL);
+        bool ok = key_len > 0 && liquid_get_master_blinding_key(ours_mbk);
+        ok = ok && os_secure_memcmp((void *) in_mbk, (void *) ours_mbk, 32) == 0;
+        return ok;
     }
-    return result;
+    return false;
 }
 #endif // HAVE_LIQUID
 
