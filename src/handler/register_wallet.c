@@ -244,13 +244,15 @@ static void finalize_response(dispatcher_context_t *dc) {
     //       The client must persist the metadata, together with the signature.
 
     // sign wallet id and produce response
-    uint8_t key[32];
+    volatile uint8_t key[32];
 
     BEGIN_TRY {
         TRY {
-            crypto_derive_symmetric_key(WALLET_SLIP0021_LABEL, WALLET_SLIP0021_LABEL_LEN, key);
+            crypto_derive_symmetric_key(WALLET_SLIP0021_LABEL,
+                                        WALLET_SLIP0021_LABEL_LEN,
+                                        (uint8_t*)key);
 
-            cx_hmac_sha256(key,
+            cx_hmac_sha256((uint8_t*)key,
                            sizeof(key),
                            state->wallet_id,
                            sizeof(state->wallet_id),
@@ -258,7 +260,7 @@ static void finalize_response(dispatcher_context_t *dc) {
                            sizeof(response.hmac));
         }
         FINALLY {
-            explicit_bzero(key, sizeof(key));
+            explicit_bzero((uint8_t*)key, sizeof(key));
         }
     }
     END_TRY;

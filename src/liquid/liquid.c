@@ -27,7 +27,7 @@ const liquid_network_config_t G_liquid_network_config =  {
 #ifndef SKIP_FOR_CMOCKA
 
 bool liquid_get_master_blinding_key(uint8_t mbk[static 32]) {
-    bool result = true;
+    volatile bool result = true;
     // We cannot eliminate exception use here because there is no guarantee that
     // crypto_derive_symmetric_key() will not throw some.
     BEGIN_TRY {

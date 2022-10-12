@@ -511,7 +511,7 @@ bool check_wallet_hmac(const uint8_t wallet_id[static 32], const uint8_t wallet_
     uint8_t key[32];
     uint8_t correct_hmac[32];
 
-    bool result = false;
+    volatile bool result = false;
     BEGIN_TRY {
         TRY {
             crypto_derive_symmetric_key(WALLET_SLIP0021_LABEL, WALLET_SLIP0021_LABEL_LEN, key);

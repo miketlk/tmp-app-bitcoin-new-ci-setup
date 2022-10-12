@@ -1883,7 +1883,7 @@ static void sign_sighash_schnorr(dispatcher_context_t *dc) {
     uint8_t sig[64];
     size_t sig_len;
 
-    bool error = false;
+    volatile bool error = false;
     BEGIN_TRY {
         TRY {
             crypto_derive_private_key(&private_key, chain_code, sign_path, sign_path_len);
