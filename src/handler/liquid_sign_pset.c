@@ -1342,8 +1342,6 @@ static void check_input_commitments(dispatcher_context_t *dc) {
 
     LOG_PROCESSOR(dc, __FILE__, __LINE__, __func__);
 
-    // TODO: re-enable commitment check when adequate tests become be available (!!!)
-#if 0
     uint8_t blinded_asset_gen[LIQUID_GENERATOR_LEN];
     bool blinded_asset_gen_init = false;
 
@@ -1421,7 +1419,7 @@ static void check_input_commitments(dispatcher_context_t *dc) {
             return;
         }
     }
-#endif
+
     dc->next(check_input_owned);
 }
 
