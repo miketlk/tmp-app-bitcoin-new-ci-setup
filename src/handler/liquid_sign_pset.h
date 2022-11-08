@@ -72,20 +72,10 @@ typedef struct {
     uint8_t outputs_root[32];  // merkle root of the vector of output maps commitments
 
     bool is_wallet_canonical;
-    int address_type;   // only relevant for canonical wallets
     int bip44_purpose;  // only relevant for canonical wallets
 
     uint8_t wallet_header_keys_info_merkle_root[32];
     size_t wallet_header_n_keys;
-    union {
-        uint8_t wallet_policy_map_bytes[MAX_POLICY_MAP_BYTES];
-        policy_node_t wallet_policy_map;
-    };
-    const policy_node_t *wallet_policy_map_unwrapped;
-    bool wallet_is_blinded;
-    liquid_blinding_key_type_t wallet_blinding_key_type;
-    uint8_t wallet_master_blinding_key[32];
-
 
     uint32_t master_key_fingerprint;
 
@@ -106,15 +96,23 @@ typedef struct {
 
     uint8_t sighash[32];
 
-    struct {
-        uint8_t sha_prevouts[32];
-        uint8_t sha_amounts[32];
-        uint8_t sha_scriptpubkeys[32];
-        uint8_t sha_sequences[32];
-        uint8_t sha_outputs[32];
-        uint8_t sha_issuances[32];
-        uint8_t sha_rangeproofs[32];
-    } hashes;
+    union {
+        union {
+            uint8_t map_bytes[MAX_POLICY_MAP_BYTES];
+            policy_node_t map;
+        } wallet_policy;
+        struct {
+            uint8_t sha_prevouts[32];
+            uint8_t sha_amounts[32];
+            uint8_t sha_scriptpubkeys[32];
+            uint8_t sha_sequences[32];
+            uint8_t sha_outputs[32];
+            uint8_t sha_issuances[32];
+            uint8_t sha_rangeproofs[32];
+        } hashes;
+    };
+    const policy_node_t *wallet_policy_map_unwrapped;
+    PolicyNodeType wallet_policy_root_type;
 
     uint64_t inputs_total_value;
     uint64_t outputs_total_value;

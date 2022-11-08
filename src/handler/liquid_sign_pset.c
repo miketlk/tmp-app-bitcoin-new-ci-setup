@@ -83,13 +83,8 @@ typedef enum {
     HAS_VALUE_PROOF = (1 << 23),
     HAS_ASSET_PROOF = (1 << 24),
     HAS_ASSET_SURJECTION_PROOF = (1 << 25),
+    HAS_VALUE_RANGEPROOF = (1 << 26)
 } key_presence_flags_t;
-
-/// Order in which witness fields are hashed
-typedef enum {
-    OUT_WITNESS_ORDER_ALL,    ///< Order for hashing all ouptuts: rangeproof, surjection proof
-    OUT_WITNESS_ORDER_SINGLE  ///< Order for hashing single ouptut: surjection proof, rangeproof
-} witness_order_t;
 
 /// State of input_keys_callback()
 typedef struct {
@@ -228,7 +223,7 @@ static void input_keys_callback(input_keys_callback_state_t *state, buffer_t *da
             state->key_presence |= HAS_SIGHASH_TYPE;
         } else if ((keytype == PSBT_IN_BIP32_DERIVATION ||
                     keytype == PSBT_IN_TAP_BIP32_DERIVATION) &&
-                   !(state->key_presence & HAS_BIP32_DERIVATION)) {
+                    !(state->key_presence & HAS_BIP32_DERIVATION)) {
             // The first time that we encounter a PSBT_IN_BIP32_DERIVATION or
             // PSBT_IN_TAP_BIP32_DERIVATION (handled below) key, we store the pubkey. Since we only
             // use this to identify the change and address_index, it does not matter which of the
@@ -341,6 +336,8 @@ static void output_keys_callback(output_keys_callback_state_t *state, buffer_t *
                 state->key_presence |= HAS_ASSET_COMMITMENT;
             } else if (test_proprietary_key(data, PSBT_ELEMENTS_LEGACY_OUT_ASSET_BLINDER)) {
                 state->key_presence |= HAS_ASSET_BLINDING_FACTOR;
+            } else if (test_proprietary_key(data, PSBT_ELEMENTS_OUT_VALUE_RANGEPROOF)) {
+                state->key_presence |= HAS_VALUE_RANGEPROOF;
             } else if (test_proprietary_key(data, PSBT_ELEMENTS_OUT_ASSET_SURJECTION_PROOF)) {
                 state->key_presence |= HAS_ASSET_SURJECTION_PROOF;
             } else if (test_proprietary_key(data, PSBT_ELEMENTS_OUT_BLINDING_PUBKEY)) {
@@ -363,18 +360,13 @@ static void output_keys_callback(output_keys_callback_state_t *state, buffer_t *
 static int hash_output(dispatcher_context_t *dc,
                        int output_index,
                        cx_hash_t *hash_context,
-                       cx_hash_t *rangeproof_hash_context,
-                       witness_order_t witness_order) {
+                       cx_hash_t *rangeproof_hash_context) {
     sign_pset_state_t *state = (sign_pset_state_t *) &G_command_state;
 
     // get this output's map
     merkleized_map_commitment_t ith_map;
     uint32_t key_presence = 0;
     int res;
-
-    if (witness_order != OUT_WITNESS_ORDER_ALL && witness_order != OUT_WITNESS_ORDER_SINGLE) {
-        return -1;
-    }
 
     // get output's merkelized map
     {
@@ -493,47 +485,36 @@ static int hash_output(dispatcher_context_t *dc,
     }
 
     if (rangeproof_hash_context) {
-        if (witness_order == OUT_WITNESS_ORDER_ALL) {
+        static const uint32_t witness_mask = HAS_VALUE_RANGEPROOF | HAS_ASSET_SURJECTION_PROOF;
+        if ((key_presence & witness_mask) == witness_mask) { // Output has witness
             // update hash with range proof
             res = update_hashes_with_map_value(dc,
-                                                &ith_map,
-                                                PSBT_ELEMENTS_OUT_VALUE_RANGEPROOF,
-                                                sizeof(PSBT_ELEMENTS_OUT_VALUE_RANGEPROOF),
-                                                rangeproof_hash_context,
-                                                NULL);
-
+                                               &ith_map,
+                                               PSBT_ELEMENTS_OUT_VALUE_RANGEPROOF,
+                                               sizeof(PSBT_ELEMENTS_OUT_VALUE_RANGEPROOF),
+                                               NULL,
+                                               rangeproof_hash_context);
             if (res < 0) {
                 PRINTF("Error fetching range proof\n");
                 return -1;
             }
-        }
 
-        // update hash with surjection proof
-        res = update_hashes_with_map_value(dc,
-                                            &ith_map,
-                                            PSBT_ELEMENTS_OUT_ASSET_SURJECTION_PROOF,
-                                            sizeof(PSBT_ELEMENTS_OUT_ASSET_SURJECTION_PROOF),
-                                            rangeproof_hash_context,
-                                            NULL);
-
-        if (res < 0) {
-            PRINTF("Error fetching surjection proof\n");
+            // update hash with surjection proof
+            res = update_hashes_with_map_value(dc,
+                                               &ith_map,
+                                               PSBT_ELEMENTS_OUT_ASSET_SURJECTION_PROOF,
+                                               sizeof(PSBT_ELEMENTS_OUT_ASSET_SURJECTION_PROOF),
+                                               NULL,
+                                               rangeproof_hash_context);
+            if (res < 0) {
+                PRINTF("Error fetching surjection proof\n");
+                return -1;
+            }
+        } else if ((key_presence & witness_mask) == 0) { // No output witness
+            crypto_hash_update_zeros(rangeproof_hash_context, 2);
+        } else { // Incomplete witness
+            PRINTF("Unsupported output witness configuration\n");
             return -1;
-        }
-
-        if (witness_order == OUT_WITNESS_ORDER_SINGLE) {
-            // update hash with range proof
-            res = update_hashes_with_map_value(dc,
-                                                &ith_map,
-                                                PSBT_ELEMENTS_OUT_VALUE_RANGEPROOF,
-                                                sizeof(PSBT_ELEMENTS_OUT_VALUE_RANGEPROOF),
-                                                rangeproof_hash_context,
-                                                NULL);
-
-            if (res < 0) {
-                PRINTF("Error fetching range proof\n");
-                return -1;
-            }
         }
     }
 
@@ -548,7 +529,7 @@ static int hash_outputs(dispatcher_context_t *dc,
     sign_pset_state_t *state = (sign_pset_state_t *) &G_command_state;
 
     for (unsigned int i = 0; i < state->n_outputs; i++) {
-        int res = hash_output(dc, i, hash_context, rangeproof_hash_context, OUT_WITNESS_ORDER_ALL);
+        int res = hash_output(dc, i, hash_context, rangeproof_hash_context);
         if (res < 0) {
             return -1;
         }
@@ -984,23 +965,27 @@ void handler_liquid_sign_pset(dispatcher_context_t *dc) {
         buffer_create(&wallet_header.policy_map, wallet_header.policy_map_len);
 
     if (parse_policy_map(&policy_map_buffer,
-                         state->wallet_policy_map_bytes,
-                         sizeof(state->wallet_policy_map_bytes)) < 0) {
+                         state->wallet_policy.map_bytes,
+                         sizeof(state->wallet_policy.map_bytes)) < 0) {
         SEND_SW(dc, SW_INCORRECT_DATA);
         return;
     }
 
     // Unwrap policy map removing blinded() tag and extracting master blinding key
-    state->wallet_policy_map_unwrapped = &state->wallet_policy_map;
+    state->wallet_policy_map_unwrapped = &state->wallet_policy.map;
+    uint8_t master_blinding_key[32]; // Currently unused
+    liquid_blinding_key_type_t blinding_key_type; // Currently unused
+    bool wallet_is_blinded; // Currently unused
     if(!liquid_policy_unwrap_blinded(&state->wallet_policy_map_unwrapped,
-                                     &state->wallet_is_blinded,
-                                     state->wallet_master_blinding_key,
-                                     sizeof(state->wallet_master_blinding_key),
+                                     &wallet_is_blinded,
+                                     master_blinding_key,
+                                     sizeof(master_blinding_key),
                                      NULL,
-                                     &state->wallet_blinding_key_type)) {
+                                     &blinding_key_type)) {
         SEND_SW(dc, SW_INCORRECT_DATA);  // unexpected
         return;
     }
+    state->wallet_policy_root_type = state->wallet_policy_map_unwrapped->type;
 
     uint8_t hmac_or =
         0;  // the binary OR of all the hmac bytes (so == 0 iff the hmac is identically 0)
@@ -1016,8 +1001,8 @@ void handler_liquid_sign_pset(dispatcher_context_t *dc) {
             return;
         }
 
-        state->address_type = get_policy_address_type(state->wallet_policy_map_unwrapped);
-        if (state->address_type == -1) {
+        int address_type = get_policy_address_type(state->wallet_policy_map_unwrapped);
+        if (address_type == -1) {
             PRINTF("Non-standard policy, and no hmac provided\n");
             SEND_SW(dc, SW_INCORRECT_DATA);
             return;
@@ -1026,7 +1011,7 @@ void handler_liquid_sign_pset(dispatcher_context_t *dc) {
         state->is_wallet_canonical = true;
 
         // Based on the address type, we set the expected bip44 purpose for this canonical wallet
-        state->bip44_purpose = get_bip44_purpose(state->address_type);
+        state->bip44_purpose = get_bip44_purpose(address_type);
         if (state->bip44_purpose < 0) {
             SEND_SW(dc, SW_BAD_STATE);
             return;
@@ -1202,6 +1187,8 @@ static void process_input_map(dispatcher_context_t *dc) {
             return;
         }
     }
+
+    PRINTF("\nkey_presence=%04x\n", state->cur.key_presence);
 
     if(state->cur.key_presence & HAS_VALUE) {
         tx_amount_t prevout_amount;
@@ -2015,6 +2002,10 @@ static void compute_segwit_hashes(dispatcher_context_t *dc) {
     LOG_PROCESSOR(dc, __FILE__, __LINE__, __func__);
     PRINT_STACK_POINTER();
 
+    // Policy memory is now reused for hashes
+    state->wallet_policy_map_unwrapped = NULL;
+    memset(&state->hashes, 0, sizeof(state->hashes));
+
     {
         // compute sha_prevouts and sha_sequences
         cx_sha256_t *sha_prevouts_context = sha_context_alloc(state);
@@ -2103,8 +2094,7 @@ static void compute_segwit_hashes(dispatcher_context_t *dc) {
 
         if (hash_outputs(dc,
                          &sha_outputs_context->header,
-                         (state->cur.input.sighash_type & SIGHASH_RANGEPROOF) ?
-                         &sha_rangeproofs_context->header : NULL) == -1) {
+                         &sha_rangeproofs_context->header) == -1) {
             SEND_SW(dc, SW_INCORRECT_DATA);
             return;
         }
@@ -2291,7 +2281,7 @@ static void sign_process_input_map(dispatcher_context_t *dc) {
     uint32_t bip32_path[MAX_BIP32_PATH_STEPS];
     uint32_t fingerprint;
 
-    if (state->wallet_policy_map_unwrapped->type == TOKEN_TR) {
+    if (state->wallet_policy_root_type == TOKEN_TR) {
         // taproot input, use PSBT_IN_TAP_BIP32_DERIVATION
         uint8_t key[1 + 32];
         key[0] = PSBT_IN_TAP_BIP32_DERIVATION;
@@ -2626,7 +2616,9 @@ static void sign_segwit_v0(dispatcher_context_t *dc) {
 
     PRINT_HASH("sequences", &sighash_context);
 
-    {
+    if (sighash_anyonecanpay) {
+        crypto_hash_update_zeros(&sighash_context.header, 32);
+    } else {
         // add to hash: hashIssuance sha256(sha_issuances)
         uint8_t dbl_hash[32];
         cx_hash_sha256(state->hashes.sha_issuances, 32, dbl_hash, 32);
@@ -2770,11 +2762,12 @@ static void sign_segwit_v0(dispatcher_context_t *dc) {
     PRINT_HASH("issuance", &sighash_context);
 
     if (sighash_base != SIGHASH_NONE && sighash_base != SIGHASH_SINGLE) {
-        PRINT_HEX("sha_outputs = ", state->hashes.sha_outputs, 32);
         // compute hashOutputs = sha256(sha_outputs)
         uint8_t dbl_hash[32];
         cx_hash_sha256(state->hashes.sha_outputs, 32, dbl_hash, 32);
         crypto_hash_update(&sighash_context.header, dbl_hash, 32);
+
+        PRINT_HASH("outputs", &sighash_context);
         // compute hashRangeproofs = sha256(sha_rangeproofs)
         if (sighash_rangeproof) {
             cx_hash_sha256(state->hashes.sha_rangeproofs, 32, dbl_hash, 32);
@@ -2788,47 +2781,50 @@ static void sign_segwit_v0(dispatcher_context_t *dc) {
             return;
         }
 
-        uint8_t hash[32], dbl_hash[32];
+        uint8_t hash[32];
+        union {
+            cx_sha256_t sha_output;
+            cx_sha256_t sha_rangeproof;
+            uint8_t dbl_hash[32];
+        } t;
 
         // hash single output
         {
-            cx_sha256_t sha_output;
-            cx_sha256_init(&sha_output);
+            cx_sha256_init(&t.sha_output);
             int res = hash_output(dc,
                                   state->cur_input_index,
-                                  &sha_output.header,
-                                  NULL,
-                                  OUT_WITNESS_ORDER_SINGLE);
+                                  &t.sha_output.header,
+                                  NULL);
             if (res < 0) {
                 SEND_SW(dc, SW_INCORRECT_DATA);
                 return;
             }
-            crypto_hash_digest(&sha_output.header, hash, sizeof(hash));
-            cx_hash_sha256(hash, sizeof(hash), dbl_hash, sizeof(dbl_hash));
-            crypto_hash_update(&sighash_context.header, dbl_hash, sizeof(dbl_hash));
+            crypto_hash_digest(&t.sha_output.header, hash, sizeof(hash));
+            cx_hash_sha256(hash, sizeof(hash), t.dbl_hash, sizeof(t.dbl_hash));
+            crypto_hash_update(&sighash_context.header, t.dbl_hash, sizeof(t.dbl_hash));
         }
+
+        PRINT_HASH("outputs", &sighash_context);
 
         // hash range proof of the single output
         if (sighash_rangeproof) {
-            cx_sha256_t sha_rangeproof;
-            cx_sha256_init(&sha_rangeproof);
+            cx_sha256_init(&t.sha_rangeproof);
             int res = hash_output(dc,
                                   state->cur_input_index,
                                   NULL,
-                                  &sha_rangeproof.header,
-                                  OUT_WITNESS_ORDER_SINGLE);
+                                  &t.sha_rangeproof.header);
             if (res < 0) {
                 SEND_SW(dc, SW_INCORRECT_DATA);
                 return;
             }
-            crypto_hash_digest(&sha_rangeproof.header, hash, sizeof(hash));
-            cx_hash_sha256(hash, sizeof(hash), dbl_hash, sizeof(dbl_hash));
-            crypto_hash_update(&sighash_context.header, dbl_hash, sizeof(dbl_hash));
+            crypto_hash_digest(&t.sha_rangeproof.header, hash, sizeof(hash));
+            cx_hash_sha256(hash, sizeof(hash), t.dbl_hash, sizeof(t.dbl_hash));
+            crypto_hash_update(&sighash_context.header, t.dbl_hash, sizeof(t.dbl_hash));
         }
     } else {
-        crypto_hash_update_zeros(&sighash_context.header, 32);
+        crypto_hash_update_zeros(&sighash_context.header, sighash_rangeproof ? 64 : 32);
     }
-    PRINT_HASH("outputs", &sighash_context);
+    PRINT_HASH("rangeproofs", &sighash_context);
 
     // nLocktime
     write_u32_le(tmp, 0, state->locktime);

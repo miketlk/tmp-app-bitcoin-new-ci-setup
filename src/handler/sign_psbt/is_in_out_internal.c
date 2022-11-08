@@ -20,6 +20,12 @@ int is_in_out_internal(dispatcher_context_t *dispatcher_context,
         PRINTF("No BIP32 derivation\n");
         return 0;
     }
+#ifdef HAVE_LIQUID
+    if (!state->wallet_policy_map_unwrapped) {
+        PRINTF("Wallet policy doesn't exist\n");
+        return -1;
+    }
+#endif
 
     // get path, obtain change and address_index,
     int bip32_path_len;
