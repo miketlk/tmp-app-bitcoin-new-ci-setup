@@ -129,32 +129,7 @@ def open_pset_from_file(filename: str) -> PSET:
 def random_wallet_name() -> str:
     charset = string.ascii_letters+string.digits
     return "wallet_" + ''.join(random.choice(charset) for i in range(random.randint(2, 16-7)))
-
-
-@has_automation(f"{tests_root}/automations/sign_with_default_wallet_accept.json")
-def test_sign_psbt_singlesig_wpkh(client: Client, speculos_globals: SpeculosGlobals):
-
-    psbt = open_pset_from_file(f"{tests_root}/pset/singlesig/single_confidential.psbt")
-
-    fpr = speculos_globals.master_key_fingerprint.hex()
-
-    # bech32 address (P2WPKH)
-    wallet = BlindedWallet(
-        name="",
-        blinding_key="L24LLSbccJ52ESXkRvnKxYik3iBJvH2uQHf6X3xnsKZ3sw8RHMmA",
-        policy_map="wpkh(@0)",
-        keys_info=[
-            f"[f5acc2fd/84'/1'/0']tpubDCtKfsNyRhULjZ9XMS4VKKtVcPdVDi8MKUbcSD9MJDyjRu1A2ND5MiipozyyspBT9bg8upEp7a8EAgFxNxXn1d7QkdbL52Ty5jiSLcxPt1P/**",
-        ],
-    )
-
-    result = client.sign_psbt(psbt, wallet, None)
-
-    assert result == {
-        0: bytes.fromhex(
-            "3044022027f6b1c8afe995cdb43c61ce9bbd7fb21401925b53b7af21c9450f2baf47cb1d02201fd2574926d6ee1a7e364f4ef51a0634e62d442a4747cd3355536cd36d7ae9c501"
-        )
-    }
+    
 
 # Takes quite a long time. It's recommended to enable stdout to see the progress (pytest -s).
 @has_automation(f"{tests_root}/automations/sign_with_any_wallet_accept.json")
