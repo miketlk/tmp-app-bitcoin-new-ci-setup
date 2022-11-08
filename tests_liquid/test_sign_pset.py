@@ -2,6 +2,8 @@ import pytest
 
 import threading
 
+import json
+
 from decimal import Decimal
 
 from typing import List
@@ -21,6 +23,12 @@ from embit.script import Script
 from embit.networks import NETWORKS
 
 from test_utils.speculos import automation
+
+import hmac
+from hashlib import sha256
+
+import random
+import string
 
 tests_root: Path = Path(__file__).parent
 
@@ -118,6 +126,11 @@ def open_pset_from_file(filename: str) -> PSET:
     return psbt
 
 
+def random_wallet_name() -> str:
+    charset = string.ascii_letters+string.digits
+    return "wallet_" + ''.join(random.choice(charset) for i in range(random.randint(2, 16-7)))
+
+
 @has_automation(f"{tests_root}/automations/sign_with_default_wallet_accept.json")
 def test_sign_psbt_singlesig_wpkh(client: Client, speculos_globals: SpeculosGlobals):
 
@@ -137,9 +150,48 @@ def test_sign_psbt_singlesig_wpkh(client: Client, speculos_globals: SpeculosGlob
 
     result = client.sign_psbt(psbt, wallet, None)
 
-    # TODO: check with other SIGHASH options
     assert result == {
         0: bytes.fromhex(
             "3044022027f6b1c8afe995cdb43c61ce9bbd7fb21401925b53b7af21c9450f2baf47cb1d02201fd2574926d6ee1a7e364f4ef51a0634e62d442a4747cd3355536cd36d7ae9c501"
         )
     }
+
+# Takes quite a long time. It's recommended to enable stdout to see the progress (pytest -s).
+@has_automation(f"{tests_root}/automations/sign_with_any_wallet_accept.json")
+def test_sign_psbt_batch(client: Client, speculos_globals: SpeculosGlobals):
+
+    client.debug = False
+    random.seed(1)
+
+    with open(f"{tests_root}/pset/test_data.json", "r") as read_file:
+        test_data = json.load(read_file)
+
+    for _, suite in test_data["valid"].items():
+        wallet = BlindedWallet(
+            name=random_wallet_name(),
+            blinding_key=suite["mbk"],
+            policy_map=suite["policy_map"],
+            keys_info=suite["keys_info"]
+        )
+
+        wallet_hmac = None
+        if len(suite["keys_info"]) > 1:
+            # Register wallet before multisig tests
+            wallet_id, wallet_hmac = client.register_wallet(wallet)
+            assert wallet_id == wallet.id
+            assert hmac.compare_digest(
+                hmac.new(speculos_globals.wallet_registration_key, wallet_id, sha256).digest(),
+                wallet_hmac,
+            )
+
+        for test in suite["tests"]:
+            print("TEST:", suite["description"], test["description"])
+
+            pset = PSET()
+            pset.deserialize(test["pset"])
+            result = client.sign_psbt(pset, wallet, wallet_hmac)
+
+            for n_input, sigs in test["signatures"].items():
+                result_sig = result[int(n_input)].hex()
+                assert len(result_sig) in [142, 144]
+                assert result_sig in sigs["final_scriptwitness"]
