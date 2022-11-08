@@ -312,6 +312,10 @@ static void initialize_app_globals() {
  * Handle APDU command received and send back APDU response using handlers.
  */
 void coin_main(btchip_altcoin_config_t *coin_config) {
+#ifdef HAVE_BOLOS_APP_STACK_CANARY
+    // Sometimes this initialization is skipped in SDK
+    app_stack_canary = 0xDEAD0031;
+#endif
     PRINT_STACK_POINTER();
 
     initialize_app_globals();

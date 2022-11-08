@@ -8,6 +8,7 @@ int semihosted_printf(const char *format, ...);
 
 void print_stack_pointer(const char *file, int line, const char *func_name);
 void print_hash(const char *msg, const void *sha256_context);
+void print_data_hash(const char *msg, const void *buf, unsigned int len);
 void print_hex(const char *msg, const void *buf, unsigned int len);
 
 // Helper macro
@@ -19,8 +20,10 @@ void print_hex(const char *msg, const void *buf, unsigned int len);
 
 #ifdef HAVE_PRINTF
 #define PRINT_HASH(msg, sha256_context) print_hash(msg, sha256_context)
+#define PRINT_DATA_HASH(msg, buf, len) print_data_hash(msg, buf, len)
 #define PRINT_HEX(msg, buf, len) print_hex(msg, buf, len)
 #else
 #define PRINT_HASH(msg, sha256_context)
+#define PRINT_DATA_HASH(msg, buf, len)
 #define PRINT_HEX(msg, buf, len)
 #endif // HAVE_PRINTF

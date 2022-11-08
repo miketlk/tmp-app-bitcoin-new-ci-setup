@@ -82,6 +82,10 @@ static unsigned int __attribute__((noinline, unused)) get_stack_pointer() {
 #pragma GCC diagnostic pop
 }
 
+#ifdef HAVE_BOLOS_APP_STACK_CANARY
+extern unsigned int app_stack_canary;
+#endif
+
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wunused-parameter"
 #pragma GCC diagnostic ignored "-Wunused-function"
@@ -98,6 +102,11 @@ void print_stack_pointer(const char *file, int line, const char *func_name) {
     debug_write_dec(line);
     debug_write(": ");
     debug_write_hex(get_stack_pointer(), 4);
+#ifdef HAVE_BOLOS_APP_STACK_CANARY
+    if (app_stack_canary != 0xDEAD0031) {
+        debug_write(" CORRUPTED!");
+    }
+#endif
     debug_write("\n");
 }
 #pragma GCC diagnostic pop
@@ -117,6 +126,19 @@ void print_hash(const char *msg, const void *sha256_context) {
         }
         debug_write("\n");
     }
+}
+
+void print_data_hash(const char *msg, const void *buf, unsigned int len) {
+    uint8_t hash[32] = { 0 };
+    cx_hash_sha256(buf, len, hash, 32);
+
+    debug_write("HASH '");
+    debug_write(msg);
+    debug_write("' ");
+    for (unsigned int i = 0; i < 32; ++i) {
+        debug_write_hex(hash[i], 1);
+    }
+    debug_write("\n");
 }
 
 void print_hex(const char *msg, const void *buf, unsigned int len) {
