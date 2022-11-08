@@ -190,14 +190,14 @@ int bip32_CKDpub(const serialized_extended_pubkey_t *parent,
 }
 
 int crypto_hash_update_zeros(cx_hash_t *hash_context, size_t n_zeros) {
-    int ret = 0;
-    uint8_t data[8] = { 0 };
+    int ret = 32;
+    static const uint8_t data[8] = { 0 };
     size_t i;
 
-    for (i = 0; i < (n_zeros >> 3) && 0 == ret; ++i) {
+    for (i = 0; i < (n_zeros >> 3) && 32 == ret; ++i) {
         ret = crypto_hash_update(hash_context, &data, 8);
     }
-    for (i = 0; i < (n_zeros & 7) && 0 == ret; ++i) {
+    for (i = 0; i < (n_zeros & 7) && 32 == ret; ++i) {
         ret = crypto_hash_update(hash_context, &data, 1);
     }
     return ret;
