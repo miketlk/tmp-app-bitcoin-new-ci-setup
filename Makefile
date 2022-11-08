@@ -180,7 +180,8 @@ else ifeq ($(COIN),liquid_regtest)
 
 # we're not using the lib :)
 DEFINES_LIB=
-APP_LOAD_FLAGS=--appFlags 0xa50
+# Flags: DERIVE_MASTER, GLOBAL_PIN, BOLOS_SETTINGS
+APP_LOAD_FLAGS=--appFlags 0x250
 
 DEFINES   += DISABLE_LEGACY_SUPPORT
 
@@ -204,7 +205,11 @@ DEFINES   += COIN_NATIVE_SEGWIT_PREFIX_CONFIDENTIAL=\"el\"
 DEFINES   += COIN_KIND=COIN_KIND_BITCOIN
 DEFINES   += COIN_FLAGS=FLAG_SEGWIT_CHANGE_SUPPORT
 APPNAME = "Liquid Regtest"
-APP_LOAD_PARAMS += --path $(APP_PATH) --path_slip21 "SLIP-0077"
+#APP_LOAD_PARAMS += --path $(APP_PATH) --path_slip21 "SLIP-0077"
+#ALLOWED_BIP32_PATHS = "44'/1'" "48'/1'" "49'/1'" "84'/1'" "86'/1'"
+APP_LOAD_PARAMS += $(addprefix --path ,$(ALLOWED_BIP32_PATHS)) --path_slip21 "SLIP-0077"
+#APP_LOAD_PARAMS += --curve secp256k1
+# --appFlags
 
 else ifeq ($(COIN),liquid_regtest_headless)
 
