@@ -129,7 +129,7 @@ def open_pset_from_file(filename: str) -> PSET:
 def random_wallet_name() -> str:
     charset = string.ascii_letters+string.digits
     return "wallet_" + ''.join(random.choice(charset) for i in range(random.randint(2, 16-7)))
-    
+
 
 # Takes quite a long time. It's recommended to enable stdout to see the progress (pytest -s).
 @has_automation(f"{tests_root}/automations/sign_with_any_wallet_accept.json")
@@ -168,5 +168,6 @@ def test_sign_psbt_batch(client: Client, speculos_globals: SpeculosGlobals):
 
             for n_input, sigs in test["signatures"].items():
                 result_sig = result[int(n_input)].hex()
-                assert len(result_sig) in [142, 144]
+                assert len(result_sig) >= 100 and len(result_sig) <= 144
+                assert result_sig.startswith("304")
                 assert result_sig in sigs["final_scriptwitness"]

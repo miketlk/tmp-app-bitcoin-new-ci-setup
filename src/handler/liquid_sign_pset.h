@@ -29,13 +29,14 @@ typedef struct {
 
     uint8_t scriptPubKey[MAX_OUTPUT_SCRIPTPUBKEY_LEN];
     size_t scriptPubKey_len;
+    uint64_t value;
     uint8_t value_commitment[33]; // value commitment of the current input or output
     uint8_t asset_commitment[33]; // asset commitment of the current input or output
+    uint8_t asset_tag[32];
+    const asset_definition_t *asset_info;
 } in_out_info_t;
 
 typedef struct {
-    uint64_t prevout_amount;   // the amount of the prevout of the current input
-
     // the script used when signing, either from the witness utxo or the redeem script
     uint8_t script[MAX_PREVOUT_SCRIPTPUBKEY_LEN];
     size_t script_len;
@@ -47,7 +48,6 @@ typedef struct {
 } input_info_t;
 
 typedef struct {
-    uint64_t value;
 } output_info_t;
 
 typedef struct  {
@@ -128,12 +128,6 @@ typedef struct {
 
     int our_key_derivation_length;
     uint32_t our_key_derivation[MAX_BIP32_PATH_STEPS];
-
-    uint8_t global_asset_tag[32];                    // transaction-global asset tag
-    uint8_t global_asset_gen[LIQUID_GENERATOR_LEN];  // transaction-global asset generator
-    const asset_definition_t *global_asset_info;     // asset information (if available)
-    bool global_asset_init;  // flag indicating that global_asset_tag[] and global_asset_gen[]
-                             // hold a valid values.
 } sign_pset_state_t;
 
 void handler_liquid_sign_pset(dispatcher_context_t *dispatcher_context);
