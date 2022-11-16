@@ -250,16 +250,10 @@ static void input_keys_callback(input_keys_callback_state_t *state, buffer_t *da
                 }
             }
         } else if (keytype == PSBT_IN_PROPRIETARY) {
-            if (test_proprietary_key(data, PSBT_ELEMENTS_LEGACY_IN_VALUE) ||
-                test_proprietary_key(data, PSBT_ELEMENTS_IN_EXPLICIT_VALUE)) {
+            if (test_proprietary_key(data, PSBT_ELEMENTS_IN_EXPLICIT_VALUE)) {
                 state->key_presence |= HAS_VALUE;
-            } else if (test_proprietary_key(data, PSBT_ELEMENTS_LEGACY_IN_VALUE_BLINDER)) {
-                state->key_presence |= HAS_VALUE_BLINDING_FACTOR;
-            } else if (test_proprietary_key(data, PSBT_ELEMENTS_LEGACY_IN_ASSET) ||
-                       test_proprietary_key(data, PSBT_ELEMENTS_IN_EXPLICIT_ASSET)) {
+            } else if (test_proprietary_key(data, PSBT_ELEMENTS_IN_EXPLICIT_ASSET)) {
                 state->key_presence |= HAS_ASSET;
-            } else if (test_proprietary_key(data, PSBT_ELEMENTS_LEGACY_IN_ASSET_BLINDER)) {
-                state->key_presence |= HAS_ASSET_BLINDING_FACTOR;
             } else if (test_proprietary_key(data, PSBT_ELEMENTS_IN_ISSUANCE_VALUE)) {
                 state->key_presence |= HAS_ISSUE_VALUE;
             } else if (test_proprietary_key(data, PSBT_ELEMENTS_IN_ISSUANCE_VALUE_COMMITMENT)) {
@@ -328,14 +322,10 @@ static void output_keys_callback(output_keys_callback_state_t *state, buffer_t *
         } else if (keytype == PSBT_IN_PROPRIETARY) {
             if (test_proprietary_key(data, PSBT_ELEMENTS_OUT_VALUE_COMMITMENT)) {
                 state->key_presence |= HAS_VALUE_COMMITMENT;
-            } else if (test_proprietary_key(data, PSBT_ELEMENTS_LEGACY_OUT_VALUE_BLINDER)) {
-                state->key_presence |= HAS_VALUE_BLINDING_FACTOR;
             } else if (test_proprietary_key(data, PSBT_ELEMENTS_OUT_ASSET)) {
                 state->key_presence |= HAS_ASSET;
             } else if (test_proprietary_key(data, PSBT_ELEMENTS_OUT_ASSET_COMMITMENT)) {
                 state->key_presence |= HAS_ASSET_COMMITMENT;
-            } else if (test_proprietary_key(data, PSBT_ELEMENTS_LEGACY_OUT_ASSET_BLINDER)) {
-                state->key_presence |= HAS_ASSET_BLINDING_FACTOR;
             } else if (test_proprietary_key(data, PSBT_ELEMENTS_OUT_VALUE_RANGEPROOF)) {
                 state->key_presence |= HAS_VALUE_RANGEPROOF;
             } else if (test_proprietary_key(data, PSBT_ELEMENTS_OUT_ASSET_SURJECTION_PROOF)) {
@@ -1161,13 +1151,6 @@ static void process_input_map(dispatcher_context_t *dc) {
                                               PSBT_ELEMENTS_IN_EXPLICIT_ASSET,
                                               sizeof(PSBT_ELEMENTS_IN_EXPLICIT_ASSET),
                                               asset.tag,
-                                              sizeof(asset.tag)) ||
-             sizeof(asset.tag) ==
-                call_get_merkleized_map_value(dc,
-                                              &state->cur.in_out.map,
-                                              PSBT_ELEMENTS_LEGACY_IN_ASSET,
-                                              sizeof(PSBT_ELEMENTS_LEGACY_IN_ASSET),
-                                              asset.tag,
                                               sizeof(asset.tag)) ) {
             if (!set_in_out_asset(&state->cur, &asset)) {
                 PRINTF("Invalid asset for input %u\n", state->cur_input_index);
@@ -1192,12 +1175,7 @@ static void process_input_map(dispatcher_context_t *dc) {
                                                       &state->cur.in_out.map,
                                                       PSBT_ELEMENTS_IN_EXPLICIT_VALUE,
                                                       sizeof(PSBT_ELEMENTS_IN_EXPLICIT_VALUE),
-                                                      &prevout_amount.value) ||
-            8 == call_get_merkleized_map_value_u64_le(dc,
-                                                      &state->cur.in_out.map,
-                                                      PSBT_ELEMENTS_LEGACY_IN_VALUE,
-                                                      sizeof(PSBT_ELEMENTS_LEGACY_IN_VALUE),
-                                                      &prevout_amount.value)) {
+                                                      &prevout_amount.value) ) {
             if (!set_in_out_amount(&state->cur, &prevout_amount)) {
                 PRINTF("Amount is invalid\n");
                 SEND_SW(dc, SW_INCORRECT_DATA);
@@ -2298,12 +2276,7 @@ static void sign_process_input_map(dispatcher_context_t *dc) {
                                                       &state->cur.in_out.map,
                                                       PSBT_ELEMENTS_IN_EXPLICIT_VALUE,
                                                       sizeof(PSBT_ELEMENTS_IN_EXPLICIT_VALUE),
-                                                      &prevout_amount.value) ||
-            8 == call_get_merkleized_map_value_u64_le(dc,
-                                                      &state->cur.in_out.map,
-                                                      PSBT_ELEMENTS_LEGACY_IN_VALUE,
-                                                      sizeof(PSBT_ELEMENTS_LEGACY_IN_VALUE),
-                                                      &prevout_amount.value)) {
+                                                      &prevout_amount.value) ) {
             if (!set_in_out_amount(&state->cur, &prevout_amount)) {
                 PRINTF("Amount is invalid\n");
                 SEND_SW(dc, SW_INCORRECT_DATA);
