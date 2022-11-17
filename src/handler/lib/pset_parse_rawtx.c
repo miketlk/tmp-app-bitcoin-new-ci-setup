@@ -492,10 +492,15 @@ static int parse_rawtxoutput_scriptpubkey(parse_rawtxoutput_state_t *state, buff
                                 // MAX_PREVOUT_SCRIPTPUBKEY_LEN
                 }
 
-                memcpy(state->parent_state->parser_output_vout->scriptpubkey +
+                if (state->scriptpubkey_counter + data_len <=
+                    sizeof(state->parent_state->parser_output_vout->scriptpubkey)) {
+                    memcpy(state->parent_state->parser_output_vout->scriptpubkey +
                            state->scriptpubkey_counter,
-                       data,
-                       data_len);
+                           data,
+                           data_len);
+                } else {
+                    return -1;  // unexpected buffer overflow
+                }
             }
         }
 

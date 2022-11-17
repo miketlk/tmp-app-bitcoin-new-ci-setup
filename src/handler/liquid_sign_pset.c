@@ -941,7 +941,7 @@ void handler_liquid_sign_pset(dispatcher_context_t *dc) {
 
     memcpy(state->wallet_header_keys_info_merkle_root,
            wallet_header.keys_info_merkle_root,
-           sizeof(wallet_header.keys_info_merkle_root));
+           sizeof(state->wallet_header_keys_info_merkle_root));
     state->wallet_header_n_keys = wallet_header.n_keys;
 
     buffer_t policy_map_buffer =
@@ -1280,10 +1280,15 @@ static void process_input_map(dispatcher_context_t *dc) {
             }
         } else {
             // we extract the scriptPubKey from the witness utxo
-            state->cur.in_out.scriptPubKey_len = wit_utxo_scriptPubkey_len;
-            memcpy(state->cur.in_out.scriptPubKey,
-                   wit_utxo_scriptPubkey,
-                   wit_utxo_scriptPubkey_len);
+            if (wit_utxo_scriptPubkey_len <= sizeof(state->cur.in_out.scriptPubKey)) {
+                memcpy(state->cur.in_out.scriptPubKey,
+                       wit_utxo_scriptPubkey,
+                       wit_utxo_scriptPubkey_len);
+                state->cur.in_out.scriptPubKey_len = wit_utxo_scriptPubkey_len;
+            } else {
+                SEND_SW(dc, SW_INCORRECT_DATA);
+                return;
+            }
         }
     }
 
@@ -2315,7 +2320,7 @@ static void sign_process_input_map(dispatcher_context_t *dc) {
         // taproot input, use PSBT_IN_TAP_BIP32_DERIVATION
         uint8_t key[1 + 32];
         key[0] = PSBT_IN_TAP_BIP32_DERIVATION;
-        memcpy(key + 1, state->cur.in_out.bip32_derivation_pubkey, 32);
+        memcpy(key + 1, state->cur.in_out.bip32_derivation_pubkey, sizeof(key) - 1);
 
         bip32_path_len = get_emptyhashes_fingerprint_and_path(dc,
                                                               &state->cur.in_out.map,
@@ -2327,7 +2332,7 @@ static void sign_process_input_map(dispatcher_context_t *dc) {
         // legacy or segwitv0 input, use PSBT_IN_BIP32_DERIVATION
         uint8_t key[1 + 33];
         key[0] = PSBT_IN_BIP32_DERIVATION;
-        memcpy(key + 1, state->cur.in_out.bip32_derivation_pubkey, 33);
+        memcpy(key + 1, state->cur.in_out.bip32_derivation_pubkey, sizeof(key) - 1);
 
         bip32_path_len = get_fingerprint_and_path(dc,
                                                   &state->cur.in_out.map,
@@ -2404,7 +2409,7 @@ static void sign_legacy_compute_sighash(dispatcher_context_t *dc) {
         } else {
             // Avoid requesting the same map unnecessarily
             // (might be removed once a caching mechanism is implemented)
-            memcpy(&ith_map, &state->cur.in_out.map, sizeof(state->cur.in_out.map));
+            memcpy(&ith_map, &state->cur.in_out.map, sizeof(ith_map));
         }
 
         // get prevout hash and output index for the i-th input
@@ -2563,14 +2568,24 @@ static void sign_segwit(dispatcher_context_t *dc) {
                 return;
             }
 
-            state->cur.input.script_len = redeemScript_length;
-            memcpy(state->cur.input.script, redeemScript, redeemScript_length);
+            if (redeemScript_length <= (int)sizeof(state->cur.input.script)) {
+                state->cur.input.script_len = redeemScript_length;
+                memcpy(state->cur.input.script, redeemScript, redeemScript_length);
+            } else {
+                SEND_SW(dc, SW_INCORRECT_DATA);
+                return;
+            }
             segwit_version = get_segwit_version(redeemScript, redeemScript_length);
         } else {
-            state->cur.input.script_len = state->cur.in_out.scriptPubKey_len;
-            memcpy(state->cur.input.script,
-                   state->cur.in_out.scriptPubKey,
-                   state->cur.in_out.scriptPubKey_len);
+            if (state->cur.in_out.scriptPubKey_len <= sizeof(state->cur.input.script)) {
+                state->cur.input.script_len = state->cur.in_out.scriptPubKey_len;
+                memcpy(state->cur.input.script,
+                    state->cur.in_out.scriptPubKey,
+                    state->cur.in_out.scriptPubKey_len);
+            } else {
+                SEND_SW(dc, SW_INCORRECT_DATA);
+                return;
+            }
 
             segwit_version = get_segwit_version(state->cur.in_out.scriptPubKey,
                                                 state->cur.in_out.scriptPubKey_len);
