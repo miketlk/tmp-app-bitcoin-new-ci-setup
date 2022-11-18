@@ -139,7 +139,7 @@ int bip32_CKDpub(const serialized_extended_pubkey_t *parent,
     {  // make sure that heavy memory allocations are freed as soon as possible
 
         uint8_t tmp[33 + 4];
-        memcpy(tmp, parent->compressed_pubkey, 33);
+        memcpy(tmp, parent->compressed_pubkey, sizeof(tmp) - sizeof(uint32_t));
         write_u32_be(tmp, 33, index);
 
         cx_hmac_sha512(parent->chain_code, 32, tmp, sizeof(tmp), I, 64);
@@ -182,7 +182,7 @@ int bip32_CKDpub(const serialized_extended_pubkey_t *parent,
     write_u32_be(child->parent_fingerprint, 0, parent_fingerprint);
     write_u32_be(child->child_number, 0, index);
 
-    memcpy(child->chain_code, I_R, 32);
+    memcpy(child->chain_code, I_R, sizeof(child->chain_code));
 
     crypto_get_compressed_pubkey(child_uncompressed_pubkey, child->compressed_pubkey);
 
@@ -350,7 +350,7 @@ void crypto_derive_symmetric_key(const char *label, size_t label_len, uint8_t ke
     //       is not aligned.
     uint8_t label_copy[32] __attribute__((aligned(4)));
 
-    memcpy(label_copy, label, label_len);
+    memcpy(label_copy, label, MIN(label_len, sizeof(label_copy)));
 
     os_perso_derive_node_with_seed_key(HDW_SLIP21,
                                        CX_CURVE_SECP256K1,

@@ -157,7 +157,12 @@ unsigned short btchip_apdu_get_wallet_public_key() {
                     (char *)(G_io_apdu_buffer + 67),
                     (char *)PIC(G_coin_config->native_segwit_prefix), 0, tmp + 2, 20);
                 if (keyLength == 1) {
-                    keyLength = strlen((char *)(G_io_apdu_buffer + 67));
+                    _Static_assert(sizeof(G_io_apdu_buffer) >= 67, "Insufficient buffer size");
+                    keyLength = strnlen((char *)(G_io_apdu_buffer + 67),
+                                        sizeof(G_io_apdu_buffer) - 67);
+                    if (keyLength >= sizeof(G_io_apdu_buffer) - 67) {
+                        return BTCHIP_SW_TECHNICAL_PROBLEM;
+                    }
                 }
             }
         }

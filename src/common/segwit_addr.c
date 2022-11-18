@@ -25,6 +25,7 @@
 #include <stdint.h>
 #include <string.h>
 
+#include "../constants.h"
 #include "segwit_addr.h"
 
 static uint32_t bech32_polymod_step(uint32_t pre) {
@@ -96,10 +97,10 @@ int bech32_encode(char *output, const char *hrp, const uint8_t *data, size_t dat
 bech32_encoding bech32_decode(char* hrp, uint8_t *data, size_t *data_len, const char *input) {
     uint32_t chk = 1;
     size_t i;
-    size_t input_len = strlen(input);
+    size_t input_len = strnlen(input, MAX_ADDRESS_LENGTH_STR + 1);
     size_t hrp_len;
     int have_lower = 0, have_upper = 0;
-    if (input_len < 8 || input_len > 90) {
+    if (input_len < 8 || input_len > MAX_ADDRESS_LENGTH_STR || input_len > 90) {
         return BECH32_ENCODING_NONE;
     }
     *data_len = 0;

@@ -40,14 +40,15 @@ unsigned short btchip_apdu_get_coin_version() {
     G_io_apdu_buffer[offset++] = G_coin_config->p2sh_version >> 8;
     G_io_apdu_buffer[offset++] = G_coin_config->p2sh_version;
     G_io_apdu_buffer[offset++] = G_coin_config->family;
-    G_io_apdu_buffer[offset++] = strlen(G_coin_config->coinid);
-    os_memmove(G_io_apdu_buffer + offset, G_coin_config->coinid,
-               strlen(G_coin_config->coinid));
-    offset += strlen(G_coin_config->coinid);
-    G_io_apdu_buffer[offset++] = strlen(G_coin_config->name_short);
-    os_memmove(G_io_apdu_buffer + offset, G_coin_config->name_short,
-               strlen(G_coin_config->name_short));
-    offset += strlen(G_coin_config->name_short);
+    size_t coinid_len = strnlen(G_coin_config->coinid, sizeof(G_coin_config->coinid) - 1);
+    G_io_apdu_buffer[offset++] = coinid_len;
+    os_memmove(G_io_apdu_buffer + offset, G_coin_config->coinid, coinid_len);
+    offset += coinid_len;
+    size_t name_short_len = strnlen(G_coin_config->name_short,
+                                    sizeof(G_coin_config->name_short) - 1);
+    G_io_apdu_buffer[offset++] = name_short_len;
+    os_memmove(G_io_apdu_buffer + offset, G_coin_config->name_short, name_short_len);
+    offset += name_short_len;
     btchip_context_D.outLength = offset;
 
     return BTCHIP_SW_OK;

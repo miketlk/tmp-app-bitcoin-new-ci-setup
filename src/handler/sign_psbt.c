@@ -921,7 +921,8 @@ static void output_validate_external(dispatcher_context_t *dc) {
     if (G_swap_state.called_from_swap) {
         // Swap feature: do not show the address to the user, but double check it matches the
         // request from app-exchange; it must be the only external output (checked elsewhere).
-        int swap_addr_len = strlen(G_swap_state.destination_address);
+        int swap_addr_len = strnlen(G_swap_state.destination_address,
+                                    sizeof(G_swap_state.destination_address) - 1);
         if (swap_addr_len != address_len ||
             0 != strncmp(G_swap_state.destination_address, output_address, address_len)) {
             // address did not match

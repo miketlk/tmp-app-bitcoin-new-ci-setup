@@ -181,5 +181,6 @@ static void send_response(dispatcher_context_t *dc) {
 
     LOG_PROCESSOR(dc, __FILE__, __LINE__, __func__);
 
-    SEND_RESPONSE(dc, state->serialized_pubkey_str, strlen(state->serialized_pubkey_str), SW_OK);
+    size_t pubkey_len = strnlen(state->serialized_pubkey_str, sizeof(state->serialized_pubkey_str) - 1);
+    SEND_RESPONSE(dc, state->serialized_pubkey_str, pubkey_len, SW_OK);
 }

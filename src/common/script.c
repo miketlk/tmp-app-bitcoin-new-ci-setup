@@ -81,7 +81,10 @@ int get_script_address(const uint8_t script[],
             int version = (script[0] == 0 ? 0 : script[0] - 80);
 
             // make sure that the output buffer is long enough
-            if (out_len < 73 + strlen(coin_config->native_segwit_prefix)) {
+            size_t prefix_len = strnlen(coin_config->native_segwit_prefix,
+                                        sizeof(coin_config->native_segwit_prefix_val));
+            if (prefix_len >= sizeof(coin_config->native_segwit_prefix_val) ||
+                (out_len < 73 + prefix_len)) {
                 return -1;
             }
 
@@ -95,7 +98,11 @@ int get_script_address(const uint8_t script[],
                 return -1;  // should never happen
             }
 
-            addr_len = strlen(out);
+            size_t result_len = (int)strnlen(out, out_len);
+            if (result_len >= out_len) {
+                return -1; // should never happen
+            }
+            addr_len = (int)result_len;
             break;
         }
         default:
@@ -116,7 +123,7 @@ int format_opscript_script(const uint8_t script[],
         return -1;
     }
 
-    strcpy(out, "OP_RETURN ");
+    strlcpy(out, "OP_RETURN ", MAX_OPRETURN_OUTPUT_DESC_SIZE);
     int out_ctr = 10;
 
     uint8_t opcode = script[1];  // the push opcode

@@ -837,15 +837,13 @@ uint8_t prepare_fees() {
                 PRINTF("Error : Fees not consistent");
                 goto error;
             }
-            os_memmove(vars.tmp.feesAmount, G_coin_config->name_short,
-                       strlen(G_coin_config->name_short));
-            vars.tmp.feesAmount[strlen(G_coin_config->name_short)] = ' ';
-            btchip_context_D.tmp =
-                (unsigned char *)(vars.tmp.feesAmount +
-                              strlen(G_coin_config->name_short) + 1);
+            size_t name_short_len = strnlen(G_coin_config->name_short,
+                                            sizeof(G_coin_config->name_short) - 1);
+            os_memmove(vars.tmp.feesAmount, G_coin_config->name_short, name_short_len);
+            vars.tmp.feesAmount[name_short_len] = ' ';
+            btchip_context_D.tmp = (unsigned char *)(vars.tmp.feesAmount + name_short_len + 1);
             textSize = btchip_convert_hex_amount_to_displayable(fees);
-            vars.tmp.feesAmount[textSize + strlen(G_coin_config->name_short) + 1] =
-                '\0';
+            vars.tmp.feesAmount[textSize + name_short_len + 1] = '\0';
         }
     }
     return 1;
@@ -859,17 +857,17 @@ error:
 
 void get_address_from_output_script(unsigned char* script, int script_size, char* out, int out_size) {
     if (btchip_output_script_is_op_return(script)) {
-        strcpy(out, "OP_RETURN");
+        strlcpy(out, "OP_RETURN", out_size);
         return;
     }
     if ((G_coin_config->kind == COIN_KIND_QTUM || G_coin_config->kind == COIN_KIND_HYDRA) &&
         btchip_output_script_is_op_create(script, script_size)) {
-        strcpy(out, "OP_CREATE");
+        strlcpy(out, "OP_CREATE", out_size);
         return;
     }
     if ((G_coin_config->kind == COIN_KIND_QTUM || G_coin_config->kind == COIN_KIND_HYDRA) &&
         btchip_output_script_is_op_call(script, script_size)) {
-        strcpy(out, "OP_CALL");
+        strlcpy(out, "OP_CALL", out_size);
         return;
     }
     if (btchip_output_script_is_native_witness(script)) {
@@ -928,7 +926,7 @@ uint8_t prepare_single_output() {
     offset += 8;
 
     get_address_from_output_script(btchip_context_D.currentOutput + offset,  sizeof(btchip_context_D.currentOutput) - offset, tmp, sizeof(tmp));
-    strncpy(vars.tmp.fullAddress, tmp, sizeof(vars.tmp.fullAddress) - 1);
+    strlcpy(vars.tmp.fullAddress, tmp, sizeof(vars.tmp.fullAddress));
 
     // Prepare amount
 
@@ -940,33 +938,31 @@ uint8_t prepare_single_output() {
             uint32_t omniAssetId = btchip_read_u32(btchip_context_D.currentOutput + offset + 3 + 4 + 4, 1, 0);
             switch(omniAssetId) {
                 case OMNI_ASSETID:
-                    strcpy(vars.tmp.fullAmount, "OMNI ");
+                    strlcpy(vars.tmp.fullAmount, "OMNI ", sizeof(vars.tmp.fullAmount));
                     break;
                 case USDT_ASSETID:
-                    strcpy(vars.tmp.fullAmount, "USDT ");
+                    strlcpy(vars.tmp.fullAmount, "USDT ", sizeof(vars.tmp.fullAmount));
                     break;
                 case MAIDSAFE_ASSETID:
-                    strcpy(vars.tmp.fullAmount, "MAID ");
+                    strlcpy(vars.tmp.fullAmount, "MAID ", sizeof(vars.tmp.fullAmount));
                     break;
                 default:
                     snprintf(vars.tmp.fullAmount, sizeof(vars.tmp.fullAmount), "OMNI asset %d ", omniAssetId);
                     break;
             }
-            headerLength = strlen(vars.tmp.fullAmount);
+            headerLength = strnlen(vars.tmp.fullAmount, sizeof(vars.tmp.fullAmount) - 1);
             btchip_context_D.tmp = (uint8_t *)vars.tmp.fullAmount + headerLength;
             textSize = btchip_convert_hex_amount_to_displayable(btchip_context_D.currentOutput + offset + 3 + 4 + 4 + 4);
             vars.tmp.fullAmount[textSize + headerLength] = '\0';
     }
     else {
-        os_memmove(vars.tmp.fullAmount, G_coin_config->name_short,
-               strlen(G_coin_config->name_short));
-        vars.tmp.fullAmount[strlen(G_coin_config->name_short)] = ' ';
-        btchip_context_D.tmp =
-            (unsigned char *)(vars.tmp.fullAmount +
-                          strlen(G_coin_config->name_short) + 1);
+        size_t name_short_len = strnlen(G_coin_config->name_short,
+                                        sizeof(G_coin_config->name_short) - 1);
+        os_memmove(vars.tmp.fullAmount, G_coin_config->name_short, name_short_len);
+        vars.tmp.fullAmount[name_short_len] = ' ';
+        btchip_context_D.tmp = (unsigned char *)(vars.tmp.fullAmount + name_short_len + 1);
         textSize = btchip_convert_hex_amount_to_displayable(amount);
-        vars.tmp.fullAmount[textSize + strlen(G_coin_config->name_short) + 1] =
-            '\0';
+        vars.tmp.fullAmount[textSize + name_short_len + 1] = '\0';
     }
 
     return 1;

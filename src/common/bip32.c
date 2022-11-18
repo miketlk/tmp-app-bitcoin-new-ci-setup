@@ -15,7 +15,7 @@
  *****************************************************************************/
 
 #include <stdio.h>    // snprintf
-#include <string.h>   // memset, strlen
+#include <string.h>   // memset, strnlen
 #include <stddef.h>   // size_t
 #include <stdint.h>   // uint*_t
 #include <stdbool.h>  // bool
@@ -63,7 +63,7 @@ bool bip32_path_format(const uint32_t *bip32_path,
         size_t written;
 
         snprintf(out + offset, out_len - offset, "%d", bip32_path[i] & 0x7FFFFFFFu);
-        written = strlen(out + offset);
+        written = strnlen(out + offset, out_len - offset);
         if (written == 0 || written >= out_len - offset) {
             memset(out, 0, out_len);
             return false;
@@ -72,7 +72,7 @@ bool bip32_path_format(const uint32_t *bip32_path,
 
         if ((bip32_path[i] & H) != 0) {
             snprintf(out + offset, out_len - offset, "'");
-            written = strlen(out + offset);
+            written = strnlen(out + offset, out_len - offset);
             if (written == 0 || written >= out_len - offset) {
                 memset(out, 0, out_len);
                 return false;
@@ -82,7 +82,7 @@ bool bip32_path_format(const uint32_t *bip32_path,
 
         if (i != bip32_path_len - 1) {
             snprintf(out + offset, out_len - offset, "/");
-            written = strlen(out + offset);
+            written = strnlen(out + offset, out_len - offset);
             if (written == 0 || written >= out_len - offset) {
                 memset(out, 0, out_len);
                 return false;

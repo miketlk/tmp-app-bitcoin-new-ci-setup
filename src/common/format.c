@@ -102,7 +102,10 @@ bool format_fpu64(char *dst, size_t dst_len, const uint64_t value, uint8_t decim
         return false;
     }
 
-    size_t digits = strlen(buffer);
+    size_t digits = strnlen(buffer, sizeof(buffer));
+    if (digits >= sizeof(buffer)) {
+        return false;
+    }
 
     if (digits <= decimals) {
         if (dst_len <= 2 + decimals - digits) {

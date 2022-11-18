@@ -26,9 +26,9 @@ bool copy_transaction_parameters(create_transaction_parameters_t* sign_transacti
     memset(destination_address, 0, sizeof(destination_address));
     memset(amount, 0, sizeof(amount));
     memset(fees, 0, sizeof(fees));
-    strncpy(destination_address,
+    strlcpy(destination_address,
             sign_transaction_params->destination_address,
-            sizeof(destination_address) - 1);
+            sizeof(destination_address));
 
     // sanity checks
     if ((destination_address[sizeof(destination_address) - 1] != '\0') ||

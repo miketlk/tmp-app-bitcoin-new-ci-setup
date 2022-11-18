@@ -160,13 +160,15 @@ void init_coin_config(btchip_altcoin_config_t *coin_config) {
     _Static_assert(sizeof(COIN_COINID_SHORT) <= 6, "COIN_COINID_SHORT too large");
     _Static_assert(sizeof(COIN_COINID_SHORT) <= sizeof(coin_config->name_short),
                    "COIN_COINID_SHORT too large");
-    strcpy(coin_config->name_short, COIN_COINID_SHORT);
+    strlcpy(coin_config->name_short, COIN_COINID_SHORT, sizeof(coin_config->name_short));
 
 #ifdef COIN_NATIVE_SEGWIT_PREFIX
     _Static_assert(
         sizeof(COIN_NATIVE_SEGWIT_PREFIX) <= sizeof(coin_config->native_segwit_prefix_val),
         "COIN_NATIVE_SEGWIT_PREFIX too large");
-    strcpy(coin_config->native_segwit_prefix_val, COIN_NATIVE_SEGWIT_PREFIX);
+    strlcpy(coin_config->native_segwit_prefix_val,
+            COIN_NATIVE_SEGWIT_PREFIX,
+            sizeof(coin_config->native_segwit_prefix_val));
     coin_config->native_segwit_prefix = coin_config->native_segwit_prefix_val;
 #else
     coin_config->native_segwit_prefix = 0;
@@ -177,12 +179,12 @@ void init_coin_config(btchip_altcoin_config_t *coin_config) {
     coin_config->family = COIN_FAMILY;
 
     _Static_assert(sizeof(COIN_COINID) <= sizeof(coin_config->coinid), "COIN_COINID too large");
-    strcpy(coin_config->coinid, COIN_COINID);
+    strlcpy(coin_config->coinid, COIN_COINID, sizeof(coin_config->coinid));
 
     _Static_assert(sizeof(COIN_COINID_NAME) <= sizeof(coin_config->name),
                    "COIN_COINID_NAME too large");
 
-    strcpy(coin_config->name, COIN_COINID_NAME);
+    strlcpy(coin_config->name, COIN_COINID_NAME, sizeof(coin_config->name));
 #ifdef COIN_FORKID
     coin_config->forkid = COIN_FORKID;
 #endif  // COIN_FORKID

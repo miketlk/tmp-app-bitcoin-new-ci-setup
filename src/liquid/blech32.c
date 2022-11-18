@@ -34,6 +34,7 @@
 
 #include <string.h>   // memmove, memset
 #include <limits.h>   // INT_MAX
+#include "../constants.h"
 #include "blech32.h"
 
 // Maximum size of human readable part in symbols
@@ -136,10 +137,10 @@ static int blech32_decode(char *hrp,
 
     uint64_t chk = 1;
     size_t i;
-    size_t input_len = strlen(input);
+    size_t input_len = strnlen(input, MAX_ADDRESS_LENGTH_STR + 1);
     size_t hrp_len;
     int have_lower = 0, have_upper = 0;
-    if (input_len < 1 + 12) {
+    if (input_len < 1 + 12 || input_len > MAX_ADDRESS_LENGTH_STR) {
         return 0;
     }
     *data_len = 0;

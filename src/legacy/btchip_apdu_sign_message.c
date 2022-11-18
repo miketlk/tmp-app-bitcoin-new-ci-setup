@@ -128,12 +128,14 @@ unsigned short btchip_apdu_sign_message_internal() {
                     cx_sha256_init(
                         &btchip_context_D.transactionHashAuthorization);
                     chunkLength =
-                        strlen(G_coin_config->coinid) + SIGNMAGIC_LENGTH;
+                        strnlen(G_coin_config->coinid, sizeof(G_coin_config->coinid) - 1) +
+                        SIGNMAGIC_LENGTH;
                     cx_hash(&btchip_context_D.transactionHashFull.sha256.header, 0,
                             &chunkLength, 1, NULL, 0);
                     cx_hash(&btchip_context_D.transactionHashFull.sha256.header, 0,
                             (uint8_t *)G_coin_config->coinid,
-                            strlen(G_coin_config->coinid), NULL, 0);
+                            strnlen(G_coin_config->coinid, sizeof(G_coin_config->coinid) - 1),
+                            NULL, 0);
                     cx_hash(&btchip_context_D.transactionHashFull.sha256.header, 0,
                             (unsigned char *)SIGNMAGIC, SIGNMAGIC_LENGTH, NULL, 0);
                     if (btchip_context_D.transactionSummary.messageLength <

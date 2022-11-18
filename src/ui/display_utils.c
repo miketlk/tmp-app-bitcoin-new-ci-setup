@@ -61,12 +61,15 @@ void format_amount(const char *coin_name,
     if (!out) {
         return;
     }
-    if (!coin_name || strlen(coin_name) > MAX_ASSET_TICKER_LENGTH || decimals > 19) {
-        strcpy(out, "<ERROR>");
+    strlcpy(out, "<ERROR>", MAX_AMOUNT_LENGTH + 1);
+    if (!coin_name || decimals > 19) {
+        return;
+    }
+    size_t coin_name_len = strnlen(coin_name, MAX_ASSET_TICKER_LENGTH + 1);
+    if (coin_name_len > MAX_ASSET_TICKER_LENGTH) {
         return;
     }
 
-    size_t coin_name_len = strlen(coin_name);
     strncpy(out, coin_name, coin_name_len);
     out[coin_name_len] = ' ';
 

@@ -103,7 +103,7 @@ static int __attribute__((noinline)) get_extended_pubkey(policy_parser_state_t *
     // decode pubkey
     serialized_extended_pubkey_check_t decoded_pubkey_check;
     if (base58_decode(key_info.ext_pubkey,
-                      strlen(key_info.ext_pubkey),
+                      strnlen(key_info.ext_pubkey, sizeof(key_info.ext_pubkey) - 1),
                       (uint8_t *) &decoded_pubkey_check,
                       sizeof(decoded_pubkey_check)) == -1) {
         return -1;

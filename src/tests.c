@@ -96,7 +96,7 @@ void test_handle_assert_fail(test_ctx_t *test_ctx,
                              const char *file,
                              int line) {
     PRINTF("%s:%i: test condition failed: %s%.64s", file, line, expected_res ? "" : "!(", condition);
-    PRINTF(strlen(condition) > 64 ? "...%s\n" : "%s\n", expected_res ? "" : ")");
+    PRINTF(strnlen(condition, 65) >= 64 ? "...%s\n" : "%s\n", expected_res ? "" : ")");
 
     if (test_ctx->assert_fails < INT_MAX) {
         ++test_ctx->assert_fails;
