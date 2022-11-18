@@ -133,7 +133,7 @@ def random_wallet_name() -> str:
 
 # Takes quite a long time. It's recommended to enable stdout to see the progress (pytest -s).
 @has_automation(f"{tests_root}/automations/sign_with_any_wallet_accept.json")
-def test_sign_psbt_batch(client: Client, speculos_globals: SpeculosGlobals):
+def test_sign_psbt_batch(client: Client, speculos_globals: SpeculosGlobals, is_speculos: bool, enable_slow_tests: bool):
 
     client.debug = False
     random.seed(1)
@@ -141,6 +141,7 @@ def test_sign_psbt_batch(client: Client, speculos_globals: SpeculosGlobals):
     with open(f"{tests_root}/pset/test_data.json", "r") as read_file:
         test_data = json.load(read_file)
 
+    # Loop through all test suites
     for _, suite in test_data["valid"].items():
         wallet = BlindedWallet(
             name=random_wallet_name(),
@@ -159,6 +160,7 @@ def test_sign_psbt_batch(client: Client, speculos_globals: SpeculosGlobals):
                 wallet_hmac,
             )
 
+        # Loop through all tests within a suite
         for test in suite["tests"]:
             print("TEST:", suite["description"], test["description"])
 
@@ -171,3 +173,7 @@ def test_sign_psbt_batch(client: Client, speculos_globals: SpeculosGlobals):
                 assert len(result_sig) >= 100 and len(result_sig) <= 144
                 assert result_sig.startswith("304")
                 assert result_sig in sigs["final_scriptwitness"]
+
+            # Run only first test from each suite if not executed with '--enableslowtests'
+            if not enable_slow_tests:
+                break
