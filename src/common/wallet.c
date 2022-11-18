@@ -246,13 +246,13 @@ static int parse_unsigned_decimal(buffer_t *buffer, size_t *out) {
 // Reads a derivation step expressed in decimal, with the symbol ' to mark if hardened (h is not
 // supported) Returns 0 on success, -1 on error.
 static int buffer_read_derivation_step(buffer_t *buffer, uint32_t *out) {
-    uint32_t der_step;
+    size_t der_step;
     if (parse_unsigned_decimal(buffer, &der_step) == -1 || der_step >= BIP32_FIRST_HARDENED_CHILD) {
         PRINTF("Failed reading derivation step\n");
         return -1;
     }
 
-    *out = der_step;
+    *out = (uint32_t)der_step;
 
     // Check if hardened
     uint8_t c;

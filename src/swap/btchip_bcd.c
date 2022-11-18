@@ -23,7 +23,7 @@
 #define SCRATCH_SIZE 21
 
 unsigned char btchip_convert_hex_amount_to_displayable_no_globals(unsigned char* amount,
-                                                                  unsigned int config_flag,
+                                                                  unsigned int config_flag __attribute__((unused)),
                                                                   unsigned char* out) {
     unsigned char LOOP1;
     unsigned char LOOP2;
