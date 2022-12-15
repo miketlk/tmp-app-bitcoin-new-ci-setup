@@ -681,7 +681,7 @@ static void check_input_owned(dispatcher_context_t *dc) {
                                          state,
                                          &state->cur.in_out,
                                          true,
-                                         &state->cur.in_out.has_bip32_derivation);
+                                         state->cur.in_out.has_bip32_derivation);
 
     if (is_internal < 0) {
         PRINTF("Error checking if input %d is internal\n", state->cur_input_index);
@@ -881,7 +881,7 @@ static void check_output_owned(dispatcher_context_t *dc) {
                                          state,
                                          &state->cur.in_out,
                                          false,
-                                         &state->cur.in_out.has_bip32_derivation);
+                                         state->cur.in_out.has_bip32_derivation);
 
     if (is_internal < 0) {
         PRINTF("Error checking if output %d is internal\n", state->cur_output_index);
@@ -1406,7 +1406,7 @@ static void sign_segwit(dispatcher_context_t *dc) {
                 return;
             }
 
-            if (redeemScript_length <= sizeof(state->cur.input.script)) {
+            if (redeemScript_length <= (int)sizeof(state->cur.input.script)) {
                 state->cur.input.script_len = redeemScript_length;
                 memcpy(state->cur.input.script, redeemScript, redeemScript_length);
             } else {

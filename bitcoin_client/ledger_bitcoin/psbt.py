@@ -906,6 +906,9 @@ class PSBT(object):
 
             key_lookup.add(key)
 
+        deser_input_count = input_count
+        deser_output_count = output_count
+
         # Read input data
         if input_count is None:
             input_count = len(self.tx.vin)
@@ -926,6 +929,9 @@ class PSBT(object):
                 if psbt_in.non_witness_utxo.hash != prev_txid:
                     raise PSBTSerializationError("Non-witness UTXO does not match outpoint hash")
 
+        if (len(self.inputs) != input_count):
+            raise PSBTSerializationError("Inputs provided does not match the number of inputs in transaction")
+
         # Read output data
         if output_count is None:
             output_count = len(self.tx.vout)
@@ -936,7 +942,10 @@ class PSBT(object):
             output.deserialize(f)
             self.outputs.append(output)
 
-        self._validate_deserialized(input_count, output_count)
+        if len(self.outputs) != output_count:
+            raise PSBTSerializationError("Outputs provided does not match the number of outputs in transaction")
+
+        self._validate_deserialized(deser_input_count, deser_output_count)
         self.cache_unsigned_tx_pieces()
 
     def _validate_deserialized(self, input_count: int, output_count: int) -> None:
@@ -971,13 +980,6 @@ class PSBT(object):
             # Unsigned tx is disallowed
             if not self.tx.is_null():
                 raise PSBTSerializationError("PSBT_GLOBAL_UNSIGNED_TX is not allowed in PSBTv2")
-
-        if (len(self.inputs) != input_count):
-            raise PSBTSerializationError("Inputs provided does not match the number of inputs in transaction")
-
-        if len(self.outputs) != output_count:
-            raise PSBTSerializationError("Outputs provided does not match the number of outputs in transaction")
-
 
     def serialize(self) -> str:
         """
