@@ -70,7 +70,7 @@ void format_amount(const char *coin_name,
         return;
     }
 
-    strncpy(out, coin_name, coin_name_len);
+    strlcpy(out, coin_name, MAX_AMOUNT_LENGTH + 1);
     out[coin_name_len] = ' ';
 
     char *amount_str = out + coin_name_len + 1;

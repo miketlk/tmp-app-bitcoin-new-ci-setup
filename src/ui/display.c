@@ -527,8 +527,8 @@ void ui_display_pubkey(dispatcher_context_t *context,
 
     ui_path_and_pubkey_state_t *state = (ui_path_and_pubkey_state_t *) &g_ui_state;
 
-    strncpy(state->bip32_path_str, bip32_path_str, sizeof(state->bip32_path_str));
-    strncpy(state->pubkey, pubkey, sizeof(state->pubkey));
+    strlcpy(state->bip32_path_str, bip32_path_str, sizeof(state->bip32_path_str));
+    strlcpy(state->pubkey, pubkey, sizeof(state->pubkey));
 
     g_next_processor = on_success;
 
@@ -547,8 +547,8 @@ void ui_display_message_hash(dispatcher_context_t *context,
 
     ui_path_and_hash_state_t *state = (ui_path_and_hash_state_t *) &g_ui_state;
 
-    strncpy(state->bip32_path_str, bip32_path_str, sizeof(state->bip32_path_str));
-    strncpy(state->hash_hex, message_hash, sizeof(state->hash_hex));
+    strlcpy(state->bip32_path_str, bip32_path_str, sizeof(state->bip32_path_str));
+    strlcpy(state->hash_hex, message_hash, sizeof(state->hash_hex));
 
     g_next_processor = on_success;
 
@@ -564,14 +564,14 @@ void ui_display_address(dispatcher_context_t *context,
 
     ui_path_and_address_state_t *state = (ui_path_and_address_state_t *) &g_ui_state;
 
-    strncpy(state->address, address, sizeof(state->address));
+    strlcpy(state->address, address, sizeof(state->address));
 
     g_next_processor = on_success;
 
     if (!is_path_suspicious) {
         ux_flow_init(0, ux_display_address_flow, NULL);
     } else {
-        strncpy(state->bip32_path_str, path_str, sizeof(state->bip32_path_str));
+        strlcpy(state->bip32_path_str, path_str, sizeof(state->bip32_path_str));
         ux_flow_init(0, ux_display_address_suspicious_flow, NULL);
     }
 }
@@ -583,8 +583,8 @@ void ui_display_wallet_header(dispatcher_context_t *context,
 
     ui_wallet_state_t *state = (ui_wallet_state_t *) &g_ui_state;
 
-    strncpy(state->wallet_name, wallet_header->name, sizeof(wallet_header->name));
-    strncpy(state->policy_map, wallet_header->policy_map, sizeof(wallet_header->policy_map));
+    strlcpy(state->wallet_name, wallet_header->name, sizeof(wallet_header->name));
+    strlcpy(state->policy_map, wallet_header->policy_map, sizeof(wallet_header->policy_map));
 
     g_next_processor = on_success;
 
@@ -604,7 +604,7 @@ void ui_display_policy_map_cosigner_pubkey(dispatcher_context_t *context,
     ui_cosigner_pubkey_and_index_state_t *state =
         (ui_cosigner_pubkey_and_index_state_t *) &g_ui_state;
 
-    strncpy(state->pubkey, pubkey, sizeof(state->pubkey));
+    strlcpy(state->pubkey, pubkey, sizeof(state->pubkey));
 
     if (is_internal) {
         snprintf(state->signer_index,
@@ -631,13 +631,13 @@ void ui_display_wallet_address(dispatcher_context_t *context,
 
     ui_wallet_state_t *state = (ui_wallet_state_t *) &g_ui_state;
 
-    strncpy(state->address, address, sizeof(state->address));
+    strlcpy(state->address, address, sizeof(state->address));
     g_next_processor = on_success;
 
     if (wallet_name == NULL) {
         ux_flow_init(0, ux_display_canonical_wallet_address_flow, NULL);
     } else {
-        strncpy(state->wallet_name, wallet_name, sizeof(state->wallet_name));
+        strlcpy(state->wallet_name, wallet_name, sizeof(state->wallet_name));
         ux_flow_init(0, ux_display_wallet_name_address_flow, NULL);
     }
 }
@@ -651,7 +651,7 @@ void ui_display_unusual_path(dispatcher_context_t *context,
 
     g_next_processor = on_success;
 
-    strncpy(state->bip32_path_str, bip32_path_str, sizeof(state->bip32_path_str));
+    strlcpy(state->bip32_path_str, bip32_path_str, sizeof(state->bip32_path_str));
     ux_flow_init(0, ux_display_unusual_derivation_path_flow, NULL);
 }
 
@@ -662,7 +662,7 @@ void ui_authorize_wallet_spend(dispatcher_context_t *context,
 
     ui_wallet_state_t *state = (ui_wallet_state_t *) &g_ui_state;
 
-    strncpy(state->wallet_name, wallet_name, sizeof(state->wallet_name));
+    strlcpy(state->wallet_name, wallet_name, sizeof(state->wallet_name));
 
     g_next_processor = on_success;
 
@@ -689,7 +689,7 @@ void ui_validate_output(dispatcher_context_t *context,
     ui_validate_output_state_t *state = (ui_validate_output_state_t *) &g_ui_state;
 
     snprintf(state->index, sizeof(state->index), "output #%d", index);
-    strncpy(state->address_or_description,
+    strlcpy(state->address_or_description,
             address_or_description,
             sizeof(state->address_or_description));
     format_amount(coin_name, amount, decimals, state->amount);

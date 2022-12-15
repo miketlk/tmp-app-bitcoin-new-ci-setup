@@ -22,7 +22,7 @@
 
 #define SCRATCH_SIZE 21
 
-unsigned char btchip_convert_hex_amount_to_displayable_no_globals(unsigned char* amount,
+unsigned char btchip_convert_hex_amount_to_displayable_no_globals(const unsigned char* amount,
                                                                   unsigned int config_flag __attribute__((unused)),
                                                                   unsigned char* out) {
     unsigned char LOOP1;
@@ -88,9 +88,9 @@ unsigned char btchip_convert_hex_amount_to_displayable_no_globals(unsigned char*
     workOffset = offset;
     for (i = 0; i < LOOP2; i++) {
         unsigned char allZero = 1;
-        unsigned char j;
-        for (j = i; j < LOOP2; j++) {
-            if (scratch[workOffset + j] != 0) {
+        unsigned char j2;
+        for (j2 = i; j2 < LOOP2; j2++) {
+            if (scratch[workOffset + j2] != 0) {
                 allZero = 0;
                 break;
             }

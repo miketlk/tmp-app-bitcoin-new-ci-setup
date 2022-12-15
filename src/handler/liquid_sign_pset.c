@@ -18,6 +18,7 @@
 #ifdef HAVE_LIQUID
 
 #include <stdint.h>
+#include <string.h>
 
 #include "../boilerplate/dispatcher.h"
 #include "../boilerplate/sw.h"
@@ -53,6 +54,8 @@
 #include "sign_psbt/update_hashes_with_map_value.h"
 
 #include "../swap/swap_globals.h"
+
+#include "../debug-helpers/debug.h"
 
 extern global_context_t *G_coin_config;
 
@@ -1271,6 +1274,7 @@ static void process_input_map(dispatcher_context_t *dc) {
         if (state->cur.key_presence & HAS_NONWITNESSUTXO) {
             // we already know the scriptPubKey, but we double check that it matches
             if (state->cur.in_out.scriptPubKey_len != wit_utxo_scriptPubkey_len ||
+                wit_utxo_scriptPubkey_len > sizeof(state->cur.in_out.scriptPubKey) ||
                 memcmp(state->cur.in_out.scriptPubKey,
                        wit_utxo_scriptPubkey,
                        wit_utxo_scriptPubkey_len) != 0) {

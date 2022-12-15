@@ -16,6 +16,7 @@
  *****************************************************************************/
 
 #include <stdint.h>
+#include <string.h>
 
 #include "boilerplate/dispatcher.h"
 #include "boilerplate/sw.h"

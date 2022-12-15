@@ -1,5 +1,6 @@
 #pragma once
 
+#include "cx.h"
 #include "../common/bip32.h"
 #include "../boilerplate/dispatcher.h"
 

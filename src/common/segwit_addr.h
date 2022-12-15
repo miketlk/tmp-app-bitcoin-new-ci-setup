@@ -24,6 +24,7 @@
 #ifndef _SEGWIT_ADDR_H_
 #define _SEGWIT_ADDR_H_ 1
 
+#include <stddef.h>
 #include <stdint.h>
 
 

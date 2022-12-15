@@ -7,6 +7,7 @@
 #include <stddef.h>   // size_t
 #include <stdint.h>   // uint*_t
 #include <stdbool.h>  // bool
+#include "liquid.h"
 
 #define LIQUID_MAX_VALUE_PROOF_LEN 73
 #define LIQUID_MAX_SINGLE_SURJECTION_PROOF_LEN 67

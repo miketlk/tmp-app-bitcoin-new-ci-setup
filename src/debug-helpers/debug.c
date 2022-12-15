@@ -36,11 +36,10 @@ void debug_write_hex(unsigned int word, unsigned int bytes) {
 }
 
 void debug_write_dec(unsigned int word) {
-    char asc[11];
-
     if (word == 0) {
         debug_write("0");
     } else {
+        char asc[11];
         unsigned int i;
         for (i = 9; i >= 0; --i) {
             asc[i] = '0' + word % 10;

@@ -1,6 +1,7 @@
 
 #pragma once
 
+#include <stddef.h>
 #include <stdint.h>
 
 // TODO: RFC6962 defines the empty list hash as sha256(b''); while we're using 0 here. Should we

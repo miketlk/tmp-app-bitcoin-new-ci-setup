@@ -165,7 +165,7 @@ static bool secp256k1_ge_set_xquad(secp256k1_ge* r, const secp256k1_fe* x) {
  */
 static bool secp256k1_ge_neg(secp256k1_ge* r, const secp256k1_ge* a) {
     if (r != a) {
-        memcpy(r->n, a->n, GE_OFFSET_Y); // copy 0x04 byte and x coordinate
+        memcpy(r->n, a->n, MIN(GE_OFFSET_Y, sizeof(r->n))); // copy 0x04 byte and x coordinate
     }
     cx_err_t res = cx_math_sub_no_throw(&r->n[GE_OFFSET_Y], secp256k1_p, &a->n[GE_OFFSET_Y], 32);
     return res == CX_OK || res == CX_CARRY;
@@ -414,7 +414,9 @@ static inline void secp256k1_ge_set_xy(secp256k1_ge *r,
                                        const secp256k1_fe *x,
                                        const secp256k1_fe *y) {
     r->n[GE_OFFSET_PREFIX] = 0x04;
+    _Static_assert(sizeof(r->n) - GE_OFFSET_X >= 32, "Group element buffer too small");
     memcpy(r->n + GE_OFFSET_X, x->n, 32);
+    _Static_assert(sizeof(r->n) - GE_OFFSET_Y >= 32, "Group element buffer too small");
     memcpy(r->n + GE_OFFSET_Y, y->n, 32);
 }
 
@@ -923,7 +925,7 @@ bool liquid_generator_generate(uint8_t gen[static LIQUID_GENERATOR_LEN],
     ok = ok && !ovf_flag;
     ok = ok && shallue_van_de_woestijne(&add, &t);
     ok = ok && secp256k1_ge_add(&accum, &accum, &add);
-    memcpy(gen, accum.n, sizeof(accum.n));
+    memcpy(gen, accum.n, MIN(sizeof(accum.n), LIQUID_GENERATOR_LEN));
 
     return ok;
 }

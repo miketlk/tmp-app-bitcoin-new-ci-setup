@@ -174,7 +174,7 @@ int bip32_CKDpub(const serialized_extended_pubkey_t *parent,
         }
     }
 
-    memmove(child->version, parent->version, 4);
+    memmove(child->version, parent->version, MIN(4, sizeof(child->version)));
     child->depth = parent->depth + 1;
 
     uint32_t parent_fingerprint = crypto_get_key_fingerprint(parent->compressed_pubkey);
@@ -309,7 +309,7 @@ bool crypto_get_compressed_pubkey_at_path(const uint32_t bip32_path[],
             // generate corresponding public key
             cx_ecfp_generate_pair(CX_CURVE_256K1, &public_key, &private_key, 1);
 
-            memmove(keydata.raw_public_key, public_key.W + 1, 64);
+            memmove(keydata.raw_public_key, public_key.W + 1, sizeof(keydata.raw_public_key));
 
             // compute compressed public key
             if (crypto_get_compressed_pubkey((uint8_t *) &keydata, pubkey) < 0) {

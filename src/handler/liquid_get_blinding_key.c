@@ -16,6 +16,7 @@
  *****************************************************************************/
 
 #include <stdint.h>
+#include <string.h>
 
 #include "boilerplate/dispatcher.h"
 #include "boilerplate/sw.h"
@@ -49,7 +50,7 @@ void handler_liquid_get_blinding_key(dispatcher_context_t *dc) {
 
     uint8_t mbk[32];
     uint8_t blinding_key[32];
-    
+
     bool ok =  liquid_get_master_blinding_key(mbk);
     uint8_t *script_ptr = dc->read_buffer.ptr + dc->read_buffer.offset;
     ok = ok && liquid_get_blinding_key(mbk, script_ptr, script_length, blinding_key);

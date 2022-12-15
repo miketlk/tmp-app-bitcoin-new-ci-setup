@@ -46,7 +46,7 @@ int is_in_out_internal(dispatcher_context_t *dispatcher_context,
         // taproot output, use PSBT_{IN,OUT}_TAP_BIP32_DERIVATION
         uint8_t key[1 + 32];
         key[0] = is_input ? PSBT_IN_TAP_BIP32_DERIVATION : PSBT_OUT_TAP_BIP32_DERIVATION;
-        memcpy(key + 1, in_out_info->bip32_derivation_pubkey, 32);
+        memcpy(key + 1, in_out_info->bip32_derivation_pubkey, sizeof(key) - 1);
 
         bip32_path_len = get_emptyhashes_fingerprint_and_path(dispatcher_context,
                                                               &in_out_info->map,
@@ -58,7 +58,7 @@ int is_in_out_internal(dispatcher_context_t *dispatcher_context,
         // legacy or segwitv0 output, use PSBT_OUT_BIP32_DERIVATION
         uint8_t key[1 + 33];
         key[0] = is_input ? PSBT_IN_BIP32_DERIVATION : PSBT_OUT_BIP32_DERIVATION;
-        memcpy(key + 1, in_out_info->bip32_derivation_pubkey, 33);
+        memcpy(key + 1, in_out_info->bip32_derivation_pubkey, sizeof(key) - 1);
 
         bip32_path_len = get_fingerprint_and_path(dispatcher_context,
                                                   &in_out_info->map,

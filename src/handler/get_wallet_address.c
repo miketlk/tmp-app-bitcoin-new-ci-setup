@@ -16,6 +16,7 @@
  *****************************************************************************/
 
 #include <stdint.h>
+#include <string.h>
 
 #include "boilerplate/io.h"
 #include "boilerplate/sw.h"
@@ -96,7 +97,7 @@ void handler_get_wallet_address(dispatcher_context_t *dc) {
 
     memcpy(state->wallet_header_keys_info_merkle_root,
            state->wallet_header.keys_info_merkle_root,
-           sizeof(state->wallet_header.keys_info_merkle_root));
+           sizeof(state->wallet_header_keys_info_merkle_root));
     state->wallet_header_n_keys = state->wallet_header.n_keys;
 
     buffer_t policy_map_buffer =

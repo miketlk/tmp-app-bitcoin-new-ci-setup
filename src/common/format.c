@@ -117,7 +117,7 @@ bool format_fpu64(char *dst, size_t dst_len, const uint64_t value, uint8_t decim
             *dst = '0';
         }
         dst_len -= 2 + decimals - digits;
-        strncpy(dst, buffer, dst_len);
+        strlcpy(dst, buffer, dst_len);
     } else {
         if (dst_len <= digits + 1 + decimals) {
             return false;
@@ -126,7 +126,7 @@ bool format_fpu64(char *dst, size_t dst_len, const uint64_t value, uint8_t decim
         const size_t shift = digits - decimals;
         memmove(dst, buffer, shift);
         dst[shift] = '.';
-        strncpy(dst + shift + 1, buffer + shift, decimals);
+        strlcpy(dst + shift + 1, buffer + shift, decimals + 1);
     }
 
     return true;

@@ -2,6 +2,7 @@
 
 #ifdef HAVE_LIQUID
 
+#include "cx.h"
 #include "../../boilerplate/dispatcher.h"
 #include "../../common/merkle.h"
 #include "../../constants.h"

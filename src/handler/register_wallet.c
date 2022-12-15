@@ -232,7 +232,7 @@ static void finalize_response(dispatcher_context_t *dc) {
         uint8_t hmac[32];
     } response;
 
-    memcpy(response.wallet_id, state->wallet_id, sizeof(state->wallet_id));
+    memcpy(response.wallet_id, state->wallet_id, sizeof(response.wallet_id));
 
     // TODO: we might want to add external info to be committed with the signature (e.g.: app
     // version).
