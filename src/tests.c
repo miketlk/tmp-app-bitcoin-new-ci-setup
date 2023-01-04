@@ -2,6 +2,7 @@
 #include <string.h>
 #include <limits.h>
 
+#include "os.h"
 #include "tests.h"
 #include "debug.h"
 
@@ -20,11 +21,13 @@ typedef struct {
 
 #ifdef HAVE_LIQUID
 extern void test_suite_liquid_proofs(test_ctx_t *test_ctx);
+extern void test_suite_liquid_assets(test_ctx_t *test_ctx);
 #endif
 
 /// Table listing all test suites
 static const test_suite_t test_suites[] = {
 #ifdef HAVE_LIQUID
+    TEST_SUITE(test_suite_liquid_assets),
     TEST_SUITE(test_suite_liquid_proofs),
 #endif
 };
@@ -38,8 +41,9 @@ void run_on_device_tests(void) {
     PRINTF("\nRunning tests...\n");
 
     for (size_t idx = 0; idx < n_suites; ++idx) {
-        test_ctx.suite_name = test_suites[idx].name;
-        test_suites[idx].fn(&test_ctx);
+        test_ctx.suite_name = (const char *)PIC(test_suites[idx].name);
+        const test_fn_t test_fn = PIC(test_suites[idx].fn);
+        test_fn(&test_ctx);
         if(test_ctx.global_error) {
             break;
         }
@@ -103,6 +107,66 @@ void test_handle_assert_fail(test_ctx_t *test_ctx,
     } else {
         PRINTF("ERROR: assert counter overflow");
         test_ctx->global_error = true;
+    }
+}
+
+void test_assert_equal_memory(test_ctx_t *test_ctx,
+                              const void *expected,
+                              const char *expected_name,
+                              const void *actual,
+                              const char *actual_name,
+                              size_t len,
+                              const char *file,
+                              int line) {
+    for (size_t i = 0; i < len; ++i) {
+        if (((const uint8_t *)actual)[i] != ((const uint8_t *)expected)[i]) {
+            PRINTF("%s:%i: test condition failed: %.64s == %.64s, offset %zu (0x%02x != 0x%02x)\n",
+                   file,
+                   line,
+                   actual_name,
+                   expected_name,
+                   i,
+                   ((const uint8_t *)actual)[i],
+                   ((const uint8_t *)expected)[i]);
+
+            if (test_ctx->assert_fails < INT_MAX) {
+                ++test_ctx->assert_fails;
+            } else {
+                PRINTF("ERROR: assert counter overflow");
+                test_ctx->global_error = true;
+            }
+            break;
+        }
+    }
+}
+
+void test_assert_each_equal_memory(test_ctx_t *test_ctx,
+                                    uint8_t expected,
+                                    const char *expected_name,
+                                    const void *actual,
+                                    const char *actual_name,
+                                    size_t len,
+                                    const char *file,
+                                    int line) {
+    for (size_t i = 0; i < len; ++i) {
+        if (((const uint8_t *)actual)[i] != expected) {
+            PRINTF("%s:%i: test condition failed: %.64s == %.64s, offset %zu (0x%02x != 0x%02x)\n",
+                   file,
+                   line,
+                   actual_name,
+                   expected_name,
+                   i,
+                   ((const uint8_t *)actual)[i],
+                   expected);
+
+            if (test_ctx->assert_fails < INT_MAX) {
+                ++test_ctx->assert_fails;
+            } else {
+                PRINTF("ERROR: assert counter overflow");
+                test_ctx->global_error = true;
+            }
+            break;
+        }
     }
 }
 

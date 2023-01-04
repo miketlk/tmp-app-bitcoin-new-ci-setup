@@ -174,7 +174,7 @@ static void test_liquid_generator_parse(test_ctx_t *test_ctx) {
     uint8_t parsed[LIQUID_GENERATOR_LEN];
 
     TEST_ASSERT(liquid_generator_parse(parsed, serialized));
-    TEST_ASSERT(0 == memcmp(parsed, ref_parsed, LIQUID_GENERATOR_LEN));
+    TEST_ASSERT_EQUAL_MEMORY(parsed, ref_parsed, LIQUID_GENERATOR_LEN);
     serialized[0] = 0x0a;
     TEST_ASSERT(liquid_generator_parse(parsed, serialized));
     serialized[0] = 0x08;
@@ -189,7 +189,7 @@ static void test_shallue_van_de_woestijne(test_ctx_t *test_ctx) {
 
     for(int i = 0; i < n_vectors; ++i, p_vect++) {
         TEST_ASSERT( shallue_van_de_woestijne(&ge, (const secp256k1_fe*)p_vect->fe) );
-        TEST_ASSERT( 0 == memcmp(&ge, p_vect->ge, sizeof(p_vect->ge)) );
+        TEST_ASSERT_EQUAL_MEMORY(&ge, p_vect->ge, sizeof(p_vect->ge));
     }
 }
 
@@ -201,7 +201,7 @@ static void test_liquid_generator_generate(test_ctx_t *test_ctx) {
 
     for(int i = 0; i < n_vectors; ++i, p_vect++) {
         TEST_ASSERT( liquid_generator_generate(gen, p_vect->seed) );
-        TEST_ASSERT( 0 == memcmp(gen, p_vect->gen, sizeof(p_vect->gen)) );
+        TEST_ASSERT_EQUAL_MEMORY(gen, p_vect->gen, sizeof(p_vect->gen));
     }
 }
 

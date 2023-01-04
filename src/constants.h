@@ -108,3 +108,8 @@
 #else
 #define MAX_ASSET_TICKER_LENGTH 5
 #endif
+
+/**
+ * Number of bytes in SHA-256 hash code
+ */
+#define SHA256_LEN 32

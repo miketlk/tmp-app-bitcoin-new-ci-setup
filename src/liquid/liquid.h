@@ -118,14 +118,14 @@ int liquid_get_script_confidential_address(const uint8_t script[],
  *   Pointer to a modifiable variable holding pointer to root policy node.
  * @param[out] p_is_blinded
  *   Pointer to a boolean variable which is set to true if the wallet policy has blinded tag.
- * @param blinding_key
+ * @param[out] blinding_key
  *   Pointer to buffer receiving extracted blinding key.
- * @param blinding_key_len
+ * @param[in] blinding_key_len
  *   The length of the ``blinding_key`` buffer.
- * @param p_wif_flags
+ * @param[out] p_wif_flags
  *   Pointer to variable receiving flags related to extracted blinding key, a combination of
  *   WIF_FLAG_* constants. Can be NULL if not needed.
- * @param p_key_type
+ * @param[out] p_key_type
  *   Pointer to variable receiving type of extracted blinding key.
  *
  * @return true on success, false in case of error.

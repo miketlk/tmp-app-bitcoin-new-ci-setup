@@ -54,6 +54,16 @@ typedef void (*test_fn_t)(test_ctx_t *test_ctx);
         } \
     } while(0)
 
+// Compares two memory buffers for equality
+#define TEST_ASSERT_EQUAL_MEMORY(expected, actual, len) \
+    test_assert_equal_memory(test_ctx, expected, #expected, actual, #actual, len, __FILE__, \
+                             __LINE__)
+
+// Checks if each byte in memory buffer is equal to given value
+#define TEST_ASSERT_EACH_EQUAL_MEMORY(expected, actual, len) \
+    test_assert_each_equal_memory(test_ctx, expected, #expected, actual, #actual, len, __FILE__, \
+                                  __LINE__)
+
 /**
  * Test runner
  *
@@ -97,6 +107,66 @@ extern void test_handle_assert_fail(test_ctx_t *test_ctx,
                                     const char *file,
                                     int line);
 
+/**
+ * Internal function checking if two memory buffers are equal.
+ * Do not call directly, use TEST_ASSERT_EQUAL_MEMORY() macro instead!
+ *
+ * @param[in,out] test_ctx
+ *   Context of test environment.
+ * @param[in] expected
+ *   Memory buffer containing expected data.
+ * @param[in] expected_name
+ *   Name of memory buffer with expected data.
+ * @param[in] actual
+ *   Memory buffer containing actual data.
+ * @param[in] actual_name
+*    Name of memory buffer with actual data.
+ * @param[in] len
+ *   Number of bytes to compare.
+ * @param[in] file
+ *   Name of source code file.
+ * @param[in] line
+ *   Line in the source file.
+ */
+void test_assert_equal_memory(test_ctx_t *test_ctx,
+                              const void *expected,
+                              const char *expected_name,
+                              const void *actual,
+                              const char *actual_name,
+                              size_t len,
+                              const char *file,
+                              int line);
+
+/**
+ * Internal function checking if each byte in memory buffers equal to constant.
+ * Do not call directly, use TEST_ASSERT_EACH_EQUAL_MEMORY() macro instead!
+ *
+ * @param[in,out] test_ctx
+ *   Context of test environment.
+ * @param[in] expected
+ *   Expected value of all memory bytes.
+ * @param[in] expected_name
+ *   Name of variable containing expected value.
+ * @param[in] actual
+ *   Memory buffer containing actual data.
+ * @param[in] actual_name
+*    Name of memory buffer with actual data.
+ * @param[in] len
+ *   Number of bytes to compare.
+ * @param[in] file
+ *   Name of source code file.
+ * @param[in] line
+ *   Line in the source file.
+ */
+void test_assert_each_equal_memory(test_ctx_t *test_ctx,
+                                    uint8_t expected,
+                                    const char *expected_name,
+                                    const void *actual,
+                                    const char *actual_name,
+                                    size_t len,
+                                    const char *file,
+                                    int line);
+
 #else // defined(HAVE_SEMIHOSTED_PRINTF) && defined(RUN_ON_DEVICE_TESTS)
 
 #ifdef IMPLEMENT_ON_DEVICE_TESTS
@@ -107,6 +177,7 @@ extern void test_handle_assert_fail(test_ctx_t *test_ctx,
 #define TEST_ASSERT(cond)
 #define TEST_ASSERT_TRUE(cond)
 #define TEST_ASSERT_FALSE(cond)
+#define TEST_ASSERT_EQUAL_MEMORY(expected, actual, len)
 
 static inline void run_on_device_tests(void) {
 }
