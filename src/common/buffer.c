@@ -237,7 +237,7 @@ void *buffer_alloc(buffer_t *buffer, size_t size, bool aligned) {
     size_t padding_size = 0;
 
     if (aligned) {
-        uint32_t d = (uint32_t) (buffer->ptr + buffer->offset) % 4;
+        uintptr_t d = (uintptr_t) (buffer->ptr + buffer->offset) % 4;
         if (d != 0) {
             padding_size = 4 - d;
         }
