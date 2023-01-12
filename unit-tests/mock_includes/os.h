@@ -997,6 +997,7 @@ typedef struct application_s {
 
 // Structure that defines the parameters to exchange with the BOLOS UX
 // application
+#if 0
 typedef struct bolos_ux_params_s {
   bolos_ux_t ux_id;
   // length of parameters in the u union to be copied during the syscall
@@ -1110,6 +1111,7 @@ typedef struct bolos_ux_params_s {
   } u;
 
 } bolos_ux_params_t;
+#endif // 0
 
 // any application can wipe the global pin, global seed, user's keys
 // disabled for security reasons // SYSCALL void           os_perso_wipe(void);
@@ -1159,11 +1161,13 @@ SYSCALL PERMISSION(APPLICATION_FLAG_BOLOS_UX) void os_perso_finalize(void);
 SYSCALL bolos_bool_t os_perso_isonboarded(void);
 
 // derive the seed for the requested BIP32 path
+#if 0
 SYSCALL void os_perso_derive_node_bip32(
     cx_curve_t curve,
     const unsigned int *path PLENGTH(4 * (pathLength & 0x0FFFFFFFu)),
     unsigned int pathLength, unsigned char *privateKey PLENGTH(64),
     unsigned char *chain PLENGTH(32));
+#endif
 
 #define HDW_NORMAL 0
 #define HDW_ED25519_SLIP10 1
@@ -1179,6 +1183,7 @@ SYSCALL void os_perso_derive_node_bip32(
 // derive the seed for the requested BIP32 path, with the custom provided
 // seed_key for the sha512 hmac ("Bitcoin Seed", "Nist256p1 Seed", "ed25519
 // seed", ...)
+#if 0
 SYSCALL void os_perso_derive_node_with_seed_key(
     unsigned int mode, cx_curve_t curve,
     const unsigned int *path PLENGTH(4 * (pathLength & 0x0FFFFFFFu)),
@@ -1192,7 +1197,7 @@ SYSCALL void os_perso_derive_node_with_seed_key(
   os_perso_derive_node_with_seed_key(mode, curve, path, pathLength,            \
                                      privateKey, chain, seed_key,              \
                                      seed_key_length)
-
+#endif
 /**
  * Generate a seed based cookie
  * seed => derivation (path 0xda7aba5e/0xc1a551c5) => priv key =SECP256K1=>
@@ -1254,6 +1259,7 @@ SYSCALL PERMISSION(APPLICATION_FLAG_BOLOS_UX) void os_registry_get(
 // while not ended, all display/touch/ticker and other events are to be
 // processed by the ux. only io is not processed. when returning !0 the
 // application must send a general status (or continue its command flow)
+#if 0
 SYSCALL TASKSWITCH unsigned int
 os_ux(bolos_ux_params_t *params PLENGTH(sizeof(bolos_ux_params_t)));
 // read parameters back from the UX app. useful to read keyboard type or such
@@ -1263,12 +1269,13 @@ os_ux_result(bolos_ux_params_t *params PLENGTH(sizeof(bolos_ux_params_t)));
 // the firewalling between tasks.
 SYSCALL PERMISSION(APPLICATION_FLAG_BOLOS_UX) void os_ux_read_parameters(
     bolos_ux_params_t *params PLENGTH(sizeof(bolos_ux_params_t)));
+#endif // 0
 
 // process all possible messages while waiting for a ux to finish,
 // unprocessed messages are replied with a generic general status
 // when returning the application must send a general status (or continue its
 // command flow)
-unsigned int os_ux_blocking(bolos_ux_params_t *params);
+/*unsigned int os_ux_blocking(bolos_ux_params_t *params);*/
 
 /* ----------------------------------------------------------------------- */
 /* -                            LIB FUNCTIONS                            - */

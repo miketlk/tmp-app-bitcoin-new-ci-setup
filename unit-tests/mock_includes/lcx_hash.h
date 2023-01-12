@@ -22,6 +22,11 @@
 #include "os.h"
 #include <stdint.h>
 
+/** Success. */
+#define CX_OK 0x00000000
+/** Internal error */
+#define CX_INTERNAL_ERROR 0xFFFFFF85
+
 /** Message Digest algorithm identifiers. */
 enum cx_md_e {
   /** NONE Digest */
@@ -52,6 +57,9 @@ enum cx_md_e {
 /** Convenience type. See #cx_md_e. */
 typedef enum cx_md_e cx_md_t;
 
+/** Type of error code */
+typedef uint32_t cx_err_t;
+
 /**
  * @internal
  * Maximum size of message for any digest. The size is given in block,
@@ -64,8 +72,6 @@ typedef enum cx_md_e cx_md_t;
 struct cx_hash_header_s {
   /** Message digest identifier, See cx_md_e. */
   cx_md_t algo;
-  /** Number of block already processed */
-  unsigned int counter;
 };
 /** Convenience type. See #cx_hash_header_s. */
 typedef struct cx_hash_header_s cx_hash_t;
@@ -109,5 +115,36 @@ CXCALL int cx_hash(cx_hash_t *hash PLENGTH(scc__cx_scc_struct_size_hash__hash),
                    int mode, const unsigned char WIDE *in PLENGTH(len),
                    unsigned int len, unsigned char *out PLENGTH(out_len),
                    unsigned int out_len);
+
+/**
+ * @brief   Hash data according to the specified algorithm.
+ *
+ * @param[in]  hash    Pointer to the hash context.
+ *                     Shall be in RAM.
+ *                     Should be called with a cast.
+ *
+ * @param[in]  mode    Crypto flag. Supported flag: CX_LAST. If set:
+ *                       - the structure is not modified after finishing
+ *                       - if out is not NULL, the message digest is stored in out
+ *                       - the context is NOT automatically re-initialized.
+ *
+ * @param[in]  in      Input data to be hashed.
+ *
+ * @param[in]  len     Length of the input data.
+ *
+ * @param[out] out     Buffer where to store the message digest:
+ *                       - NULL (ignored) if CX_LAST is NOT set
+ *                       - message digest if CX_LAST is set
+ *
+ * @param[out] out_len The size of the output buffer or 0 if out is NULL.
+ *                     If buffer is too small to store the hash a exception is returned.
+ *
+ * @return             Error code:
+ *                     - CX_OK on success
+ *                     - INVALID_PARAMETER
+ *                     - CX_INVALID_PARAMETER
+ */
+cx_err_t cx_hash_no_throw(cx_hash_t *hash, uint32_t mode, const uint8_t *in,
+                          size_t len, uint8_t *out, size_t out_len);
 
 #endif

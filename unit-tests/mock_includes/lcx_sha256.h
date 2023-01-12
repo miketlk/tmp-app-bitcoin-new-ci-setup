@@ -19,46 +19,21 @@
 #ifndef LCX_SHA256_H
 #define LCX_SHA256_H
 
-/** SHA224 message digest size */
-#define CX_SHA224_SIZE 28
+#include "sha-256.h"
+
 /** SHA256 message digest size */
 #define CX_SHA256_SIZE 32
 
 /**
- * SHA-224 and SHA-256 context
+ * SHA-256 context
  */
 struct cx_sha256_s {
-  /** @copydoc cx_ripemd160_s::header */
   struct cx_hash_header_s header;
-  /** @internal @copydoc cx_ripemd160_s::blen */
-  unsigned int blen;
-  /** @internal @copydoc cx_ripemd160_s::block */
-  unsigned char block[64];
-  /** @copydoc cx_ripemd160_s::acc */
-  unsigned char acc[8 * 4];
+  struct Sha_256 sha_256;
+  uint8_t hash[SIZE_OF_SHA_256_HASH];
 };
 /** Convenience type. See #cx_sha256_s. */
 typedef struct cx_sha256_s cx_sha256_t;
-
-/**
- * Initialize a SHA-224 context.
- *
- * @param [out] hash the context to init.
- *    The context shall be in RAM
- *
- * @return algorithm identifier
- */
-CXCALL int cx_sha224_init(cx_sha256_t *hash PLENGTH(sizeof(cx_sha256_t)));
-
-/**
- * Initialize a SHA-256 context.
- *
- * @param [out] hash the context to init.
- *    The context shall be in RAM
- *
- * @return algorithm identifier
- */
-CXCALL int cx_sha256_init(cx_sha256_t *hash PLENGTH(sizeof(cx_sha256_t)));
 
 /**
  * One shot SHA-256 digest
@@ -76,5 +51,16 @@ CXCALL int cx_sha256_init(cx_sha256_t *hash PLENGTH(sizeof(cx_sha256_t)));
 CXCALL int cx_hash_sha256(const unsigned char WIDE *in PLENGTH(len),
                           unsigned int len, unsigned char *out PLENGTH(out_len),
                           unsigned int out_len);
+
+/**
+ * @brief   Initialize a SHA-256 context.
+ *
+ * @param[out] hash Pointer to the context.
+ *                  The context shall be in RAM.
+ *
+ * @return          Error code:
+ *                  - CX_OK on success
+ */
+cx_err_t cx_sha256_init_no_throw(cx_sha256_t *hash);
 
 #endif
