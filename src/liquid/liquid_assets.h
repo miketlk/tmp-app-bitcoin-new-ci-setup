@@ -13,6 +13,10 @@
 #define UNKNOWN_ASSET_DECIMALS 0
 /// Size of asset tag in bytes
 #define LIQUID_ASSET_TAG_LEN SHA256_LEN
+/// Minimum value of decimals
+#define LIQUID_ASSET_DECIMALS_MIN 0
+/// Maximum value of decimals
+#define LIQUID_ASSET_DECIMALS_MAX 19
 
 /// Information about an asset
 typedef struct {

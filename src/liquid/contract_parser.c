@@ -108,7 +108,8 @@ static bool handle_key_value(contract_parser_context_t *ctx, bool in_quotes) {
 
         if (0 == strncmp(ctx->key, "ticker", sizeof(ctx->key))) {
             if ( !(ctx->field_presence_flags & HAS_TICKER) && in_quotes &&
-                 is_alphanum_strn(ctx->value, ctx->value_len) ) {
+                 is_alphanum_strn(ctx->value, ctx->value_len) &&
+                 ctx->value_len <= MAX_ASSET_TICKER_LENGTH ) {
                 strlcpy(ctx->outputs->ticker, ctx->value, sizeof(ctx->outputs->ticker));
                 ctx->field_presence_flags |= HAS_TICKER;
             } else {
@@ -118,7 +119,8 @@ static bool handle_key_value(contract_parser_context_t *ctx, bool in_quotes) {
             int64_t value_num;
             if ( !(ctx->field_presence_flags & HAS_PRECISION) && !in_quotes &&
                  parse_json_integer(ctx->value, ctx->value_len, &value_num) &&
-                 value_num >= 0 && value_num <= 19 ) {
+                 value_num >= LIQUID_ASSET_DECIMALS_MIN &&
+                 value_num <= LIQUID_ASSET_DECIMALS_MAX ) {
                 ctx->outputs->precision = (uint8_t)value_num;
                 ctx->field_presence_flags |= HAS_PRECISION;
             } else {
