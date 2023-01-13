@@ -7,10 +7,8 @@
 
 #include <cmocka.h>
 
+#include "common/buffer.h"
 #include "liquid/contract_parser.h"
-
-extern bool liquid_parse_json_contract_str(const char *contract,
-                                           contract_parser_outputs_t *outputs);
 
 typedef struct {
     const char *contract_str;
@@ -60,6 +58,17 @@ static const contract_test_data_t contract_test_data[] = {
     }
 };
 
+static bool parse_contract(const char *contract, contract_parser_outputs_t *outputs) {
+    contract_parser_context_t ctx;
+    buffer_t contract_buffer = buffer_create((void*)contract, strlen(contract));
+
+    if (contract_parser_init(&ctx, outputs)) {
+        contract_parser_process(&ctx, &contract_buffer);
+        return contract_parser_finalize(&ctx);
+    }
+    return false;
+}
+
 static void test_contract_parser_valid(void **state) {
     (void) state;
 
@@ -69,7 +78,7 @@ static void test_contract_parser_valid(void **state) {
     contract_parser_outputs_t outs;
     for(int i = 0; i < n_vectors; ++i, p_vect++) {
         memset(&outs, 0xee, sizeof(outs));
-        bool res = liquid_parse_json_contract_str(p_vect->contract_str, &outs);
+        bool res = parse_contract(p_vect->contract_str, &outs);
         assert_true(res);
         assert_memory_equal(outs.contract_hash,
                             p_vect->ref_outs.contract_hash,
@@ -104,9 +113,9 @@ static void test_contract_parser_missing_fields(void **state) {
         "\"version\":0}";
 
     contract_parser_outputs_t outs;
-    assert_true(liquid_parse_json_contract_str(complete, &outs));
-    assert_false(liquid_parse_json_contract_str(missing_precision, &outs));
-    assert_false(liquid_parse_json_contract_str(missing_ticker, &outs));
+    assert_true(parse_contract(complete, &outs));
+    assert_false(parse_contract(missing_precision, &outs));
+    assert_false(parse_contract(missing_ticker, &outs));
 }
 
 static void test_contract_parser_skip_nested_arrays(void **state) {
@@ -122,7 +131,7 @@ static void test_contract_parser_skip_nested_arrays(void **state) {
         "\"version\":0}";
 
     contract_parser_outputs_t outs;
-    assert_true(liquid_parse_json_contract_str(contract, &outs));
+    assert_true(parse_contract(contract, &outs));
     assert_string_equal(outs.ticker, "ASP");
     assert_int_equal((int)outs.precision, 2);
 }
@@ -140,7 +149,7 @@ static void test_contract_parser_skip_nested_objects(void **state) {
         "\"version\":0}";
 
     contract_parser_outputs_t outs;
-    assert_true(liquid_parse_json_contract_str(contract, &outs));
+    assert_true(parse_contract(contract, &outs));
     assert_string_equal(outs.ticker, "ASP");
     assert_int_equal((int)outs.precision, 2);
 }
@@ -153,7 +162,7 @@ static void test_contract_parser_limits(void **state) {
         static const char contract[] =
             "{\"precision\":19,"\
             "\"ticker\":\"ABCDEFGHIJ\"}";
-        assert_true(liquid_parse_json_contract_str(contract, &outs));
+        assert_true(parse_contract(contract, &outs));
         assert_string_equal(outs.ticker, "ABCDEFGHIJ");
         assert_int_equal((int)outs.precision, 19);
     }
@@ -162,7 +171,7 @@ static void test_contract_parser_limits(void **state) {
         static const char contract[] =
             "{\"precision\":0,"\
             "\"ticker\":\"A\"}";
-        assert_true(liquid_parse_json_contract_str(contract, &outs));
+        assert_true(parse_contract(contract, &outs));
         assert_string_equal(outs.ticker, "A");
         assert_int_equal((int)outs.precision, 0);
     }
@@ -171,14 +180,14 @@ static void test_contract_parser_limits(void **state) {
         static const char contract[] =
             "{\"precision\":20,"\
             "\"ticker\":\"ABCDEFGHIJ\"}";
-        assert_false(liquid_parse_json_contract_str(contract, &outs));
+        assert_false(parse_contract(contract, &outs));
     }
 
     { // Precision lower than allowed
         static const char contract[] =
             "{\"precision\":-1,"\
             "\"ticker\":\"ABCDEFGHIJ\"}";
-        assert_false(liquid_parse_json_contract_str(contract, &outs));
+        assert_false(parse_contract(contract, &outs));
     }
 }
 
@@ -190,28 +199,28 @@ static void test_contract_parser_corrupted(void **state) {
         static const char contract[] =
             "\"precision\":19,"\
             "\"ticker\":\"ABCDEFGHIJ\"}";
-        assert_false(liquid_parse_json_contract_str(contract, &outs));
+        assert_false(parse_contract(contract, &outs));
     }
 
     { // Missing closing curly bracket
         static const char contract[] =
             "{\"precision\":19,"\
             "\"ticker\":\"ABCDEFGHIJ\"";
-        assert_false(liquid_parse_json_contract_str(contract, &outs));
+        assert_false(parse_contract(contract, &outs));
     }
 
     { // Missing comma
         static const char contract[] =
             "{\"precision\":19"\
             "\"ticker\":\"ABCDEFGHIJ\"}";
-        assert_false(liquid_parse_json_contract_str(contract, &outs));
+        assert_false(parse_contract(contract, &outs));
     }
 
     { // Unexpected whitespace
         static const char contract[] =
             "{ \"precision\":19,"\
             "\"ticker\":\"ABCDEFGHIJ\"}";
-        assert_false(liquid_parse_json_contract_str(contract, &outs));
+        assert_false(parse_contract(contract, &outs));
     }
 }
 

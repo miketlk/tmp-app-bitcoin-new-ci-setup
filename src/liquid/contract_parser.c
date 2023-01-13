@@ -3,28 +3,7 @@
 #include <string.h>
 #include <ctype.h>
 #include "buffer.h"
-#include "liquid_hash_wrappers.h"
 #include "contract_parser.h"
-#include "tests.h"
-
-#ifndef SKIP_FOR_CMOCKA
-#include "get_merkleized_map_value_hash.h"
-#include "stream_preimage.h"
-#include "../../boilerplate/sw.h"
-#include "../../common/read.h"
-#include "../../common/varint.h"
-#endif // SKIP_FOR_CMOCKA
-
-#ifdef SKIP_FOR_CMOCKA
-    #define STATIC_NO_TEST
-#else
-    /// Declares symbol as static in non-test build
-    #define STATIC_NO_TEST static
-#endif
-
-#define MAX_KEY_LEN 11
-#define MAX_VALUE_LEN 11
-#define MAX_CONTRACT_LEN 4096
 
 /// States of the parser state machine
 typedef enum {
@@ -46,21 +25,6 @@ typedef enum {
     HAS_ALL_REQUIRED = (HAS_TICKER | HAS_PRECISION)  ///< All required fields are present
 } field_presence_flags_t;
 
-/// Parser context
-typedef struct {
-    contract_parser_outputs_t *outputs;           ///< Pointer to structure receiving output values
-    field_presence_flags_t field_presence_flags;  ///< Flags indicating presence of the contract fields
-    parser_state_t state;                         ///< State of the parser's FSM
-    bool has_opening_quotes;                      ///< Flag: current chunk has opening quotes
-    bool escape;                                  ///< Flag: this character was escaped by '\'
-    uint32_t nesting_level;                       ///< Current level for nested objects and arrays
-    char key[MAX_KEY_LEN + 1];                    ///< Key buffer of a key-value pair
-    int key_len;                                  ///< Length of the key w/o trailing null character
-    char value[MAX_VALUE_LEN + 1];                ///< Value buffer of a key-value pair
-    int value_len;                                ///< Length of the value w/o trailing null character
-    cx_sha256_t sha256_context;                   ///< Context of SHA-256 used to compute contreact hash
-} parser_context_t;
-
 /**
  * Prototype for a function implementing state-specific logic of parser's FSM.
  *
@@ -71,7 +35,7 @@ typedef struct {
  *
  * @return new FSM state.
  */
-typedef parser_state_t (*parser_state_fn_t)(parser_context_t *ctx, buffer_t *data);
+typedef parser_state_t (*parser_state_fn_t)(contract_parser_context_t *ctx, buffer_t *data);
 
 /**
  * Checks if an explicit-length string contains only alphanumeric characters.
@@ -137,7 +101,7 @@ static bool parse_json_integer(const char *str, size_t len, int64_t *p_num) {
  *
  * @return true on success, false if value is invalid.
  */
-static bool handle_key_value(parser_context_t *ctx, bool in_quotes) {
+static bool handle_key_value(contract_parser_context_t *ctx, bool in_quotes) {
     if (ctx->key_len > 0 && ctx->value_len > 0) {
         ctx->key[ctx->key_len] = '\0';
         ctx->value[ctx->value_len] = '\0';
@@ -166,24 +130,6 @@ static bool handle_key_value(parser_context_t *ctx, bool in_quotes) {
 }
 
 /**
- * Initializes contract parser.
- *
- * @param[out] ctx
- *   Instance of parser context to initialize.
- * @param[in] outputs
- *   Poiter to structure instance receiving decoded values, saved in context.
- *
- * @return true on success, false in case of error.
- */
-STATIC_NO_TEST bool contract_parser_init(parser_context_t *ctx,
-                                         contract_parser_outputs_t *outputs) {
-    memset(ctx, 0, sizeof(parser_context_t));
-    memset(outputs, 0, sizeof(contract_parser_outputs_t));
-    ctx->outputs = outputs;
-    return hash_init_sha256(&ctx->sha256_context);
-}
-
-/**
  * Implements STATE_START: looking for opening '{'.
  *
  * @param[in,out] ctx
@@ -193,7 +139,7 @@ STATIC_NO_TEST bool contract_parser_init(parser_context_t *ctx,
  *
  * @return new FSM state.
  */
-static parser_state_t state_start(parser_context_t *ctx, buffer_t *data) {
+static parser_state_t state_start(contract_parser_context_t *ctx, buffer_t *data) {
     (void)ctx;
 
     uint8_t byte = 0;
@@ -213,7 +159,7 @@ static parser_state_t state_start(parser_context_t *ctx, buffer_t *data) {
  *
  * @return new FSM state.
  */
-static parser_state_t state_key(parser_context_t *ctx, buffer_t *data) {
+static parser_state_t state_key(contract_parser_context_t *ctx, buffer_t *data) {
     uint8_t byte;
     while (buffer_read_u8(data, &byte)) {
         if (!ctx->escape && byte == '\\') {
@@ -230,7 +176,7 @@ static parser_state_t state_key(parser_context_t *ctx, buffer_t *data) {
             if (!ctx->has_opening_quotes) { // key must be always in quotes
                 return STATE_ERROR;
             }
-            if (ctx->key_len < MAX_KEY_LEN) {
+            if (ctx->key_len < CONTRACT_MAX_KEY_LEN) {
                 ctx->key[ctx->key_len++] = byte;
             } else {
                 ctx->key_len = -1; // skip this key
@@ -251,7 +197,7 @@ static parser_state_t state_key(parser_context_t *ctx, buffer_t *data) {
  *
  * @return new FSM state.
  */
-static parser_state_t state_colon(parser_context_t *ctx, buffer_t *data) {
+static parser_state_t state_colon(contract_parser_context_t *ctx, buffer_t *data) {
     (void)ctx;
     uint8_t byte = 0;
     if (!buffer_read_u8(data, &byte) || byte != ':') {
@@ -270,7 +216,7 @@ static parser_state_t state_colon(parser_context_t *ctx, buffer_t *data) {
  *
  * @return new FSM state.
  */
-static parser_state_t state_value(parser_context_t *ctx, buffer_t *data) {
+static parser_state_t state_value(contract_parser_context_t *ctx, buffer_t *data) {
     uint8_t byte;
     while (buffer_read_u8(data, &byte)) {
         if (!ctx->escape && byte == '\\') {
@@ -295,7 +241,7 @@ static parser_state_t state_value(parser_context_t *ctx, buffer_t *data) {
         } else if (byte == '[' && !ctx->has_opening_quotes) {
             return !ctx->value_len && !ctx->escape ? STATE_SKIP_ARRAY : STATE_ERROR;
         } else if (ctx->key_len != -1 && ctx->value_len != -1) {
-            if (ctx->value_len < MAX_VALUE_LEN) {
+            if (ctx->value_len < CONTRACT_MAX_VALUE_LEN) {
                 ctx->value[ctx->value_len++] = byte;
             } else {
                 ctx->value_len = -1; // skip this value
@@ -316,7 +262,7 @@ static parser_state_t state_value(parser_context_t *ctx, buffer_t *data) {
  *
  * @return new FSM state.
  */
-static parser_state_t state_skip_object(parser_context_t *ctx, buffer_t *data) {
+static parser_state_t state_skip_object(contract_parser_context_t *ctx, buffer_t *data) {
     uint8_t byte;
     while (buffer_read_u8(data, &byte)) {
         if (!ctx->escape && byte == '\\') {
@@ -354,7 +300,7 @@ static parser_state_t state_skip_object(parser_context_t *ctx, buffer_t *data) {
  *
  * @return new FSM state.
  */
-static parser_state_t state_skip_array(parser_context_t *ctx, buffer_t *data) {
+static parser_state_t state_skip_array(contract_parser_context_t *ctx, buffer_t *data) {
     uint8_t byte;
     while (buffer_read_u8(data, &byte)) {
         if (!ctx->escape && byte == '\\') {
@@ -392,7 +338,7 @@ static parser_state_t state_skip_array(parser_context_t *ctx, buffer_t *data) {
  *
  * @return new FSM state.
  */
-static parser_state_t state_separator(parser_context_t *ctx, buffer_t *data) {
+static parser_state_t state_separator(contract_parser_context_t *ctx, buffer_t *data) {
     (void)ctx;
     uint8_t byte = 0;
     if (!buffer_read_u8(data, &byte)) {
@@ -422,20 +368,23 @@ static const parser_state_fn_t state_table[] = {
 static const size_t state_table_size = sizeof(state_table) / sizeof(state_table[0]);
 
 /**
- * Processes input contract data.
+ * Initializes contract parser.
  *
- * Function prototype is compatible with callback type of call_stream_preimage().
- *
- * @param[in,out] data
- *  Input data buffer to process.
- * @param[in,out] state
- *   Callback state, must be a pointer to parser context.
+ * @param[out] ctx
+ *   Instance of parser context to initialize.
+ * @param[in] outputs
+ *   Poiter to structure instance receiving decoded values, saved in context.
  *
  * @return true on success, false in case of error.
  */
-STATIC_NO_TEST void contract_parser_process(buffer_t *data, void *state) {
-    parser_context_t *ctx = (parser_context_t*)state;
+bool contract_parser_init(contract_parser_context_t *ctx, contract_parser_outputs_t *outputs) {
+    memset(ctx, 0, sizeof(contract_parser_context_t));
+    memset(outputs, 0, sizeof(contract_parser_outputs_t));
+    ctx->outputs = outputs;
+    return hash_init_sha256(&ctx->sha256_context);
+}
 
+void contract_parser_process(contract_parser_context_t *ctx, buffer_t *data) {
     // Update contract hash
     buffer_snapshot_t snapshot = buffer_snapshot(data);
     uint8_t byte;
@@ -448,7 +397,7 @@ STATIC_NO_TEST void contract_parser_process(buffer_t *data, void *state) {
     buffer_restore(data, snapshot);
 
     // Process all bytes of JSON running state machine until we reach STATE_FINISH or STATE_ERROR
-    while (buffer_can_read(data, 1) && ctx->state < state_table_size) {
+    while (buffer_can_read(data, 1) && ctx->state < (int)state_table_size) {
         if (state_table[ctx->state]) {
             parser_state_t new_state = state_table[ctx->state](ctx, data);
             if (new_state != ctx->state) {
@@ -468,18 +417,7 @@ STATIC_NO_TEST void contract_parser_process(buffer_t *data, void *state) {
     }
 }
 
-/**
- * Finalizes contract processing.
- *
- * Call this function to obtain output values after feeding all bytes of a contract to
- * contract_parser_process().
- *
- * @param[in,out] ctx
- *   Parser context.
- *
- * @return true on success, false in case of error.
- */
-STATIC_NO_TEST bool contract_parser_finalize(parser_context_t *ctx) {
+bool contract_parser_finalize(contract_parser_context_t *ctx) {
     _Static_assert(sizeof(ctx->outputs->contract_hash) == SHA256_LEN, "Wrong hash size");
     _Static_assert(SHA256_LEN >= 1, "Wrong hash size");
 
@@ -499,51 +437,5 @@ STATIC_NO_TEST bool contract_parser_finalize(parser_context_t *ctx) {
     }
     return false;
 }
-
-#ifndef SKIP_FOR_CMOCKA
-
-bool liquid_parse_json_contract(dispatcher_context_t *dispatcher_context,
-                                const merkleized_map_commitment_t *map,
-                                const uint8_t *key,
-                                int key_len,
-                                contract_parser_outputs_t *outputs) {
-    // TODO: implement
-#if 0
-    parser_context_t parser_context;
-    if (contract_parser_init(&parser_context, outputs)) {
-        // use: contract_parser_process();
-        // use: contract_parser_finalize(&parser_context);
-    }
-#endif
-
-    return false;
-}
-
-#else
-
-/**
- * Parses JSON contract string.
- *
- * @param[in] contract
- *   JSON contract to parse
- * @param[out] outputs
- *   Pointer to structure instance receiving parsed values.
- *
- * @return true on success, false in case of error.
- */
-bool liquid_parse_json_contract_str(const char *contract,
-                                    contract_parser_outputs_t *outputs) {
-    parser_context_t ctx;
-    buffer_t contract_buffer = buffer_create((void*)contract, strnlen(contract, MAX_CONTRACT_LEN));
-
-    if (contract_parser_init(&ctx, outputs)) {
-        contract_parser_process(&contract_buffer, &ctx);
-        return contract_parser_finalize(&ctx);
-    }
-
-    return false;
-}
-
-#endif
 
 #endif // HAVE_LIQUID
