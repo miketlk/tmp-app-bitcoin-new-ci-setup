@@ -110,7 +110,9 @@ static bool handle_key_value(contract_parser_context_t *ctx, bool in_quotes) {
             if ( !(ctx->field_presence_flags & HAS_TICKER) && in_quotes &&
                  is_alphanum_strn(ctx->value, ctx->value_len) &&
                  ctx->value_len <= MAX_ASSET_TICKER_LENGTH ) {
-                strlcpy(ctx->outputs->ticker, ctx->value, sizeof(ctx->outputs->ticker));
+                strlcpy(ctx->asset_info->ticker,
+                        ctx->value,
+                        sizeof(ctx->asset_info->ticker));
                 ctx->field_presence_flags |= HAS_TICKER;
             } else {
                 return false;
@@ -121,7 +123,7 @@ static bool handle_key_value(contract_parser_context_t *ctx, bool in_quotes) {
                  parse_json_integer(ctx->value, ctx->value_len, &value_num) &&
                  value_num >= LIQUID_ASSET_DECIMALS_MIN &&
                  value_num <= LIQUID_ASSET_DECIMALS_MAX ) {
-                ctx->outputs->precision = (uint8_t)value_num;
+                ctx->asset_info->decimals = (uint8_t)value_num;
                 ctx->field_presence_flags |= HAS_PRECISION;
             } else {
                 return false;
@@ -369,20 +371,10 @@ static const parser_state_fn_t state_table[] = {
 /// Number of "active" states in the state table (table size)
 static const size_t state_table_size = sizeof(state_table) / sizeof(state_table[0]);
 
-/**
- * Initializes contract parser.
- *
- * @param[out] ctx
- *   Instance of parser context to initialize.
- * @param[in] outputs
- *   Poiter to structure instance receiving decoded values, saved in context.
- *
- * @return true on success, false in case of error.
- */
-bool contract_parser_init(contract_parser_context_t *ctx, contract_parser_outputs_t *outputs) {
+bool contract_parser_init(contract_parser_context_t *ctx, asset_info_t *asset_info) {
     memset(ctx, 0, sizeof(contract_parser_context_t));
-    memset(outputs, 0, sizeof(contract_parser_outputs_t));
-    ctx->outputs = outputs;
+    memset(asset_info, 0, sizeof(asset_info_t));
+    ctx->asset_info = asset_info;
     return hash_init_sha256(&ctx->sha256_context);
 }
 
@@ -419,20 +411,19 @@ void contract_parser_process(contract_parser_context_t *ctx, buffer_t *data) {
     }
 }
 
-bool contract_parser_finalize(contract_parser_context_t *ctx) {
-    _Static_assert(sizeof(ctx->outputs->contract_hash) == SHA256_LEN, "Wrong hash size");
+bool contract_parser_finalize(contract_parser_context_t *ctx,
+                              uint8_t hash[static SHA256_LEN]) {
     _Static_assert(SHA256_LEN >= 1, "Wrong hash size");
 
     // Check if processing is complete and all required values obtained
     if (STATE_FINISH == ctx->state &&
         HAS_ALL_REQUIRED == (ctx->field_presence_flags & HAS_ALL_REQUIRED)) {
-        uint8_t *p_hash = ctx->outputs->contract_hash;
-        if (hash_digest(&ctx->sha256_context.header, p_hash, SHA256_LEN)) {
+        if (hash_digest(&ctx->sha256_context.header, hash, SHA256_LEN)) {
             // Reverse byte order of the resulting hash
             for (size_t i = 0; i < SHA256_LEN >> 1; ++i) {
-                uint8_t tmp = p_hash[i];
-                p_hash[i] = p_hash[(SHA256_LEN - 1) - i];
-                p_hash[(SHA256_LEN - 1) - i] = tmp;
+                uint8_t tmp = hash[i];
+                hash[i] = hash[(SHA256_LEN - 1) - i];
+                hash[(SHA256_LEN - 1) - i] = tmp;
             }
             return true;
         }

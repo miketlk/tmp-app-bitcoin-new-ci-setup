@@ -20,12 +20,18 @@
 
 /// Information about an asset
 typedef struct {
-    /// Asset tag
-    uint8_t tag[LIQUID_ASSET_TAG_LEN];
     /// Ticker, a text string
     char ticker[MAX_ASSET_TICKER_LENGTH + 1];
     /// Number of decimal digits in fractional part
     uint8_t decimals;
+} asset_info_t;
+
+/// Definition of an asset
+typedef struct {
+    /// Asset tag
+    uint8_t tag[LIQUID_ASSET_TAG_LEN];
+    /// Information about an asset
+    asset_info_t info;
 } asset_definition_t;
 
 /**
@@ -35,7 +41,7 @@ typedef struct {
  *
  * @return pointer to asset definition structure or NULL if not found
  */
-const asset_definition_t* liquid_get_asset_info(const uint8_t tag[static LIQUID_ASSET_TAG_LEN]);
+const asset_info_t* liquid_get_asset_info(const uint8_t tag[static LIQUID_ASSET_TAG_LEN]);
 
 /**
  * Computes asset tag (asset ID).

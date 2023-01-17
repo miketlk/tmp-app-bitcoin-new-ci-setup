@@ -33,7 +33,7 @@ typedef struct {
     uint8_t value_commitment[33]; // value commitment of the current input or output
     uint8_t asset_commitment[33]; // asset commitment of the current input or output
     uint8_t asset_tag[32];
-    const asset_definition_t *asset_info;
+    const asset_info_t *asset_info;
 } in_out_info_t;
 
 typedef struct {

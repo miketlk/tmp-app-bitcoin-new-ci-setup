@@ -6,27 +6,20 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include "constants.h"
+#include "buffer.h"
 #include "liquid_assets.h"
 #include "liquid_hash_wrappers.h"
 
+/// Maximum reasonable length of the contract
+#define CONTRACT_MAX_LEN (10*1024)
 /// Maximum length of key field in JSON (not including quotes and terminating null)
 #define CONTRACT_MAX_KEY_LEN 11
 /// Maximum length of value field in JSON (not including quotes and terminating null)
 #define CONTRACT_MAX_VALUE_LEN 11
 
-/// Output values of the contract parser
-typedef struct {
-    /// Will contain the computed contract hash
-    uint8_t contract_hash[SHA256_LEN];
-    /// Ticker, a text string
-    char ticker[MAX_ASSET_TICKER_LENGTH + 1];
-    /// Number of decimal digits in fractional part
-    uint8_t precision;
-} contract_parser_outputs_t;
-
 /// Contract parser context
 typedef struct {
-    contract_parser_outputs_t *outputs;     ///< Pointer to structure receiving output values
+    asset_info_t *asset_info;               ///< Pointer to structure receiving output values
     uint32_t field_presence_flags;          ///< Flags indicating presence of the contract fields
     int state;                              ///< State of the parser's FSM
     bool has_opening_quotes;                ///< Flag: current chunk has opening quotes
@@ -44,12 +37,12 @@ typedef struct {
  *
  * @param[out] ctx
  *   Instance of parser context to initialize.
- * @param[in] outputs
+ * @param[out] asset_info
  *   Poiter to structure instance receiving decoded values, saved in context.
  *
  * @return true on success, false in case of error.
  */
-bool contract_parser_init(contract_parser_context_t *ctx, contract_parser_outputs_t *outputs);
+bool contract_parser_init(contract_parser_context_t *ctx, asset_info_t *asset_info);
 
 /**
  * Processes input contract data.
@@ -73,9 +66,12 @@ void contract_parser_process(contract_parser_context_t *ctx, buffer_t *data);
  *
  * @param[in,out] ctx
  *   Parser context.
+ * @param[out] hash
+ *   Pointer to buffer receiving computed contract hash.
  *
  * @return true on success, false in case of error.
  */
-bool contract_parser_finalize(contract_parser_context_t *ctx);
+bool contract_parser_finalize(contract_parser_context_t *ctx,
+                              uint8_t hash[static SHA256_LEN]);
 
 #endif // HAVE_LIQUID

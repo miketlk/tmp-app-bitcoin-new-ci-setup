@@ -65,6 +65,22 @@ __attribute__((weak)) cx_err_t cx_hash_no_throw(cx_hash_t *hash, uint32_t mode, 
     return CX_INTERNAL_ERROR;
 }
 
+/**
+ * Mock implementation, not to be used outside test environment.
+ */
+__attribute__((weak)) bool sha256_midstate_reversed(const cx_sha256_t* sha256_context,
+                                                    uint8_t out[32]) {
+    if (sha256_context && CX_SHA256 == sha256_context->header.algo) {
+        uint8_t *p_result = sha_256_midstate(&sha256_context->sha_256);
+        if (p_result) {
+            for (int i = 0; i < 32; ++i) {
+                out[31 - i] = p_result[i];
+            }
+            return true;
+        }
+    }
+    return false;
+}
 
 #ifdef __clang__
 /**

@@ -5,12 +5,13 @@
 // Maximum length of identifier prefix of a proprietary key
 #define PSBT_PROPRIETARY_ID_MAX_LENGTH 8
 
-#define PSBT_KEY_ELEMENTS_LEGACY(x) \
-	(const uint8_t[]){0xfc, 0x08, 'e', 'l', 'e', 'm', 'e', 'n', 't', 's', (x)}
-#define PSBT_KEY_ELEMENTS(x) (uint8_t[]){0xfc, 0x04, 'p', 's', 'e', 't', (x)}
+#define PSBT_KEY_ELEMENTS(x) (const uint8_t[]){0xfc, 0x04, 'p', 's', 'e', 't', (x)}
+#define PSBT_KEY_ELEMENTS_16(x) \
+		(const uint8_t[]){0xfc, 0x04, 'p', 's', 'e', 't', 0xfd, (x) & 0xff, (x) >> 8}
 
 #define PSBT_ELEMENTS_GLOBAL_SCALAR PSBT_KEY_ELEMENTS(0x00)
 #define PSBT_ELEMENTS_GLOBAL_TX_MODIFIABLE PSBT_KEY_ELEMENTS(0x01)
+#define PSBT_ELEMENTS_HWW_GLOBAL_ASSET_METADATA PSBT_KEY_ELEMENTS_16(0x0100)
 
 #define PSBT_ELEMENTS_IN_ISSUANCE_VALUE PSBT_KEY_ELEMENTS(0x00)
 #define PSBT_ELEMENTS_IN_ISSUANCE_VALUE_COMMITMENT PSBT_KEY_ELEMENTS(0x01)
