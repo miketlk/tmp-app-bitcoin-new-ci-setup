@@ -20,6 +20,19 @@
 uint8_t varint_size(uint64_t value);
 
 /**
+ * Return size of Bitcoin-like varint by giving prefix of encoded value.
+ *
+ * @see https://en.bitcoin.it/wiki/Protocol_documentation#Variable_length_integer
+ *
+ * @param[in] prefix
+ *   First byte (prefix) of encoded varint value.
+ *
+ * @return number of bytes representing the value as varint (1, 3, 5 or 9 bytes).
+ *
+ */
+uint8_t varint_size_by_prefix(uint8_t prefix);
+
+/**
  * Read Bitcoin-like varint from byte buffer.
  *
  * @see https://en.bitcoin.it/wiki/Protocol_documentation#Variable_length_integer

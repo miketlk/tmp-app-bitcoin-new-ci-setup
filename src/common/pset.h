@@ -5,9 +5,14 @@
 // Maximum length of identifier prefix of a proprietary key
 #define PSBT_PROPRIETARY_ID_MAX_LENGTH 8
 
-#define PSBT_KEY_ELEMENTS(x) (const uint8_t[]){0xfc, 0x04, 'p', 's', 'e', 't', (x)}
+// Evaluates to 0 if condition is true, otherwise compilation fails
+#define PSET_H_PREPROC_CHECK(condition)  ((int)(!sizeof(char[1 - 2*!(condition)])))
+
+#define PSBT_KEY_ELEMENTS(x) \
+		(const uint8_t[]){ PSET_H_PREPROC_CHECK((x) <= 0xfc) | 0xfc, 0x04, 'p', 's', 'e', 't', (x) }
 #define PSBT_KEY_ELEMENTS_16(x) \
-		(const uint8_t[]){0xfc, 0x04, 'p', 's', 'e', 't', 0xfd, (x) & 0xff, (x) >> 8}
+		(const uint8_t[]){ PSET_H_PREPROC_CHECK((x) > 0xfc && (x) <= 0xffff) | 0xfc, 0x04, \
+		                   'p', 's', 'e', 't', 0xfd, (x) & 0xff, (x) >> 8 }
 
 #define PSBT_ELEMENTS_GLOBAL_SCALAR PSBT_KEY_ELEMENTS(0x00)
 #define PSBT_ELEMENTS_GLOBAL_TX_MODIFIABLE PSBT_KEY_ELEMENTS(0x01)

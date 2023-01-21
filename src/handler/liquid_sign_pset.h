@@ -33,7 +33,7 @@ typedef struct {
     uint8_t value_commitment[33]; // value commitment of the current input or output
     uint8_t asset_commitment[33]; // asset commitment of the current input or output
     uint8_t asset_tag[32];
-    const asset_info_t *asset_info;
+    asset_info_t asset_info;
 } in_out_info_t;
 
 typedef struct {
@@ -128,6 +128,8 @@ typedef struct {
 
     int our_key_derivation_length;
     uint32_t our_key_derivation[MAX_BIP32_PATH_STEPS];
+    uint32_t global_key_presence;
+    merkleized_map_commitment_t global_map;
 } sign_pset_state_t;
 
 void handler_liquid_sign_pset(dispatcher_context_t *dispatcher_context);

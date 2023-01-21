@@ -38,6 +38,22 @@ uint8_t varint_size(uint64_t value) {
     return 9;  // <= UINT64_MAX
 }
 
+uint8_t varint_size_by_prefix(uint8_t prefix) {
+    switch(prefix) {
+        case 0xFD:
+            return 3;
+
+        case 0xFE:
+            return 5;
+
+        case 0xFF:
+            return 9;
+
+        default:
+            return 1;
+    }
+}
+
 int varint_read(const uint8_t *in, size_t in_len, uint64_t *value) {
     if (in_len < 1) {
         return -1;

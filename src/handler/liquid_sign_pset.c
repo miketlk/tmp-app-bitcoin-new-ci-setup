@@ -47,6 +47,7 @@
 
 #include "liquid_sign_pset.h"
 #include "../liquid/liquid_proofs.h"
+#include "../liquid/liquid_asset_metadata.h"
 
 #include "sign_psbt/compare_wallet_script_at_path.h"
 #include "sign_psbt/get_fingerprint_and_path.h"
@@ -86,8 +87,18 @@ typedef enum {
     HAS_VALUE_PROOF = (1 << 23),
     HAS_ASSET_PROOF = (1 << 24),
     HAS_ASSET_SURJECTION_PROOF = (1 << 25),
-    HAS_VALUE_RANGEPROOF = (1 << 26)
+    HAS_VALUE_RANGEPROOF = (1 << 26),
 } key_presence_flags_t;
+
+typedef enum {
+    GLOBAL_HAS_ASSET_METADATA = (1 << 0)
+} global_key_presence_flags_t;
+
+/// State of global_keys_callback()
+typedef struct {
+    uint32_t key_presence;  ///< Flags indicating presence of keys in input scope
+    bool error;             ///< Flag indicating error during handling of keys
+} global_keys_callback_state_t;
 
 /// State of input_keys_callback()
 typedef struct {
@@ -177,34 +188,49 @@ static bool test_proprietary_key(buffer_t *buffer, const uint8_t *ref_key) {
 
     // Sanity check
     if(!buffer || !ref_key || ref_key[OFF_KEYTYPE] != 0xfc ||
-       ref_key[OFF_ID_LEN] > PSBT_PROPRIETARY_ID_MAX_LENGTH ||
-       ref_key[OFF_ID + ref_key[OFF_ID_LEN]] > 0xfc) {
+       ref_key[OFF_ID_LEN] > PSBT_PROPRIETARY_ID_MAX_LENGTH) {
         return false;
     }
 
-    bool success = true;
     buffer_snapshot_t snapshot = buffer_snapshot(buffer);
-
+    int subkeytype_len = varint_size_by_prefix(ref_key[OFF_ID + ref_key[OFF_ID_LEN]]);
     uint8_t id_len;
-    // Only single-byte type and length values are supported
-    if(buffer_read_u8(buffer, &id_len) && id_len == ref_key[OFF_ID_LEN]) {
+    bool result = true;
+
+    // Only single-byte ID length is supported
+    if (buffer_read_u8(buffer, &id_len) && id_len == ref_key[OFF_ID_LEN]) {
         uint8_t curr_byte;
         const uint8_t *p_ref_key = ref_key + OFF_ID;
-        // Compare all bytes of identifier + a single byte of sub-keytype
-        for(int i = 0; i < id_len + 1; ++i, p_ref_key++) {
+        // Compare all bytes of identifier + all bytes of sub-keytype
+        for (int i = 0; i < id_len + subkeytype_len; ++i, p_ref_key++) {
             if(!buffer_read_u8(buffer, &curr_byte) || curr_byte != *p_ref_key) {
-                success = false;
+                result = false;
                 break;
             }
         }
-        // Assure there is no more bytes left in buffer
-        success = success && !buffer_can_read(buffer, 1);
     } else {
-        success = false;
+        result = false;
     }
 
     buffer_restore(buffer, snapshot);
-    return success;
+    return result;
+}
+
+/**
+ * Callback to process all the keys of the current global map.
+ * Keeps track if the global has asset metadata.
+ */
+static void global_keys_callback(global_keys_callback_state_t *state, buffer_t *data) {
+    size_t data_len = data->size - data->offset;
+    if (data_len >= 1) {
+        uint8_t keytype;
+        buffer_read_u8(data, &keytype);
+        if (keytype == PSBT_IN_PROPRIETARY) {
+            if (test_proprietary_key(data, PSBT_ELEMENTS_HWW_GLOBAL_ASSET_METADATA)) {
+                state->key_presence |= GLOBAL_HAS_ASSET_METADATA;
+            }
+        }
+    }
 }
 
 /**
@@ -806,8 +832,10 @@ static bool set_in_out_amount(overlayed_in_out_info_t *p_info, tx_amount_t *amou
 /**
  * Handles confidential asset of an input or an output
  */
-static bool set_in_out_asset(overlayed_in_out_info_t *p_info, tx_asset_t *asset) {
-    if(!p_info || !asset) {
+static bool set_in_out_asset(dispatcher_context_t *dc,
+                             sign_pset_state_t *state,
+                             tx_asset_t *asset) {
+    if(!dc || !state || !asset) {
         return false;
     }
 
@@ -815,30 +843,46 @@ static bool set_in_out_asset(overlayed_in_out_info_t *p_info, tx_asset_t *asset)
         if (asset->commitment[0] != 0x0a && asset->commitment[0] != 0x0b) {
             return false;
         }
-        if (p_info->key_read_status & HAS_ASSET_COMMITMENT) {
-            return 0 == memcmp(p_info->in_out.asset_commitment,
+        if (state->cur.key_read_status & HAS_ASSET_COMMITMENT) {
+            return 0 == memcmp(state->cur.in_out.asset_commitment,
                                asset->commitment,
-                               sizeof(p_info->in_out.asset_commitment));
+                               sizeof(state->cur.in_out.asset_commitment));
         } else {
-            memcpy(p_info->in_out.asset_commitment,
+            memcpy(state->cur.in_out.asset_commitment,
                    asset->commitment,
-                   sizeof(p_info->in_out.asset_commitment));
-            p_info->key_read_status |= HAS_ASSET_COMMITMENT;
+                   sizeof(state->cur.in_out.asset_commitment));
+            state->cur.key_read_status |= HAS_ASSET_COMMITMENT;
         }
     } else {
-        if (p_info->key_read_status & HAS_ASSET) {
-            return 0 == memcmp(p_info->in_out.asset_tag,
+        if (state->cur.key_read_status & HAS_ASSET) {
+            return 0 == memcmp(state->cur.in_out.asset_tag,
                                asset->tag,
-                               sizeof(p_info->in_out.asset_tag));
+                               sizeof(state->cur.in_out.asset_tag));
         } else {
-            p_info->in_out.asset_info = liquid_get_asset_info(asset->tag);
-            memcpy(p_info->in_out.asset_tag,
+            const asset_info_t *p_asset_info = liquid_get_asset_info(asset->tag);
+            if (p_asset_info) {
+                state->cur.in_out.asset_info = *p_asset_info;
+            } else {
+                asset_metadata_status_t stat = ASSET_METADATA_ABSENT;
+                if (state->global_key_presence & GLOBAL_HAS_ASSET_METADATA) {
+                    stat = liquid_get_asset_metadata(dc,
+                                                     &state->global_map,
+                                                     asset->tag,
+                                                     &state->cur.in_out.asset_info);
+                }
+                if (ASSET_METADATA_ABSENT == stat) {
+                    memset(&state->cur.in_out.asset_info, 0, sizeof(state->cur.in_out.asset_info));
+                } else if(ASSET_METADATA_READY != stat) {
+                    return false;
+                }
+            }
+            memcpy(state->cur.in_out.asset_tag,
                    asset->tag,
-                   sizeof(p_info->in_out.asset_tag));
-            p_info->key_read_status |= HAS_ASSET;
+                   sizeof(state->cur.in_out.asset_tag));
+            state->cur.key_read_status |= HAS_ASSET;
         }
     }
-     return true;
+    return true;
 }
 
 // TODO: document
@@ -866,6 +910,7 @@ static bool sha_context_free(sign_pset_state_t *state, const cx_sha256_t *contex
  */
 void handler_liquid_sign_pset(dispatcher_context_t *dc) {
     sign_pset_state_t *state = (sign_pset_state_t *) &G_command_state;
+    memset(state, 0, sizeof(sign_pset_state_t));
 
     LOG_PROCESSOR(dc, __FILE__, __LINE__, __func__);
 
@@ -875,14 +920,13 @@ void handler_liquid_sign_pset(dispatcher_context_t *dc) {
         return;
     }
 
-    merkleized_map_commitment_t global_map;
-    if (!buffer_read_varint(&dc->read_buffer, &global_map.size)) {
+    if (!buffer_read_varint(&dc->read_buffer, &state->global_map.size)) {
         SEND_SW(dc, SW_WRONG_DATA_LENGTH);
         return;
     }
 
-    if (!buffer_read_bytes(&dc->read_buffer, global_map.keys_root, 32) ||
-        !buffer_read_bytes(&dc->read_buffer, global_map.values_root, 32)) {
+    if (!buffer_read_bytes(&dc->read_buffer, state->global_map.keys_root, 32) ||
+        !buffer_read_bytes(&dc->read_buffer, state->global_map.values_root, 32)) {
         LOG_PROCESSOR(dc, __FILE__, __LINE__, __func__);
         SEND_SW(dc, SW_WRONG_DATA_LENGTH);
         return;
@@ -1038,20 +1082,27 @@ void handler_liquid_sign_pset(dispatcher_context_t *dc) {
 
     state->master_key_fingerprint = crypto_get_master_key_fingerprint();
 
-    // process global map
+    // Process global map
     {
         // Check integrity of the global map
-        if (call_check_merkle_tree_sorted(dc, global_map.keys_root, (size_t) global_map.size) < 0) {
+        global_keys_callback_state_t callback_state = (global_keys_callback_state_t) { 0 };
+        int res = call_check_merkle_tree_sorted_with_callback(
+            dc,
+            state->global_map.keys_root,
+            (size_t) state->global_map.size,
+            make_callback(&callback_state, (dispatcher_callback_t) global_keys_callback));
+        if (res < 0 || callback_state.error) {
             SEND_SW(dc, SW_INCORRECT_DATA);
             return;
         }
+        state->global_key_presence = callback_state.key_presence;
 
         uint8_t raw_result[9];  // max size for a varint
         int result_len;
 
         // Read tx version
         result_len = call_get_merkleized_map_value(dc,
-                                                   &global_map,
+                                                   &state->global_map,
                                                    (uint8_t[]){PSBT_GLOBAL_TX_VERSION},
                                                    1,
                                                    raw_result,
@@ -1067,7 +1118,7 @@ void handler_liquid_sign_pset(dispatcher_context_t *dc) {
         // preferred height/block locktime. If that's relevant, the client must set the fallback
         // locktime to the appropriate value before calling sign_psbt.
         result_len = call_get_merkleized_map_value(dc,
-                                                   &global_map,
+                                                   &state->global_map,
                                                    (uint8_t[]){PSBT_GLOBAL_FALLBACK_LOCKTIME},
                                                    1,
                                                    raw_result,
@@ -1155,7 +1206,7 @@ static void process_input_map(dispatcher_context_t *dc) {
                                               sizeof(PSBT_ELEMENTS_IN_EXPLICIT_ASSET),
                                               asset.tag,
                                               sizeof(asset.tag)) ) {
-            if (!set_in_out_asset(&state->cur, &asset)) {
+            if (!set_in_out_asset(dc, state, &asset)) {
                 PRINTF("Invalid asset for input %u\n", state->cur_input_index);
                 SEND_SW(dc, SW_INCORRECT_DATA);
                 return;
@@ -1230,7 +1281,7 @@ static void process_input_map(dispatcher_context_t *dc) {
             return;
         }
 
-        if (!set_in_out_asset(&state->cur, &asset)) {
+        if (!set_in_out_asset(dc, state, &asset)) {
             PRINTF("Invalid asset for input %u\n", state->cur_input_index);
             SEND_SW(dc, SW_INCORRECT_DATA);
             return;
@@ -1259,7 +1310,7 @@ static void process_input_map(dispatcher_context_t *dc) {
             return;
         };
 
-        if (!set_in_out_asset(&state->cur, &asset)) {
+        if (!set_in_out_asset(dc, state, &asset)) {
             PRINTF("Invalid asset for input %u\n", state->cur_input_index);
             SEND_SW(dc, SW_INCORRECT_DATA);
             return;
@@ -1309,7 +1360,7 @@ static void process_input_map(dispatcher_context_t *dc) {
         return;
     }
 
-    if(!state->cur.in_out.asset_info) {
+    if('\0' == *state->cur.in_out.asset_info.ticker) {
         // Warn the user about unknown asset
         ui_warn_unknown_asset(dc, state->cur.in_out.asset_tag, check_input_commitments);
     } else {
@@ -1598,7 +1649,7 @@ static void process_output_map(dispatcher_context_t *dc) {
                                               sizeof(PSBT_ELEMENTS_OUT_ASSET),
                                               asset.tag,
                                               sizeof(asset.tag)) ) {
-            if (!set_in_out_asset(&state->cur, &asset)) {
+            if (!set_in_out_asset(dc, state, &asset)) {
                 PRINTF("Invalid asset for output %u\n", state->cur_output_index);
                 SEND_SW(dc, SW_INCORRECT_DATA);
                 return;
@@ -1842,13 +1893,13 @@ static void output_validate_external(dispatcher_context_t *dc) {
     } else {
 #endif // LIQUID_HAS_SWAP
         // Show address to the user
-        if(state->cur.in_out.asset_info) {
+        if('\0' != *state->cur.in_out.asset_info.ticker) {
             ui_validate_output(dc,
                                state->external_outputs_count,
                                output_address,
-                               state->cur.in_out.asset_info->ticker,
+                               state->cur.in_out.asset_info.ticker,
                                state->cur.in_out.value,
-                               state->cur.in_out.asset_info->decimals,
+                               state->cur.in_out.asset_info.decimals,
                                output_next);
         } else { // Unknown asset
             ui_validate_output(dc,
@@ -1924,11 +1975,11 @@ static void confirm_transaction(dispatcher_context_t *dc) {
     } else {
 #endif // LIQUID_HAS_SWAP
         // Show final user validation UI
-        if(state->cur.in_out.asset_info) {
+        if('\0' != *state->cur.in_out.asset_info.ticker) {
             ui_validate_transaction(dc,
-                                    state->cur.in_out.asset_info->ticker,
+                                    state->cur.in_out.asset_info.ticker,
                                     state->fee_value,
-                                    state->cur.in_out.asset_info->decimals,
+                                    state->cur.in_out.asset_info.decimals,
                                     sign_init);
         } else { // Unknown asset
             ui_validate_transaction(dc,
