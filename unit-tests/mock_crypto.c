@@ -10,6 +10,7 @@
 #include "common/wif.h"
 #include "sha-256.h"
 #include "cx.h"
+#include "util.h"
 
 /**
  * Mock implementation, not to be used outside test environment.
@@ -71,13 +72,9 @@ __attribute__((weak)) cx_err_t cx_hash_no_throw(cx_hash_t *hash, uint32_t mode, 
 __attribute__((weak)) bool sha256_midstate_reversed(const cx_sha256_t* sha256_context,
                                                     uint8_t out[32]) {
     if (sha256_context && CX_SHA256 == sha256_context->header.algo) {
-        uint8_t *p_result = sha_256_midstate(&sha256_context->sha_256);
-        if (p_result) {
-            for (int i = 0; i < 32; ++i) {
-                out[31 - i] = p_result[i];
-            }
-            return true;
-        }
+        sha_256_midstate(&sha256_context->sha_256, out);
+        reverse_inplace(out, 32);
+        return true;
     }
     return false;
 }

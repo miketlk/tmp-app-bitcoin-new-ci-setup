@@ -2,6 +2,8 @@
 
 #include <string.h>
 #include <ctype.h>
+#include "os.h"
+#include "util.h"
 #include "buffer.h"
 #include "contract_parser.h"
 
@@ -393,7 +395,8 @@ void contract_parser_process(contract_parser_context_t *ctx, buffer_t *data) {
     // Process all bytes of JSON running state machine until we reach STATE_FINISH or STATE_ERROR
     while (buffer_can_read(data, 1) && ctx->state < (int)state_table_size) {
         if (state_table[ctx->state]) {
-            parser_state_t new_state = state_table[ctx->state](ctx, data);
+            const parser_state_fn_t state_fn = PIC(state_table[ctx->state]);
+            parser_state_t new_state = state_fn(ctx, data);
             if (new_state != ctx->state) {
                 // Reset state-local variables and make transition to the new state
                 ctx->has_opening_quotes = false;
@@ -420,11 +423,7 @@ bool contract_parser_finalize(contract_parser_context_t *ctx,
         HAS_ALL_REQUIRED == (ctx->field_presence_flags & HAS_ALL_REQUIRED)) {
         if (hash_digest(&ctx->sha256_context.header, hash, SHA256_LEN)) {
             // Reverse byte order of the resulting hash
-            for (size_t i = 0; i < SHA256_LEN >> 1; ++i) {
-                uint8_t tmp = hash[i];
-                hash[i] = hash[(SHA256_LEN - 1) - i];
-                hash[(SHA256_LEN - 1) - i] = tmp;
-            }
+            reverse_inplace(hash, SHA256_LEN);
             return true;
         }
     }

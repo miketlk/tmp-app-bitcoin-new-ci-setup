@@ -161,9 +161,9 @@ class CETxIn(CTxIn):
     def serialize(self) -> bytes:
         prevout = self.prevout
         if self.has_issuance:
-            prevout.n += (1 << 31)
+            prevout.n |= (1 << 31)
         if self.isPegin:
-            prevout.n += (1 << 30)
+            prevout.n |= (1 << 30)
 
         r = b""
         r += prevout.serialize()

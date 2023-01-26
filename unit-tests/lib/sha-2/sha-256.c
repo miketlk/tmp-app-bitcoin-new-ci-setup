@@ -213,18 +213,16 @@ uint8_t *sha_256_close(struct Sha_256 *sha_256)
 	return sha_256->hash;
 }
 
-uint8_t *sha_256_midstate(struct Sha_256 *sha_256)
+void sha_256_midstate(const struct Sha_256 *sha_256, uint8_t hash[SIZE_OF_SHA_256_HASH])
 {
-	uint32_t *const h = sha_256->h;
+	const uint32_t *const h = sha_256->h;
 	int i, j;
-	uint8_t *const hash = sha_256->hash;
 	for (i = 0, j = 0; i < 8; i++) {
 		hash[j++] = (uint8_t)(h[i] >> 24);
 		hash[j++] = (uint8_t)(h[i] >> 16);
 		hash[j++] = (uint8_t)(h[i] >> 8);
 		hash[j++] = (uint8_t)h[i];
 	}
-	return sha_256->hash;
 }
 
 void calc_sha_256(uint8_t hash[SIZE_OF_SHA_256_HASH], const void *input, size_t len)

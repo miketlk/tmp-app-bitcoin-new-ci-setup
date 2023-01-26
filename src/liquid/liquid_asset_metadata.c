@@ -1,7 +1,9 @@
 #include <stdint.h>
 #include <string.h>
 
+#include "os.h"
 #include "pset.h"
+#include "util.h"
 #include "liquid_asset_metadata.h"
 
 #ifndef SKIP_FOR_CMOCKA
@@ -164,7 +166,8 @@ STATIC_NO_TEST void asset_metadata_parser_process(asset_metadata_parser_context_
                                                   buffer_t *data) {
     while (buffer_can_read(data, 1) && ctx->state < (int)state_table_size) {
         if (state_table[ctx->state]) {
-            parser_state_t new_state = state_table[ctx->state](ctx, data);
+            const parser_state_fn_t state_fn = PIC(state_table[ctx->state]);
+            parser_state_t new_state = state_fn(ctx, data);
             if (new_state != ctx->state) {
                 // Reset state-local variables and make transition to the new state
                 ctx->read_idx = 0;
@@ -222,7 +225,7 @@ asset_metadata_status_t liquid_get_asset_metadata(
     // Compose key with keydata
     uint8_t key[sizeof(pset_metadata_key) + LIQUID_ASSET_TAG_LEN];
     memcpy(key, pset_metadata_key, sizeof(pset_metadata_key));
-    memcpy(key + sizeof(pset_metadata_key), asset_tag, LIQUID_ASSET_TAG_LEN);
+    reverse_copy(key + sizeof(pset_metadata_key), asset_tag, LIQUID_ASSET_TAG_LEN);
 
     int len = call_stream_merkleized_map_value(dispatcher_context,
                                                global_map,

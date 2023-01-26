@@ -19,6 +19,7 @@
 #include "cx_errors.h"
 #include "ox_ec.h"
 
+#include "util.h"
 #include "write.h"
 #include "crypto.h"
 #include "liquid.h"
@@ -823,7 +824,7 @@ static bool shallue_van_de_woestijne(secp256k1_ge* ge, const secp256k1_fe* t) {
 }
 
 bool liquid_generator_generate(uint8_t gen[static LIQUID_GENERATOR_LEN],
-                               const uint8_t seed32[static 32]) {
+                               const uint8_t seed32_reversed[static 32]) {
     static const uint8_t prefix1[17] = "1st generation: ";
     static const uint8_t prefix2[17] = "2nd generation: ";
     secp256k1_fe t;
@@ -836,7 +837,7 @@ bool liquid_generator_generate(uint8_t gen[static LIQUID_GENERATOR_LEN],
 
     ok = ok && hash_init_sha256(&sha256);
     ok = ok && hash_update(&sha256.header, prefix1, 16);
-    ok = ok && hash_update(&sha256.header, seed32, 32);
+    ok = ok && hash_update_reversed(&sha256.header, seed32_reversed, 32);
     ok = ok && hash_digest(&sha256.header, t.n, sizeof(t.n));
     ok = ok && secp256k1_scalar_check_overflow(&t, &ovf_flag);
     ok = ok && !ovf_flag;
@@ -844,7 +845,7 @@ bool liquid_generator_generate(uint8_t gen[static LIQUID_GENERATOR_LEN],
 
     ok = ok && hash_init_sha256(&sha256);
     ok = ok && hash_update(&sha256.header, prefix2, 16);
-    ok = ok && hash_update(&sha256.header, seed32, 32);
+    ok = ok && hash_update_reversed(&sha256.header, seed32_reversed, 32);
     ok = ok && hash_digest(&sha256.header, t.n, sizeof(t.n));
     ok = ok && secp256k1_scalar_check_overflow(&t, &ovf_flag);
     ok = ok && !ovf_flag;

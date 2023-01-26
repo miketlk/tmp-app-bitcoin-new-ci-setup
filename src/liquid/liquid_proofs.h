@@ -81,10 +81,10 @@ bool liquid_surjectionproof_verify_single(const uint8_t *proof,
  *
  * @param[out] gen
  *   Buffer receiving produced generator encoded as: 04 x y.
- * @param[in] seed32
- *   A 32-byte seed.
+ * @param[in] seed32_reversed
+ *   A 32-byte seed in reverse byte order ("display" byte order for asset tags).
  *
  * @return false in the highly unlikely case the seed is not acceptable, true otherwise
  */
 bool liquid_generator_generate(uint8_t gen[static LIQUID_GENERATOR_LEN],
-                               const uint8_t seed32[static 32]);
+                               const uint8_t seed32_reversed[static 32]);

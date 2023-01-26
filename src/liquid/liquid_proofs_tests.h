@@ -198,9 +198,12 @@ static void test_liquid_generator_generate(test_ctx_t *test_ctx) {
                     sizeof(generator_generate_test_data[0]);
     const generator_generate_test_data_t *p_vect = generator_generate_test_data;
     uint8_t gen[LIQUID_GENERATOR_LEN] = { 0 };
+    uint8_t seed_reversed[32];
 
     for(int i = 0; i < n_vectors; ++i, p_vect++) {
-        TEST_ASSERT( liquid_generator_generate(gen, p_vect->seed) );
+        // Reverse seed to comply with new API
+        reverse_copy(seed_reversed, p_vect->seed, sizeof(seed_reversed));
+        TEST_ASSERT( liquid_generator_generate(gen, seed_reversed) );
         TEST_ASSERT_EQUAL_MEMORY(gen, p_vect->gen, sizeof(p_vect->gen));
     }
 }

@@ -4,6 +4,7 @@
 #include <string.h>
 
 #include "cx.h"
+#include "../util.h"
 
 #include "pset_parse_rawtx.h"
 
@@ -352,7 +353,7 @@ static int parse_rawtxoutput_asset(parse_rawtxoutput_state_t *state, buffer_t *b
                 txid_parser_vout_t *vout = parent->parser_output_vout;
                 if (header == 0x01) {
                     vout->asset.is_blinded = false;
-                    memcpy(vout->asset.tag, asset + 1, sizeof(vout->asset.tag));
+                    reverse_copy(vout->asset.tag, asset + 1, sizeof(vout->asset.tag));
                 } else {
                     vout->asset.is_blinded = true;
                     memcpy(vout->asset.commitment, asset, sizeof(vout->asset.commitment));

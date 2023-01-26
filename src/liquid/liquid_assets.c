@@ -119,28 +119,6 @@ extern bool sha256_midstate_reversed(const cx_sha256_t* sha256_context,
 #endif // SKIP_FOR_CMOCKA
 
 /**
- * Updates hash passing bytes in reverse order.
- *
- * @param[in] hash_context
- *   The context of the hash, which must already be initialized.
- * @param[in] in
- *   Pointer to the data to be added to the hash computation.
- * @param[in] in_len
- *   Size of the passed data.
- *
- * @return true - OK, false - error
- */
-static bool hash_update_reversed(cx_hash_t *hash_context, const void *in, size_t in_len) {
-    const uint8_t *p_in = (const uint8_t *)in + in_len - 1;
-    for (size_t i = 0; i < in_len; ++i) {
-        if (!hash_update_u8(hash_context, *p_in--)) {
-            return false;
-        }
-    }
-    return true;
-}
-
-/**
  * Generate the asset entropy from the issuance prevout and the contract hash.
  *
  * @param[in] contract_hash

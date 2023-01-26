@@ -33,6 +33,7 @@
 #include "../commands.h"
 #include "../constants.h"
 #include "../crypto.h"
+#include "../util.h"
 #include "../ui/display.h"
 #include "../ui/menu.h"
 
@@ -795,6 +796,29 @@ static int parse_utxo_witness(
     return 0;
 }
 
+/*
+ Convenience function to get the asset tag store in one of PSET fields.
+ Returns false on failure, true on success.
+*/
+static bool get_in_out_asset_tag(dispatcher_context_t *dc,
+                                 const merkleized_map_commitment_t *map,
+                                 const uint8_t *key,
+                                 int key_len,
+                                 tx_asset_t *asset) {
+    if (!dc || !map || !key || !key_len || !asset) {
+        return false;
+    }
+
+    asset->is_blinded = false;
+
+    if ( sizeof(asset->tag) ==
+         call_get_merkleized_map_value(dc, map, key, key_len, asset->tag, sizeof(asset->tag)) ) {
+        reverse_inplace(asset->tag, sizeof(asset->tag));
+        return true;
+    }
+    return false;
+}
+
 /**
  * Handles confidential value of an input or an output
  */
@@ -1197,15 +1221,11 @@ static void process_input_map(dispatcher_context_t *dc) {
 
     if (state->cur.key_presence & HAS_ASSET) {
         tx_asset_t asset;
-        asset.is_blinded = false;
-
-        if ( sizeof(asset.tag) ==
-                call_get_merkleized_map_value(dc,
-                                              &state->cur.in_out.map,
-                                              PSBT_ELEMENTS_IN_EXPLICIT_ASSET,
-                                              sizeof(PSBT_ELEMENTS_IN_EXPLICIT_ASSET),
-                                              asset.tag,
-                                              sizeof(asset.tag)) ) {
+        if ( get_in_out_asset_tag(dc,
+                                  &state->cur.in_out.map,
+                                  PSBT_ELEMENTS_IN_EXPLICIT_ASSET,
+                                  sizeof(PSBT_ELEMENTS_IN_EXPLICIT_ASSET),
+                                  &asset) ) {
             if (!set_in_out_asset(dc, state, &asset)) {
                 PRINTF("Invalid asset for input %u\n", state->cur_input_index);
                 SEND_SW(dc, SW_INCORRECT_DATA);
@@ -1640,15 +1660,11 @@ static void process_output_map(dispatcher_context_t *dc) {
 
     if (state->cur.key_presence & HAS_ASSET) {
         tx_asset_t asset;
-        asset.is_blinded = false;
-
-        if ( sizeof(asset.tag) ==
-                call_get_merkleized_map_value(dc,
-                                              &state->cur.in_out.map,
-                                              PSBT_ELEMENTS_OUT_ASSET,
-                                              sizeof(PSBT_ELEMENTS_OUT_ASSET),
-                                              asset.tag,
-                                              sizeof(asset.tag)) ) {
+        if ( get_in_out_asset_tag(dc,
+                                  &state->cur.in_out.map,
+                                  PSBT_ELEMENTS_OUT_ASSET,
+                                  sizeof(PSBT_ELEMENTS_OUT_ASSET),
+                                  &asset) ) {
             if (!set_in_out_asset(dc, state, &asset)) {
                 PRINTF("Invalid asset for output %u\n", state->cur_output_index);
                 SEND_SW(dc, SW_INCORRECT_DATA);

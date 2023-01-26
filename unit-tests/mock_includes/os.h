@@ -208,10 +208,14 @@ int setjmp(jmp_buf __jmpb);
 // Function that align the dereferenced value in a rom struct to use it
 // depending on the execution address. Can be used even if code is executing at
 // the same place where it had been linked.
+#ifdef SKIP_FOR_CMOCKA
+#define PIC(x) (x)
+#else
 #ifndef PIC
 #define PIC(x) pic((unsigned int)x)
 unsigned int pic(unsigned int linked_address);
 #endif
+#endif // SKIP_FOR_CMOCKA
 
 #ifndef SYSCALL
 // #define SYSCALL syscall
