@@ -205,7 +205,7 @@ DEFINES   += COIN_NATIVE_SEGWIT_PREFIX_CONFIDENTIAL=\"el\"
 DEFINES   += COIN_KIND=COIN_KIND_BITCOIN
 DEFINES   += COIN_FLAGS=FLAG_SEGWIT_CHANGE_SUPPORT
 APPNAME = "Liquid Regtest"
-APP_LOAD_PARAMS += --curve secp256k1
+# -disabled- APP_LOAD_PARAMS += --curve secp256k1
 
 else ifeq ($(COIN),liquid_regtest_headless)
 
@@ -237,7 +237,7 @@ DEFINES   += COIN_KIND=COIN_KIND_BITCOIN
 DEFINES   += COIN_FLAGS=FLAG_SEGWIT_CHANGE_SUPPORT
 DEFINES   += HAVE_LIQUID_HEADLESS
 APPNAME = "Liquid Regtest Hless"
-APP_LOAD_PARAMS += --curve secp256k1
+# -disabled- APP_LOAD_PARAMS += --curve secp256k1
 
 else ifeq ($(COIN),liquid)
 
@@ -267,7 +267,7 @@ DEFINES   += COIN_NATIVE_SEGWIT_PREFIX_CONFIDENTIAL=\"lq\"
 DEFINES   += COIN_KIND=COIN_KIND_BITCOIN
 DEFINES   += COIN_FLAGS=FLAG_SEGWIT_CHANGE_SUPPORT
 APPNAME = "Liquid"
-APP_LOAD_PARAMS += --curve secp256k1
+# -disabled- APP_LOAD_PARAMS += --curve secp256k1
 
 else ifeq ($(COIN),liquid_headless)
 
@@ -300,7 +300,7 @@ DEFINES   += COIN_KIND=COIN_KIND_BITCOIN
 DEFINES   += COIN_FLAGS=FLAG_SEGWIT_CHANGE_SUPPORT
 DEFINES   += HAVE_LIQUID_HEADLESS
 APPNAME = "Liquid Hless"
-APP_LOAD_PARAMS += --curve secp256k1
+# -disabled- APP_LOAD_PARAMS += --curve secp256k1
 
 else ifeq ($(COIN),bitcoin_cash)
 # Bitcoin cash
