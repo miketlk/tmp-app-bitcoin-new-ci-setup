@@ -33,14 +33,11 @@ import string
 tests_root: Path = Path(__file__).parent
 
 
-CURRENCY_TICKER = "TEST"
-
-
-def format_amount(ticker: str, amount: int) -> str:
+def format_amount(ticker: str, amount: int, precision: int = 8) -> str:
     """Formats an amounts in sats as shown in the app: divided by 10_000_000, with no trailing zeroes."""
     assert amount >= 0
 
-    return f"{ticker} {str(Decimal(amount) / 100_000_000)}"
+    return f"{ticker} {str(Decimal(amount) / (10**precision))}"
 
 
 def should_go_right(event: dict):
@@ -59,7 +56,7 @@ def should_go_right(event: dict):
     return False
 
 
-def ux_thread_sign_psbt(speculos_client: SpeculosClient, all_events: List[dict]):
+def ux_thread_sign_pset(speculos_client: SpeculosClient, all_events: List[dict]):
     """Completes the signing flow always going right and accepting at the appropriate time, while collecting all the events in all_events."""
 
     # press right until the last screen (will press the "right" button more times than needed)
@@ -131,9 +128,11 @@ def random_wallet_name() -> str:
     return "wallet_" + ''.join(random.choice(charset) for i in range(random.randint(2, 16-7)))
 
 
-# Takes quite a long time. It's recommended to enable stdout to see the progress (pytest -s).
 @has_automation(f"{tests_root}/automations/sign_with_any_wallet_accept.json")
 def test_sign_psbt_batch(client: Client, speculos_globals: SpeculosGlobals, is_speculos: bool, enable_slow_tests: bool):
+    # A series of tests for various script and sighash combinations.
+    # Takes quite a long time. It's recommended to enable stdout to see the progress (pytest -s).
+    # For the full test of all combinations run with '--enableslowtests'.
 
     client.debug = False
     random.seed(1)
@@ -177,3 +176,42 @@ def test_sign_psbt_batch(client: Client, speculos_globals: SpeculosGlobals, is_s
             # Run only first test from each suite if not executed with '--enableslowtests'
             if not enable_slow_tests:
                 break
+
+def test_asset_metadata_display(client: Client, comm: SpeculosClient, is_speculos: bool):
+    # Test correctness of displayed asset ticker and precision when processing PSET with embedded
+    # asset metadata.
+
+    if not is_speculos:
+        pytest.skip("Requires speculos")
+
+    with open(f"{tests_root}/pset/asset_metadata.json", "r") as read_file:
+        test_data = json.load(read_file)
+
+    wallet = BlindedWallet(
+        name="Cold storage",
+        blinding_key=test_data["mbk"],
+        policy_map="wpkh(@0)",
+        keys_info=test_data["keys_info"]
+    )
+
+    pset = PSET()
+    pset.deserialize(test_data["pset"])
+
+    all_events: List[dict] = []
+    x = threading.Thread(target=ux_thread_sign_pset, args=[comm, all_events])
+    x.start()
+    result = client.sign_psbt(pset, wallet, wallet_hmac=None)
+    x.join()
+    parsed_events = parse_signing_events(all_events)
+
+    assert len(parsed_events["addresses"]) == 1
+    assert parsed_events["addresses"][0] == "ert1qm96pdhvs300yngfxx94dme3a3w2d0lnu7njtyz"
+    assert len(parsed_events["amounts"]) == 1
+    assert parsed_events["amounts"][0] == "TEST 123456.78"
+    assert parsed_events["fees"] == "TL-BTC 0.00003767"
+
+    for n_input, sigs in test_data["signatures"].items():
+        result_sig = result[int(n_input)].hex()
+        assert len(result_sig) >= 100 and len(result_sig) <= 144
+        assert result_sig.startswith("304")
+        assert result_sig in sigs["final_scriptwitness"]
