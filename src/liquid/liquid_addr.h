@@ -1,5 +1,7 @@
 #pragma once
 
+#ifdef HAVE_LIQUID
+
 #include <stddef.h>   // size_t
 #include <stdint.h>   // uint*_t
 #include <stdbool.h>  // bool
@@ -70,3 +72,5 @@ int liquid_encode_address_segwit(const uint8_t *witprog,
                                  size_t pub_key_len,
                                  char *out,
                                  size_t out_len);
+
+#endif // HAVE_LIQUID

@@ -74,13 +74,10 @@ bool liquid_get_master_blinding_key(uint8_t mbk[static 32]);
  *
  * @param[in] mbk
  *   Pointer to master blinding key.
- *
  * @param[in] script
  *   Script used to derive the key.
- *
  * @param[in] script_length
  *   Length of the script.
- *
  * @param[out] blinding_key
  *   Pointer to a 32-byte output buffer that will contain the generated key.
  *
@@ -102,8 +99,27 @@ bool liquid_get_blinding_key(const uint8_t mbk[static 32],
  */
 const char* liquid_confidential_segwit_prefix(const char* segwit_prefix);
 
-// TODO: describe
-int liquid_get_script_confidential_address(const uint8_t script[],
+/**
+ * Returns a confidential address from given script and public key.
+ *
+ * @param[in] script
+ *   Script used to derive the key.
+ * @param[in] script_length
+ *   Length of the script.
+ * @param[in] network_config
+ *   Network configuration.
+ * @param[out] pubkey
+ *   Public key.
+ * @param[out] p_pubkey_len
+ *   Length of the public key in bytes: 33 or 65.
+ * @param[out] out
+ *   Output buffer where produced address is placed.
+ * @param[in] out_len
+ *   Maximum length to write for the output buffer.
+ *
+ * @return size of produced address in bytes, or -1 in case of error.
+ */
+int liquid_get_script_confidential_address(const uint8_t *script,
                                            size_t script_len,
                                            const liquid_network_config_t *network_config,
                                            const uint8_t *pub_key,
@@ -138,7 +154,24 @@ bool liquid_policy_unwrap_blinded(const policy_node_t **p_policy,
                                   liquid_blinding_key_type_t *p_key_type);
 
 
-// TODO: describe
+/**
+ * Derives blinding public key from given master blinding key and script.
+ *
+ * @param[in] mbk
+ *   Master blinding key, 32 bytes.
+ * @param[in] script
+ *   Script used to derive the key.
+ * @param[in] script_length
+ *   Length of the script.
+ * @param[out] pubkey
+ *   Buffer receiving derived public key.
+ * @param[out] p_pubkey_len
+ *   Pointer to variable receiving length of the produced public key in bytes: 33 or 65.
+ * @param[in] pubkey_compression
+ *   If true outputs public key in compressed format.
+ *
+ * @return true on success, false in case of error.
+ */
 bool liquid_get_blinding_public_key(const uint8_t mbk[static 32],
                                     const uint8_t *script,
                                     size_t script_length,

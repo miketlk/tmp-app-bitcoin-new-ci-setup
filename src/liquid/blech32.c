@@ -7,6 +7,7 @@
  *   - buffer boundaries check
  *   - reduced stack usage
  *   - goto elimination
+ *   - comments for functions and macros
  *
  ******************************************************************************
  * Copyright (c) 2017 Pieter Wuille
@@ -35,23 +36,27 @@
 #include <string.h>   // memmove, memset
 #include <limits.h>   // INT_MAX
 #include "../constants.h"
+#include "../util.h"
 #include "blech32.h"
 
-// Maximum size of human readable part in symbols
+/// Maximum size of human readable part in symbols
 #define BLECH32_HRP_MAXLEN ((size_t) 3)
-// Maximum size of data in 5-bit values
+/// Maximum size of data in 5-bit values
 #define BLECH32_DATA_5BIT_MAXLEN ((size_t) 105)
 
+/// XOR mask for BLECH32 checksum
 #define CHECKSUM_BLECH32 0x1
+/// XOR mask for BLECH32
 #define CHECKSUM_BLECH32M 0x455972a3350f7a1ull
 
-static inline void call_explicit_bzero(void *dest, size_t len) {
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wimplicit-function-declaration"
-    explicit_bzero(dest, len);
-#pragma GCC diagnostic pop
-}
-
+/**
+ * Implements BCH polynomial for BLECH32 checksum.
+ *
+ * @param[in] pre
+ *   Previous polynomial value.
+ *
+ * @return next value.
+ */
 static uint64_t blech32_polymod_step(uint64_t pre) {
     uint8_t b = pre >> 55;
     return ((pre & 0x7fffffffffffffULL) << 5) ^
@@ -62,8 +67,10 @@ static uint64_t blech32_polymod_step(uint64_t pre) {
            (-((b >> 4) & 1) & 0x7093e5a608865bULL);
 }
 
+/// Character set for BLECH32 encoding
 static const char *blech32_charset = "qpzry9x8gf2tvdw0s3jn54khce6mua7l";
 
+/// Reverse lookup table for BLECH32 character set
 static const int8_t blech32_charset_rev[128] = {
     -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
     -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
@@ -75,6 +82,24 @@ static const int8_t blech32_charset_rev[128] = {
     1,  0,  3, 16, 11, 28, 12, 14,  6,  4,  2, -1, -1, -1, -1, -1
 };
 
+/**
+ * Encodes data in BLECH32/BLECH32M format.
+ *
+ * @param[out] output
+ *   output buffer.
+ * @param[in] output_limit
+ *   Limit for the number of bytes written to the output buffer.
+ * @param[in] hrp
+ *   Human readable part, a null-terminated string.
+ * @param[in] data
+ *   Source data.
+ * @param[in] data_len
+ *   Number of bytes to encode.
+ * @param is_blech32m
+ *   If true, encoding will be done in BLECH32M format
+ *
+ * @return number of bytes written to the output buffer.
+ */
 static int blech32_encode(char *output,
                           size_t output_limit,
                           const char *hrp,
@@ -124,6 +149,26 @@ static int blech32_encode(char *output,
     return (int)output_len;
 }
 
+/**
+ * Decodes data encoded in BLECH32/BLECH32M format.
+ *
+ * @param[out] hrp
+ *   Buffer receiving human readable part, a null-terminated string.
+ * @param[in] hrp_limit
+ *   Limit for the number of bytes written to the human readable part buffer.
+ * @param[out] data
+ *   Buffer receiving decoded data.
+ * @param[in] data_limit
+ *   Limit for the number of bytes written to the data buffer.
+ * @param[out] data_len
+ *   Pointer to variable receiving number of bytes written to the data buffer
+ * @param[in] input
+ *   Input BLECH32/BLECH32M string.
+ * @param[out] is_blech32m
+ *   Pointer to variable that is set to true in case of BLECH32M and to false otherwise.
+ *
+ * @return nonzero on success, 0 in case of error.
+ */
 static int blech32_decode(char *hrp,
                           size_t hrp_limit,
                           uint8_t *data,
@@ -196,6 +241,28 @@ static int blech32_decode(char *hrp,
     return chk == CHECKSUM_BLECH32 || chk == CHECKSUM_BLECH32M;
 }
 
+/**
+ * Converts an array of arbitrary bit width values to another bit width.
+ *
+ * @param[out] out
+ *   Output buffer.
+ * @param[in] out_limit
+ *   Maximum number of bytes written to the output buffer.
+ * @param[in] outlen
+ *   Pointer to variable receiving number of bytes written.
+ * @param[in] outbits
+ *   Output bit width.
+ * @param[in] in
+ *   Input buffer.
+ * @param[in] inlen
+ *   Length of input buffer in bytes.
+ * @param[in] inbits
+ *   Input bit width.
+ * @param[in] pad
+ *   Value of padding bit(s).
+ *
+ * @return nonzero on success, 0 in case of error.
+ */
 static int blech32_convert_bits(uint8_t *out,
                                 size_t out_limit,
                                 size_t *outlen,
@@ -237,6 +304,24 @@ static int blech32_convert_bits(uint8_t *out,
     return 1;
 }
 
+/**
+ * Encodes an address in BLECH32/BLECH32M format.
+ *
+ * @param[out] output
+ *   Output buffer.
+ * @param[in] output_limit
+ *   Maximum number of bytes written to the output buffer.
+ * @param[in] hrp
+ *   Human readable part, a null-terminated string.
+ * @param[in] witver
+ *   Witness version.
+ * @param[in] witprog
+ *   Witness program.
+ * @param witprog_len
+ *   Length of the witness program in bytes.
+ *
+ * @return number of bytes written to the output buffer.
+ */
 int blech32_addr_encode(char *output,
                         size_t output_limit,
                         const char *hrp,

@@ -47,12 +47,10 @@ bool contract_parser_init(contract_parser_context_t *ctx, asset_info_t *asset_in
 /**
  * Processes input contract data.
  *
- * Function prototype is compatible with callback type of call_stream_preimage().
- *
  * @param[out] ctx
- *   Instance of parser context to initialize.
+ *   Parser context.
  * @param[in,out] data
- *  Input data buffer to process.
+ *   Input data buffer to process.
  *
  * @return true on success, false in case of error.
  */

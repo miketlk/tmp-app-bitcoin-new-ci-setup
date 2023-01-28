@@ -20,7 +20,7 @@
  * @param[in] witprog_len
  *   Length of a witness program in bytes.
  *
- * @return nonzero if successful, 0 if failure.
+ * @return number of bytes written to the output buffer, 0 if failure.
  */
 int blech32_addr_encode(char *output,
                         size_t output_limit,

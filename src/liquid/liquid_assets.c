@@ -14,7 +14,7 @@
     #define STATIC_NO_TEST static
 #endif
 
-// Asset list, sorted by tag
+/// Asset list, sorted by tag
 STATIC_NO_TEST const asset_definition_t liquid_assets[] = {
   {{0x0e,0x99,0xc1,0xa6,0xda,0x37,0x9d,0x1f,0x41,0x51,0xfb,0x9d,0xf9,0x04,0x49,0xd4,
     0x0d,0x06,0x08,0xf6,0xcb,0x33,0xa5,0xbc,0xbf,0xc8,0xc2,0x65,0xf4,0x2b,0xab,0x0a},
@@ -48,10 +48,11 @@ STATIC_NO_TEST const asset_definition_t liquid_assets[] = {
    {"BEER", 8}},
 };
 
-// Number of assets in list
+/// Number of assets in list
 #define N_LIQUID_ASSETS ( sizeof(liquid_assets) / sizeof(liquid_assets[0]) )
 
 #ifdef SKIP_FOR_CMOCKA
+/// Constant storing number of assets in list
 const size_t n_liquid_assets = N_LIQUID_ASSETS;
 #endif
 

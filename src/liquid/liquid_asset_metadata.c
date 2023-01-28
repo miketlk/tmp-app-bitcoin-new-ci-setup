@@ -148,11 +148,22 @@ static const parser_state_fn_t state_table[] = {
     [STATE_CONTRACT_LEN] = state_contract_len,
     [STATE_CONTRACT] = state_contract,
     [STATE_PREVOUT_TXID] = state_prevout_txid,
-    [STATE_PREVOUT_INDEX] = state_prevout_index
+    [STATE_PREVOUT_INDEX] = state_prevout_index,
+    // STATE_FINISH and STATE_ERROR are not defined here because they terminate processing
 };
 /// Number of "active" states in the state table (table size)
 static const size_t state_table_size = sizeof(state_table) / sizeof(state_table[0]);
 
+/**
+ * Initializes asset metadata parser.
+ *
+ * @param[out] ctx
+ *   Instance of parser context to initialize.
+ * @param[out] asset_info
+ *   Poiter to structure instance receiving decoded values, saved in context.
+ *
+ * @return true on success, false in case of error.
+ */
 STATIC_NO_TEST bool asset_metadata_parser_init(asset_metadata_parser_context_t *ctx,
                                                asset_info_t *asset_info) {
     memset(ctx, 0, sizeof(asset_metadata_parser_context_t));
@@ -162,6 +173,16 @@ STATIC_NO_TEST bool asset_metadata_parser_init(asset_metadata_parser_context_t *
     return true;
 }
 
+/**
+ * Processes input asset metadata.
+ *
+ * @param[out] ctx
+ *   Parser context.
+ * @param[in,out] data
+ *   Input data buffer to process.
+ *
+ * @return true on success, false in case of error.
+ */
 STATIC_NO_TEST void asset_metadata_parser_process(asset_metadata_parser_context_t *ctx,
                                                   buffer_t *data) {
     while (buffer_can_read(data, 1) && ctx->state < (int)state_table_size) {
@@ -180,6 +201,16 @@ STATIC_NO_TEST void asset_metadata_parser_process(asset_metadata_parser_context_
     }
 }
 
+/**
+ * Finalizes asset metadata parsing.
+ *
+ * @param[out] ctx
+ *   Parser context.
+ * @param asset_tag
+ *   Reference asset tag used to verify asset metadata.
+ *
+ * @return true on success, false in case of error or if parsed metadata is invalid.
+ */
 STATIC_NO_TEST bool asset_metadata_parser_finalize(
     asset_metadata_parser_context_t *ctx,
     const uint8_t asset_tag[static LIQUID_ASSET_TAG_LEN]) {
@@ -205,6 +236,14 @@ STATIC_NO_TEST bool asset_metadata_parser_finalize(
 /// Key of PSET field containing asset metadata
 static const uint8_t pset_metadata_key[] = PSBT_ELEMENTS_HWW_GLOBAL_ASSET_METADATA;
 
+/**
+ * Callback function processing streamed asset metadata.
+ *
+ * @param[in,out] data
+ *   Input data buffer to process.
+ * @param cb_state
+ *   User-provided callback state.
+ */
 static void cb_process_data(buffer_t *data, void *cb_state) {
     asset_metadata_parser_process((asset_metadata_parser_context_t*)cb_state, data);
 }
@@ -231,7 +270,7 @@ asset_metadata_status_t liquid_get_asset_metadata(
                                                global_map,
                                                key,
                                                sizeof(key),
-                                               NULL /* len_callback */,
+                                               /* len_callback= */ NULL,
                                                cb_process_data,
                                                &context);
     if (len < 0) {

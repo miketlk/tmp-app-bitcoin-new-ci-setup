@@ -8,12 +8,12 @@
 
 #ifdef HAVE_LIQUID
 
-// RIPEMD160 message digest size
+/// RIPEMD160 message digest size
 #define HASH160_LEN 20
 
 #ifndef SKIP_FOR_CMOCKA
 
-// Network configuration defined at build time from Makefile variables
+/// Network configuration defined at build time from Makefile variables
 const liquid_network_config_t G_liquid_network_config =  {
     .p2pkh_version = COIN_P2PKH_VERSION,
     .p2sh_version = COIN_P2SH_VERSION,
@@ -110,7 +110,7 @@ bool liquid_get_blinding_public_key(const uint8_t mbk[static 32],
 
 #endif
 
-int liquid_get_script_confidential_address(const uint8_t script[],
+int liquid_get_script_confidential_address(const uint8_t *script,
                                            size_t script_len,
                                            const liquid_network_config_t *network_config,
                                            const uint8_t *pub_key,

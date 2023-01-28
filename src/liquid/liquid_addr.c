@@ -29,6 +29,7 @@
 
 #include <string.h>   // memmove, memset
 #include "liquid_addr.h"
+#include "../util.h"
 #include "../common/buffer.h"
 #include "../common/read.h"
 #include "../common/write.h"
@@ -36,21 +37,14 @@
 #include "../common/segwit_addr.h"
 #include "blech32.h"
 
-// The length of a public key used for EC signing
+/// The length of a public key used for EC signing
 #define EC_PUBLIC_KEY_LEN 33
-// RIPEMD160 message digest size
+/// RIPEMD160 message digest size
 #define HASH160_LEN 20
-// The number of extra bytes required to hold a base58 checksum
+/// The number of extra bytes required to hold a base58 checksum
 #define BASE58_CHECKSUM_LEN 4
-// Length for SHA-256 result in bytes
+/// Length for SHA-256 result in bytes
 #define SHA256_LEN 32
-
-static inline void call_explicit_bzero(void *dest, size_t len) {
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wimplicit-function-declaration"
-    explicit_bzero(dest, len);
-#pragma GCC diagnostic pop
-}
 
 int liquid_encode_address_base58(const uint8_t *in,
                                  size_t in_len,

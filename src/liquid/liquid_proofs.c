@@ -719,7 +719,16 @@ bool liquid_surjectionproof_verify_single(const uint8_t *proof,
     return ok;
 }
 
-// TODO: document
+/**
+ * Implements indifferentiable hashing using Shallue and van de Woestijne encoding.
+ *
+ * @param ge
+ *   The resulting point on curve.
+ * @param t
+ *   Input scalar value.
+ *
+ * @return true on success, false in case of error.
+ */
 static bool shallue_van_de_woestijne(secp256k1_ge* ge, const secp256k1_fe* t) {
     /* Implements the algorithm from:
      *    Indifferentiable Hashing to Barreto-Naehrig Curves

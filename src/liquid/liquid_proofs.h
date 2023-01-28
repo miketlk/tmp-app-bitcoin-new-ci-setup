@@ -9,7 +9,9 @@
 #include <stdbool.h>  // bool
 #include "liquid.h"
 
+/// Maximum length of proof in bytes
 #define LIQUID_MAX_VALUE_PROOF_LEN 73
+/// Maximum length of a single surjection proof in bytes
 #define LIQUID_MAX_SINGLE_SURJECTION_PROOF_LEN 67
 
 /// Alternative generator for secp256k1

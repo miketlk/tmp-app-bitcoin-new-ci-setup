@@ -37,3 +37,18 @@ static inline void reverse_copy(uint8_t *dst, const uint8_t *src, size_t len) {
         *dst++ = *p_src--;
     }
 }
+
+/**
+ * Wrapper for explicit_bzero() supperssing "implicit function declaration" warning.
+ *
+ * @param[out] dest
+ *   Buffer that needs to be zeroized.
+ * @param[in] len
+ *   Size of the buffer in bytes.
+ */
+static inline void call_explicit_bzero(void *dest, size_t len) {
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wimplicit-function-declaration"
+    explicit_bzero(dest, len);
+#pragma GCC diagnostic pop
+}
