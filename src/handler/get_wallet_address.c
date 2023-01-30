@@ -41,7 +41,22 @@
 
 extern global_context_t *G_coin_config;
 
+/**
+ * Computes wallet address.
+ *
+ * This step was separated from the main handler to optimize stack usage.
+ *
+ * @param[in,out] dc
+ *   Dispatcher context.
+ */
 static void compute_address(dispatcher_context_t *dc);
+
+/**
+ * Sends response APDU.
+ *
+ * @param[in,out] dc
+ *   Dispatcher context.
+ */
 static void send_response(dispatcher_context_t *dc);
 
 void handler_get_wallet_address(dispatcher_context_t *dc) {
@@ -224,6 +239,14 @@ void handler_get_wallet_address(dispatcher_context_t *dc) {
     dc->next(compute_address);
 }
 
+/**
+ * Returns script address with support of blinded tag in wallet policy.
+ *
+ * @param[in,out] state
+ *   Handler state.
+ *
+ * @return length of produced address in bytes.
+ */
 static int get_script_address_wrapper(get_wallet_address_state_t *state) {
 #ifdef HAVE_LIQUID
     if(state->is_blinded) {

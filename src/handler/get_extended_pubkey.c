@@ -28,8 +28,28 @@
 
 extern global_context_t *G_coin_config;
 
+/**
+ * Sends response APDU.
+ *
+ * @param[in,out] dc
+ *   Dispatcher context.
+ */
 static void send_response(dispatcher_context_t *dc);
 
+/**
+ * Checks if requested path is safe to export derived public key.
+ *
+ * @param bip32_path
+ *   Derivation path.
+ * @param bip32_path_len
+ *   Length of derivation path (number of 32-bit elements).
+ * @param coin_types
+ *   List of coin types this application supports.
+ * @param coin_types_length
+ *   Number of elements in the coin type list.
+ *
+ * @return true if export allowed, false otherwise.
+ */
 static bool is_path_safe_for_pubkey_export(const uint32_t bip32_path[],
                                            size_t bip32_path_len,
                                            const uint32_t coin_types[],
