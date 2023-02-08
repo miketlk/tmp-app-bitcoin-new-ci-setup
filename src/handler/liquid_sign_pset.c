@@ -15,6 +15,19 @@
  *  limitations under the License.
  *****************************************************************************/
 
+/*
+Current assumptions during signing:
+  1) exactly one of the keys in the wallet is internal (enforce during wallet registration)
+  2) all the keys in the wallet have a wildcard (that is, they end with '**'), with at most
+     4 derivation steps before it.
+
+Assumption 2 simplifies the handling of pubkeys (and their paths) used for signing,
+as all the internal keys will have a path that ends with /change/address_index (BIP44-style).
+
+It would be possible to generalize to more complex scripts, but it makes it more difficult to detect
+the right paths to identify internal inputs/outputs.
+*/
+
 #ifdef HAVE_LIQUID
 
 #include <stdint.h>
@@ -59,39 +72,70 @@
 
 #include "../debug-helpers/debug.h"
 
+// Pointer to global coin configuration
 extern global_context_t *G_coin_config;
 
+/// Bits indicating presense (or status) of input's/output's field(s) in PSET
 typedef enum {
+    /// PSBT_IN_BIP32_DERIVATION or PSBT_IN_TAP_BIP32_DERIVATION
     HAS_BIP32_DERIVATION = (1 << 0),
+    /// PSBT_ELEMENTS_OUT_VALUE_COMMITMENT
     HAS_VALUE_COMMITMENT = (1 << 1),
+    /// Not used
     HAS_VALUE_BLINDING_FACTOR = (1 << 2),
+    /// PSBT_ELEMENTS_IN_EXPLICIT_ASSET or PSBT_ELEMENTS_OUT_ASSET
     HAS_ASSET = (1 << 3),
+    /// Not used
     HAS_ASSET_BLINDING_FACTOR = (1 << 4),
+    /// PSBT_IN_WITNESS_UTXO
     HAS_WITNESSUTXO = (1 << 5),
+    /// PSBT_IN_NON_WITNESS_UTXO
     HAS_NONWITNESSUTXO = (1 << 6),
+    /// PSBT_IN_REDEEM_SCRIPT
     HAS_REDEEMSCRIPT = (1 << 7),
+    /// PSBT_IN_SIGHASH_TYPE
     HAS_SIGHASH_TYPE = (1 << 8),
+    /// Input or output has amount
     HAS_PREVOUT_AMOUNT = (1 << 9),
+    /// PSBT_ELEMENTS_OUT_ASSET_COMMITMENT
     HAS_ASSET_COMMITMENT = (1 << 10),
+    /// PSBT_ELEMENTS_OUT_BLINDING_PUBKEY
     HAS_BLINDING_PUBKEY = (1 << 11),
+    /// PSBT_ELEMENTS_OUT_ECDH_PUBKEY
     HAS_ECDH_PUBKEY = (1 << 12),
+    /// PSBT_ELEMENTS_OUT_BLINDER_INDEX
     HAS_BLINDER_INDEX = (1 << 13),
+    /// PSBT_ELEMENTS_IN_ISSUANCE_VALUE
     HAS_ISSUE_VALUE = (1 << 14),
+    /// PSBT_ELEMENTS_IN_ISSUANCE_VALUE_COMMITMENT
     HAS_ISSUE_COMMITMENT = (1 << 15),
+    /// PSBT_ELEMENTS_IN_ISSUANCE_BLINDING_NONCE
     HAS_ISSUE_NONCE = (1 << 16),
+    /// PSBT_ELEMENTS_IN_ISSUANCE_ASSET_ENTROPY
     HAS_ISSUE_ENTROPY = (1 << 17),
+    /// PSBT_ELEMENTS_IN_ISSUANCE_INFLATION_KEYS_COMMITMENT
     HAS_TOKEN_COMMITMENT = (1 << 18),
+    /// PSBT_ELEMENTS_IN_ISSUANCE_INFLATION_KEYS_AMOUNT
     HAS_TOKEN_VALUE = (1 << 19),
+    /// PSBT_ELEMENTS_IN_ISSUANCE_BLIND_VALUE_PROOF
     HAS_ISSUE_PROOF = (1 << 20),
+    /// PSBT_ELEMENTS_IN_ISSUANCE_BLIND_INFLATION_KEYS_PROOF
     HAS_TOKEN_PROOF = (1 << 21),
+    /// PSBT_ELEMENTS_IN_EXPLICIT_VALUE or PSBT_OUT_AMOUNT
     HAS_VALUE = (1 << 22),
+    /// PSBT_ELEMENTS_IN_VALUE_PROOF or PSBT_ELEMENTS_OUT_BLIND_VALUE_PROOF
     HAS_VALUE_PROOF = (1 << 23),
+    /// PSBT_ELEMENTS_IN_ASSET_PROOF or PSBT_ELEMENTS_OUT_BLIND_ASSET_PROOF
     HAS_ASSET_PROOF = (1 << 24),
+    /// PSBT_ELEMENTS_OUT_ASSET_SURJECTION_PROOF
     HAS_ASSET_SURJECTION_PROOF = (1 << 25),
+    /// PSBT_ELEMENTS_OUT_VALUE_RANGEPROOF
     HAS_VALUE_RANGEPROOF = (1 << 26),
 } key_presence_flags_t;
 
+/// Bits indicating presense (or status) of global field(s) in PSET
 typedef enum {
+    /// PSBT_ELEMENTS_HWW_GLOBAL_ASSET_METADATA
     GLOBAL_HAS_ASSET_METADATA = (1 << 0)
 } global_key_presence_flags_t;
 
@@ -117,71 +161,246 @@ typedef struct {
     bool error;             ///< Flag indicating error during handling of keys
 } output_keys_callback_state_t;
 
-// Input validation
+
+/*****************************************************************************
+ * Input validation
+ *****************************************************************************/
+
+/**
+ * Begins processing of input map, iterating over all inputs.
+ *
+ * @param[in,out] dc
+ *   Dispatcher context.
+ */
 static void process_input_map(dispatcher_context_t *dc);
+
+/**
+ * Checks asset and value commitments of current input.
+ *
+ * @param[in,out] dc
+ *   Dispatcher context.
+ */
 static void check_input_commitments(dispatcher_context_t *dc);
+
+/**
+ * Checks whether the input is internal or external.
+ *
+ * @param[in,out] dc
+ *   Dispatcher context.
+ */
 static void check_input_owned(dispatcher_context_t *dc);
 
+/**
+ * Counts external outputs and warn the user if there are some.
+ *
+ * @param[in,out] dc
+ *   Dispatcher context.
+ */
 static void alert_external_inputs(dispatcher_context_t *dc);
 
-// Output validation
+
+/*****************************************************************************
+ * Output validation
+ *****************************************************************************/
+
+/**
+ * Begins outputs verification flow.
+ *
+ * @param[in,out] dc
+ *   Dispatcher context.
+ */
 static void verify_outputs_init(dispatcher_context_t *dc);
+
+/**
+ * Iterates over all outputs checking that all needed fields present.
+ *
+ * @param[in,out] dc
+ *   Dispatcher context.
+ */
 static void process_output_map(dispatcher_context_t *dc);
+
+/**
+ * Checks asset and value commitments of current output.
+ *
+ * @param[in,out] dc
+ *   Dispatcher context.
+ */
 static void check_output_commitments(dispatcher_context_t *dc);
+
+/**
+ * Checks whether the output is internal or external.
+ *
+ * @param[in,out] dc
+ *   Dispatcher context.
+ */
 static void check_output_owned(dispatcher_context_t *dc);
+
+/**
+ * Asks user confirmation for external output showing its address.
+ *
+ * @param[in,out] dc
+ *   Dispatcher context.
+ */
 static void output_validate_external(dispatcher_context_t *dc);
+
+/**
+ * Goes to the next output.
+ *
+ * @param[in,out] dc
+ *   Dispatcher context.
+ */
 static void output_next(dispatcher_context_t *dc);
 
-// User confirmation (all)
+
+/*****************************************************************************
+ * User confirmation (all scripts)
+ *****************************************************************************/
+
+/**
+ * Performs any final checks if needed and shows the confirmation UI to the user.
+ *
+ * @param[in,out] dc
+ *   Dispatcher context.
+ */
 static void confirm_transaction(dispatcher_context_t *dc);
 
-// Signing process (all)
+
+/*****************************************************************************
+ * Signing process (all scripts)
+ *****************************************************************************/
+
+/**
+ * Begins the signing process and verifies the provided public key.
+ *
+ * @param[in,out] dc
+ *   Dispatcher context.
+ */
 static void sign_init(dispatcher_context_t *dc);
+
+/**
+ * Computes all the tx-wide hashes for SegWit inputs.
+ *
+ * @param[in,out] dc
+ *   Dispatcher context.
+ */
 static void compute_segwit_hashes(dispatcher_context_t *dc);
+
+/**
+ * Iterates over all inputs checking that all needed fields present.
+ *
+ * @param[in,out] dc
+ *   Dispatcher context.
+ */
 static void sign_process_input_map(dispatcher_context_t *dc);
 
-// Legacy sighash computation (P2PKH and P2SH)
+
+/*****************************************************************************
+ * Legacy sighash computation (P2PKH and P2SH)
+ *****************************************************************************/
+
+/**
+ * Begins signing a legacy P2PKH or P2SH input.
+ *
+ * @param[in,out] dc
+ *   Dispatcher context.
+ */
 static void sign_legacy(dispatcher_context_t *dc);
+
+/**
+ * Computes sighash for a legacy P2PKH or P2SH input.
+ *
+ * @param[in,out] dc
+ *   Dispatcher context.
+ */
 static void sign_legacy_compute_sighash(dispatcher_context_t *dc);
 
-// Segwit sighash computation (P2WPKH, P2WSH and P2TR)
+
+/*****************************************************************************
+ * SegWit sighash computation (P2WPKH, P2WSH and P2TR)
+ *****************************************************************************/
+
+/**
+ * Begins signing a SegWit P2PKH or P2SH input.
+ *
+ * @param[in,out] dc
+ *   Dispatcher context.
+ */
 static void sign_segwit(dispatcher_context_t *dc);
+
+/**
+ * Compute sighash for a SegWit P2PKH or P2SH input.
+ *
+ * @param[in,out] dc
+ *   Dispatcher context.
+ */
 static void sign_segwit_v0(dispatcher_context_t *dc);
+
+/**
+ * Compute sighash for a Taproot P2TR input.
+ *
+ * @param[in,out] dc
+ *   Dispatcher context.
+ */
 static void sign_segwit_v1(dispatcher_context_t *dc);
 
-// Sign input and yield result
+
+/*****************************************************************************
+ * Sign input and yield result
+ *****************************************************************************/
+
+/**
+ * Creates an ECDSA signature and goes to the next input.
+ *
+ * Common for legacy and SegWit v0 transactions.
+ *
+ * @param[in,out] dc
+ *   Dispatcher context.
+ */
 static void sign_sighash_ecdsa(dispatcher_context_t *dc);
+
+/**
+ * For a Taproot input creates a Schnorr signature and goes to the next input.
+ *
+ * @param[in,out] dc
+ *   Dispatcher context.
+ */
 static void sign_sighash_schnorr(dispatcher_context_t *dc);
 
-// End point and return
+
+/*****************************************************************************
+ * End point and return
+ *****************************************************************************/
+
+/**
+ * Finalizes transaction signing flow and returns the positive status code.
+ *
+ * @param[in,out] dc
+ *   Dispatcher context.
+ */
 static void finalize(dispatcher_context_t *dc);
 
-/* BIP0341 tags for computing the tagged hashes when computing he sighash */
+/// BIP0341 tags for computing the tagged hashes when computing he sighash
 static const uint8_t BIP0341_sighash_tag[] = {'T', 'a', 'p', 'S', 'i', 'g', 'h', 'a', 's', 'h'};
 
 
-
-/*
-Current assumptions during signing:
-  1) exactly one of the keys in the wallet is internal (enforce during wallet registration)
-  2) all the keys in the wallet have a wildcard (that is, they end with '**'), with at most
-     4 derivation steps before it.
-
-Assumption 2 simplifies the handling of pubkeys (and their paths) used for signing,
-as all the internal keys will have a path that ends with /change/address_index (BIP44-style).
-
-It would be possible to generalize to more complex scripts, but it makes it more difficult to detect
-the right paths to identify internal inputs/outputs.
-*/
-
-// HELPER FUNCTIONS
+/*****************************************************************************
+ * HELPER FUNCTIONS
+ *****************************************************************************/
 
 /**
  * Tests proprietary key stored in buffer against reference key given as byte array.
+ *
  * It is assumed that top-level <keytype> (0xfd) is already taken from the buffer before this
  * function is called and <identifierlen> would be the first value available to read.
  *
  * Buffer position is left unchanged after return.
+ *
+ * @param[in] buffer
+ *   Buffer where proprietary key is stored, without top-level <keytype> (0xfd).
+ * @param[in] ref_key
+ *   Reference key to test.
+ *
+ * @return true if key in buffer corresponds to the reference key, false otherwise.
  */
 static bool test_proprietary_key(buffer_t *buffer, const uint8_t *ref_key) {
     // Offsets within proprietary key byte array, assuming length and types are single-byte.
@@ -219,7 +438,13 @@ static bool test_proprietary_key(buffer_t *buffer, const uint8_t *ref_key) {
 
 /**
  * Callback to process all the keys of the current global map.
+ *
  * Keeps track if the global has asset metadata.
+ *
+ * @param[in,out] state
+ *   Callback state, also receives result of processing.
+ * @param[in] data
+ *   Data to process.
  */
 static void global_keys_callback(global_keys_callback_state_t *state, buffer_t *data) {
     size_t data_len = data->size - data->offset;
@@ -236,7 +461,13 @@ static void global_keys_callback(global_keys_callback_state_t *state, buffer_t *
 
 /**
  * Callback to process all the keys of the current input map.
+ *
  * Keeps track if the current input has a witness_utxo and/or a redeemScript.
+ *
+ * @param[in,out] state
+ *   Callback state, also receives result of processing.
+ * @param[in] data
+ *   Data to process.
  */
 static void input_keys_callback(input_keys_callback_state_t *state, buffer_t *data) {
     size_t data_len = data->size - data->offset;
@@ -313,8 +544,14 @@ static void input_keys_callback(input_keys_callback_state_t *state, buffer_t *da
 }
 
 /**
- * Callback to process all the keys of the current input map.
- * Keeps track if the current input has a witness_utxo and/or a redeemScript.
+ * Callback to process all the keys of the current output map.
+ *
+ * Keeps track if the current output has a witness_utxo and/or a redeemScript.
+ *
+ * @param[in,out] state
+ *   Callback state, also receives result of processing.
+ * @param[in] data
+ *   Data to process.
  */
 static void output_keys_callback(output_keys_callback_state_t *state, buffer_t *data) {
     size_t data_len = data->size - data->offset;
@@ -375,8 +612,20 @@ static void output_keys_callback(output_keys_callback_state_t *state, buffer_t *
     }
 }
 
-// Updates the hash_context with the network serialization of all the outputs
-// returns -1 on error. 0 on success.
+/**
+ * Updates the hash context with the network serialization of a single output.
+ *
+ * @param[in,out] dc
+ *   Dispatcher context.
+ * @param[in] output_index
+ *   Index of an output to hash.
+ * @param[in,out] hash_context
+ *   Pre-initialized hash context updated with output's data; may be NULL if unneeded.
+ * @param[in,out] rangeproof_hash_context
+ *   Pre-initialized hash context updated with output's rangeproof; may be NULL if unneeded.
+ *
+ * @return 0 on success, -1 on error.
+ */
 static int hash_output(dispatcher_context_t *dc,
                        int output_index,
                        cx_hash_t *hash_context,
@@ -541,8 +790,18 @@ static int hash_output(dispatcher_context_t *dc,
     return 0;
 }
 
-// Updates the hash_context with the network serialization of all the outputs
-// returns -1 on error. 0 on success.
+/**
+ * Updates the hash context with the network serialization of all outputs.
+ *
+ * @param[in,out] dc
+ *   Dispatcher context.
+ * @param[in,out] hash_context
+ *   Pre-initialized hash context updated with output's data; may be NULL if unneeded.
+ * @param[in,out] rangeproof_hash_context
+ *   Pre-initialized hash context updated with output's rangeproof; may be NULL if unneeded.
+ *
+ * @return 0 on success, -1 on error.
+ */
 static int hash_outputs(dispatcher_context_t *dc,
                         cx_hash_t *hash_context,
                         cx_hash_t *rangeproof_hash_context) {
@@ -557,10 +816,32 @@ static int hash_outputs(dispatcher_context_t *dc,
     return 0;
 }
 
+/**
+ * Checks whether an input has issuance information.
+ *
+ * @param[in] key_presence
+ *   Bit flags representing presence of PSET keys in current input.
+ *
+ * @return true if an input has issuance information, otherwise false.
+ */
 static inline bool input_has_issuance(uint32_t key_presence) {
     return !!(key_presence & (HAS_ISSUE_VALUE | HAS_ISSUE_COMMITMENT));
 }
 
+/**
+ * Updates the hash context with the input's issuance information.
+ *
+ * @param[in,out] dc
+ *   Dispatcher context.
+ * @param[in] map
+ *   Commitment to a merkleized key-value map of this input.
+ * @param[in] key_presence
+ *   Bit flags representing presence of PSET keys in current input.
+ * @param[in,out] hash_context
+ *   Pre-initialized hash context updated with input's data; may be NULL if unneeded.
+ *
+ * @return true if successfull, false on error.
+ */
 static bool hash_input_issuance(dispatcher_context_t *dc,
                                 const merkleized_map_commitment_t *map,
                                 uint32_t key_presence,
@@ -666,6 +947,16 @@ static bool hash_input_issuance(dispatcher_context_t *dc,
     return true;
 }
 
+/**
+ * Returns the SegWit version from scriptPubKey.
+ *
+ * @param[in] scriptPubKey
+ *   Output's scriptPubKey or input's the prevout's scriptPubKey.
+ * @param[in] scriptPubKey_len
+ *   Length of scriptPubKey in bytes.
+ *
+ * @return SegWit version or -1 in case of error.
+ */
 static int get_segwit_version(const uint8_t scriptPubKey[], int scriptPubKey_len) {
     if (scriptPubKey_len <= 1) {
         return -1;
@@ -680,13 +971,31 @@ static int get_segwit_version(const uint8_t scriptPubKey[], int scriptPubKey_len
     return -1;
 }
 
-/*
- Convenience function to get the amount and scriptpubkey from the non-witness-utxo of a certain
- input in a PSBTv2.
- If expected_prevout_hash is not NULL, the function fails if the txid computed from the
- non-witness-utxo does not match the one pointed by expected_prevout_hash. Returns -1 on failure, 0
- on success.
-*/
+/**
+ * Convenience function to get the amount and scriptpubkey from the non-witness-utxo.
+ *
+ * If expected_prevout_hash is not NULL, the function fails if the txid computed from the
+ * non-witness-utxo does not match the one pointed by expected_prevout_hash.
+ *
+ * @param[in,out] dc
+ *   Dispatcher context.
+ * @param[in] input_map
+ *   Commitment to a merkleized key-value map of this input.
+ * @param[out] asset
+ *   Pointer to structure instance receiving parsed asset.
+ * @param[out] amount
+ *   Pointer to structure instance receiving parsed amount.
+ * @param[out] scriptPubKey
+ *   Buffer receiving parsed scriptPubKey.
+ * @param[out] scriptPubKey_len
+ *   Pointer to variable receiving length of parsed scriptPubKey.
+ * @param[in] expected_prevout_hash
+ *   Expected transaction hash compared with the obtained txid; NULL if unneeded.
+ * @param[in,out] issuance_hash_context
+ *   Pre-initialized hash context updated with issuance data; NULL if unneeded.
+ *
+ * @return 0 on success, -1 on failure.
+ */
 static int parse_utxo_nonwitness(
     dispatcher_context_t *dc,
     const merkleized_map_commitment_t *input_map,
@@ -752,11 +1061,24 @@ static int parse_utxo_nonwitness(
     return 0;
 }
 
-/*
- Convenience function to get the amount, asset and scriptpubkey from the witness-utxo of a certain input in
- a PSBTv2.
- Returns -1 on failure, 0 on success.
-*/
+/**
+ * Convenience function to get the amount, asset and scriptpubkey from the witness-utxo.
+ *
+ * @param[in,out] dc
+ *   Dispatcher context.
+ * @param[in] input_map
+ *   Commitment to a merkleized key-value map of this input.
+ * @param[out] asset
+ *   Pointer to structure instance receiving parsed asset.
+ * @param[out] amount
+ *   Pointer to structure instance receiving parsed amount.
+ * @param[out] scriptPubKey
+ *   Buffer receiving parsed scriptPubKey.
+ * @param[out] scriptPubKey_len
+ *   Pointer to variable receiving length of parsed scriptPubKey.
+ *
+ * @return 0 on success, -1 on failure.
+ */
 static int parse_utxo_witness(
     dispatcher_context_t *dc,
     const merkleized_map_commitment_t *input_map,
@@ -796,10 +1118,22 @@ static int parse_utxo_witness(
     return 0;
 }
 
-/*
- Convenience function to get the asset tag store in one of PSET fields.
- Returns false on failure, true on success.
-*/
+/**
+ * Convenience function to get the asset tag stored in one of the PSET fields.
+ *
+ * @param[in,out] dc
+ *   Dispatcher context.
+ * @param[in] map
+ *   Commitment to a merkleized key-value map of this input or output.
+ * @param[in] key
+ *   Key of a PSET field from which the asset tag needs to be obtained.
+ * @param[in] key_len
+ *   Length of the key in bytes.
+ * @param[out] asset
+ *   Pointer to structure instance receiving asset information.
+ *
+ * @return true on success, false on failure.
+ */
 static bool get_in_out_asset_tag(dispatcher_context_t *dc,
                                  const merkleized_map_commitment_t *map,
                                  const uint8_t *key,
@@ -820,7 +1154,14 @@ static bool get_in_out_asset_tag(dispatcher_context_t *dc,
 }
 
 /**
- * Handles confidential value of an input or an output
+ * Handles confidential or non-confidential amount of an input or an output.
+ *
+ * @param[in,out] p_info
+ *   Pointer to an instance of input/output structure updated with amount information.
+ * @param amount
+ *   Amount information.
+ *
+ * @return true on success, false on failure.
  */
 static bool set_in_out_amount(overlayed_in_out_info_t *p_info, tx_amount_t *amount) {
     if(!p_info || !amount) {
@@ -854,7 +1195,16 @@ static bool set_in_out_amount(overlayed_in_out_info_t *p_info, tx_amount_t *amou
 }
 
 /**
- * Handles confidential asset of an input or an output
+ * Handles confidential or non-confidential asset of an input or an output.
+ *
+ * @param[in,out] dc
+ *   Dispatcher context.
+ * @param[in,out] state
+ *   Pointer to state of the command handler.
+ * @param[in] asset
+ *   Asset information.
+ *
+ * @return true on success, false on failure.
  */
 static bool set_in_out_asset(dispatcher_context_t *dc,
                              sign_pset_state_t *state,
@@ -909,7 +1259,14 @@ static bool set_in_out_asset(dispatcher_context_t *dc,
     return true;
 }
 
-// TODO: document
+/**
+ * Allocates SHA-256 from the memory pool.
+ *
+ * @param[in,out] state
+ *   Callback state, also receives result of processing.
+ *
+ * @return pointer to allocated context or NULL if failure.
+ */
 static cx_sha256_t* sha_context_alloc(sign_pset_state_t *state) {
     if(state->sha_context_index >= SIGN_PSET_SHA_CONTEXT_POOL_SIZE) {
         return NULL;
@@ -917,8 +1274,18 @@ static cx_sha256_t* sha_context_alloc(sign_pset_state_t *state) {
     return &state->sha_context_pool[state->sha_context_index++];
 }
 
-// TODO: document
-// contexts must be freed in reverse order
+/**
+ * Frees SHA-256 allocated from the memory pool.
+ *
+ * IMPORTANT: contexts must be freed in the reverse order from the order of allocation.
+ *
+ * @param[in,out] state
+ *   Callback state, also receives result of processing.
+ * @param context
+ *   Pointer to SHA-256 that will be freed.
+ *
+ * @return true on success, false on error.
+ */
 static bool sha_context_free(sign_pset_state_t *state, const cx_sha256_t *context) {
     if(!state->sha_context_index ||
        context != &state->sha_context_pool[state->sha_context_index - 1]) {
@@ -929,8 +1296,13 @@ static bool sha_context_free(sign_pset_state_t *state, const cx_sha256_t *contex
 }
 
 /**
+ * Entry point of the command handler.
+ *
  * Validates the input, initializes the hash context and starts accumulating the wallet header in
  * it.
+ *
+ * @param[in,out] dc
+ *   Dispatcher context.
  */
 void handler_liquid_sign_pset(dispatcher_context_t *dc) {
     sign_pset_state_t *state = (sign_pset_state_t *) &G_command_state;
@@ -1171,7 +1543,7 @@ void handler_liquid_sign_pset(dispatcher_context_t *dc) {
     }
 }
 
-/** Inputs verification flow
+/** INPUTS VERIFICATION FLOW
  *
  *  Go though all the inputs:
  *  - verify the non_witness_utxo
