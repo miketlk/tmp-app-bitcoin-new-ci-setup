@@ -40,13 +40,64 @@
 
 #include "register_wallet.h"
 
+/**
+ * Receives and parses the public key info asking the user to validate it.
+ *
+ * @param[in,out] dc
+ *   Dispatcher context.
+ */
 static void process_cosigner_info(dispatcher_context_t *dc);
+
+/**
+ * Goes to the next public key until all are processed.
+ *
+ * @param[in,out] dc
+ *   Dispatcher context.
+ */
 static void next_cosigner(dispatcher_context_t *dc);
+
+/**
+ * Finalizes and sends response to the REGISTER_WALLET command.
+ *
+ * @param[in,out] dc
+ *   Dispatcher context.
+ */
 static void finalize_response(dispatcher_context_t *dc);
 
 extern global_context_t *G_coin_config;
 
-static bool is_policy_acceptable(policy_node_t *policy);
+/**
+ * Unwraps top-level blinded tag and checks whether enclosed wallet policy is acceptable.
+ *
+ * @param[in] policy
+ *   Pointer to root policy node.
+ * @param[out] p_internal_script
+ *   Pointer to variable receiving pointer to internal script.
+ *
+ * @return true on success, false on error.
+ */
+static bool is_policy_acceptable_blinded(const policy_node_t *policy, policy_node_t **p_internal_script);
+
+/**
+ * Checks whether wallet policy is acceptable.
+ *
+ * @param[in] policy
+ *   Pointer to root policy node.
+ *
+ * @return true on success, false on error.
+ */
+static bool is_policy_acceptable(const policy_node_t *policy);
+
+/**
+ * Checks whether wallet policy name is acceptable.
+ *
+ * @param[in] name
+ *   Wallet name, may not be null-terminated.
+ * @param name_len
+ *   Number of characters in wallet name.
+ *
+ * @return true on success, false on error.
+ */
 static bool is_policy_name_acceptable(const char *name, size_t name_len);
 
 /**
@@ -269,7 +320,7 @@ static void finalize_response(dispatcher_context_t *dc) {
 }
 
 #ifdef HAVE_LIQUID
-static bool is_policy_acceptable_blinded(policy_node_t *policy, policy_node_t **p_internal_script) {
+static bool is_policy_acceptable_blinded(const policy_node_t *policy, policy_node_t **p_internal_script) {
     if(!policy || !p_internal_script || policy->type != TOKEN_BLINDED) {
         return false;
     }
@@ -285,7 +336,7 @@ static bool is_policy_acceptable_blinded(policy_node_t *policy, policy_node_t **
 }
 #endif // HAVE_LIQUID
 
-static bool is_policy_acceptable(policy_node_t *policy) {
+static bool is_policy_acceptable(const policy_node_t *policy) {
     policy_node_t *internal_script;
 
     if (policy->type == TOKEN_SH) {

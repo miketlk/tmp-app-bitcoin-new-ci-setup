@@ -28,8 +28,15 @@
 
 extern global_context_t *G_coin_config;
 
+/**
+ * Signs Bitcoin Message Signing digest and sends response.
+ *
+ * @param[in,out] dc
+ *   Dispatcher context.
+ */
 static void send_response(dispatcher_context_t *dc);
 
+/// Magic prefix for Bitcoin Message Signing digest
 static unsigned char const BSM_SIGN_MAGIC[] = {'\x18', 'B', 'i', 't', 'c', 'o', 'i', 'n', ' ',
                                                'S',    'i', 'g', 'n', 'e', 'd', ' ', 'M', 'e',
                                                's',    's', 'a', 'g', 'e', ':', '\n'};
