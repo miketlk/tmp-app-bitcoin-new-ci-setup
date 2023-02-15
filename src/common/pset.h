@@ -12,17 +12,17 @@
 #define PSBT_KEY_ELEMENTS(x) \
 		(const uint8_t[]){ PSET_H_PREPROC_CHECK((x) <= 0xfc) | 0xfc, 0x04, 'p', 's', 'e', 't', (x) }
 
-/// Defines Elements proprietary key for two-byte subkeytype
-#define PSBT_KEY_ELEMENTS_16(x) \
-		(const uint8_t[]){ PSET_H_PREPROC_CHECK((x) > 0xfc && (x) <= 0xffff) | 0xfc, 0x04, \
-		                   'p', 's', 'e', 't', 0xfd, (x) & 0xff, (x) >> 8 }
+/// Defines proprietary key for Hardware Wallet Extensions (ELIP 100)
+#define PSBT_KEY_ELEMENTS_HWW(x) \
+		(const uint8_t[]){ PSET_H_PREPROC_CHECK((x) <= 0xfc) | 0xfc, 0x08, \
+		                   'p', 's', 'e', 't', '_', 'h', 'w', 'w', (x) }
 
 /// Scalar Offset
 #define PSBT_ELEMENTS_GLOBAL_SCALAR PSBT_KEY_ELEMENTS(0x00)
 /// Elements Transaction Modifiable Flag
 #define PSBT_ELEMENTS_GLOBAL_TX_MODIFIABLE PSBT_KEY_ELEMENTS(0x01)
 /// ELIP 100: Asset Metadata
-#define PSBT_ELEMENTS_HWW_GLOBAL_ASSET_METADATA PSBT_KEY_ELEMENTS_16(0x0100)
+#define PSBT_ELEMENTS_HWW_GLOBAL_ASSET_METADATA PSBT_KEY_ELEMENTS_HWW(0x00)
 
 /// Issuance Value
 #define PSBT_ELEMENTS_IN_ISSUANCE_VALUE PSBT_KEY_ELEMENTS(0x00)

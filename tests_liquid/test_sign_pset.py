@@ -205,7 +205,7 @@ def test_asset_metadata_display(client: Client, comm: SpeculosClient, is_speculo
     parsed_events = parse_signing_events(all_events)
 
     assert len(parsed_events["addresses"]) == 1
-    assert parsed_events["addresses"][0] == "ert1qm96pdhvs300yngfxx94dme3a3w2d0lnu7njtyz"
+    assert parsed_events["addresses"][0] == "ert1qwmjpsj49ytzfh0sy36fcwwan0q9nvgndrm7ltl"
     assert len(parsed_events["amounts"]) == 1
     assert parsed_events["amounts"][0] == "TEST 123456.78"
     assert parsed_events["fees"] == "TL-BTC 0.00003767"
