@@ -19,6 +19,7 @@
 #include "../common/format.h"
 #include "../common/script.h"
 #include "../constants.h"
+#include "../liquid/liquid_assets.h"
 
 // These globals are a workaround for a limitation of the UX library that
 // does not allow to pass proper callbacks and context.
@@ -65,15 +66,20 @@ typedef struct {
     char index[sizeof("output #999")];
     char address_or_description[MAX(MAX_ADDRESS_LENGTH_STR + 1, MAX_OPRETURN_OUTPUT_DESC_SIZE)];
     char amount[MAX_AMOUNT_LENGTH + 1];
+#ifdef HAVE_LIQUID
+    char tag_hex[LIQUID_ASSET_TAG_HEX_LEN + 1];
+#endif
 } ui_validate_output_state_t;
 
 typedef struct {
     char fee[MAX_AMOUNT_LENGTH + 1];
 } ui_validate_transaction_state_t;
 
+#ifdef HAVE_LIQUID
 typedef struct {
-    char tag_hex[64 + 1];
+    char tag_hex[LIQUID_ASSET_TAG_HEX_LEN + 1];
 } ui_asset_state_t;
+#endif
 
 /**
  * Union of all the states for each of the UI screens, in order to save memory.
@@ -86,7 +92,9 @@ typedef union {
     ui_cosigner_pubkey_and_index_state_t cosigner_pubkey_and_index;
     ui_validate_output_state_t validate_output;
     ui_validate_transaction_state_t validate_transaction;
+#ifdef HAVE_LIQUID
     ui_asset_state_t asset;
+#endif
 } ui_state_t;
 
 #ifdef TARGET_NANOS
@@ -323,6 +331,8 @@ UX_STEP_CB(ux_sign_message_accept_new,
            continue_after_approval(true),
            {&C_icon_validate_14, "Sign", "message"});
 
+//////////////////////////////////////////////////////////////////////
+#ifdef HAVE_LIQUID
 // Step with warning icon and text explaining that asset is unknown
 UX_STEP_NOCB(ux_display_warning_unknown_asset_step,
              pnn,
@@ -338,6 +348,14 @@ UX_STEP_NOCB(ux_asset_tag_step,
                  .title = "Asset tag",
                  .text = g_ui_state.asset.tag_hex,
              });
+
+UX_STEP_NOCB(ux_output_asset_tag_step,
+             bnnn_paging,
+             {
+                 .title = "Asset tag",
+                 .text = g_ui_state.validate_output.tag_hex,
+             });
+#endif // HAVE_LIQUID
 
 // FLOW to display BIP32 path and a message hash to sign:
 // #1 screen: certificate icon + "Sign message"
@@ -507,15 +525,31 @@ UX_FLOW(ux_accept_transaction_flow,
         &ux_display_reject_step);
 
 #ifdef HAVE_LIQUID
-// FLOW to warn about external inputs
-// #1 screen: warning icon + "There are external inputs"
-// #2 screen: crossmark icon + "Reject if not sure" (user can reject here)
-// #3 screen: "continue" button
+// FLOW to warn about unknown asset
+// #1 screen: warning icon + "The asset is unknown"
+// #2 screen: asset tag
+// #3 screen: crossmark icon + "Reject if not sure" (user can reject here)
+// #4 screen: "continue" button
 UX_FLOW(ux_display_warning_unknown_asset_flow,
         &ux_display_warning_unknown_asset_step,
         &ux_asset_tag_step,
         &ux_display_reject_if_not_sure_step,
         &ux_display_continue_step);
+
+// FLOW to validate a single output
+// #1 screen: eye icon + "Review" + index of output to validate
+// #2 screen: output amount
+// #3 screen: asset tag
+// #4 screen: output address (paginated)
+// #5 screen: approve button
+// #6 screen: reject button
+UX_FLOW(ux_display_output_address_amount_asset_flow,
+        &ux_review_step,
+        &ux_validate_amount_step,
+        &ux_output_asset_tag_step,
+        &ux_validate_address_step,
+        &ux_display_approve_step,
+        &ux_display_reject_step);
 #endif
 
 void ui_display_pubkey(dispatcher_context_t *context,
@@ -683,6 +717,10 @@ void ui_validate_output(dispatcher_context_t *context,
                         const char *coin_name,
                         uint64_t amount,
                         uint8_t decimals,
+#ifdef HAVE_LIQUID
+                        const uint8_t asset_tag[static 32],
+                        bool display_asset_tag,
+#endif
                         command_processor_t on_success) {
     context->pause();
 
@@ -696,7 +734,16 @@ void ui_validate_output(dispatcher_context_t *context,
 
     g_next_processor = on_success;
 
+#ifdef HAVE_LIQUID
+    if (display_asset_tag) {
+        liquid_format_asset_tag(asset_tag, state->tag_hex);
+        ux_flow_init(0, ux_display_output_address_amount_asset_flow, NULL);
+    } else {
+        ux_flow_init(0, ux_display_output_address_amount_flow, NULL);
+    }
+#else
     ux_flow_init(0, ux_display_output_address_amount_flow, NULL);
+#endif
 }
 
 void ui_validate_transaction(dispatcher_context_t *context,
@@ -723,9 +770,7 @@ void ui_warn_unknown_asset(dispatcher_context_t *context,
 
     ui_asset_state_t *state = (ui_asset_state_t *) &g_ui_state;
 
-    for (int i = 0; i < 32; ++i) {
-        snprintf(state->tag_hex + 2 * i, 3, "%02X", asset_tag[i]);
-    }
+    liquid_format_asset_tag(asset_tag, state->tag_hex);
 
     g_next_processor = on_success;
 

@@ -51,6 +51,20 @@ STATIC_NO_TEST const asset_definition_t liquid_assets[] = {
 /// Number of assets in list
 #define N_LIQUID_ASSETS ( sizeof(liquid_assets) / sizeof(liquid_assets[0]) )
 
+
+/// Asset tag of L-BTC or TL-BTC depending on build
+const uint8_t liquid_bitcoin_tag[LIQUID_ASSET_TAG_LEN] = {
+#ifdef HAVE_LIQUID_TEST
+    /// Asset tag of TL-BTC
+    0x5a,0xc9,0xf6,0x5c,0x0e,0xfc,0xc4,0x77,0x5e,0x0b,0xae,0xc4,0xec,0x03,0xab,0xdd,
+    0xe2,0x24,0x73,0xcd,0x3c,0xf3,0x3c,0x04,0x19,0xca,0x29,0x0e,0x07,0x51,0xb2,0x25
+#else
+    /// Asset tag of L-BTC
+    0x6f,0x02,0x79,0xe9,0xed,0x04,0x1c,0x3d,0x71,0x0a,0x9f,0x57,0xd0,0xc0,0x29,0x28,
+    0x41,0x64,0x60,0xc4,0xb7,0x22,0xae,0x34,0x57,0xa1,0x1e,0xec,0x38,0x1c,0x52,0x6d
+#endif
+};
+
 #ifdef SKIP_FOR_CMOCKA
 /// Constant storing number of assets in list
 const size_t n_liquid_assets = N_LIQUID_ASSETS;
@@ -197,6 +211,13 @@ bool liquid_compute_asset_tag(const uint8_t contract_hash[static SHA256_LEN],
     ok = ok && compute_asset_tag_from_entropy(entropy, asset_tag);
 
     return ok;
+}
+
+void liquid_format_asset_tag(const uint8_t asset_tag[static LIQUID_ASSET_TAG_LEN],
+                             char out[static LIQUID_ASSET_TAG_HEX_LEN + 1]) {
+    for (int i = 0; i < LIQUID_ASSET_TAG_LEN; ++i) {
+        snprintf(out + 2 * i, 3, "%02X", asset_tag[i]);
+    }
 }
 
 #ifdef IMPLEMENT_ON_DEVICE_TESTS

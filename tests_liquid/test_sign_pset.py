@@ -47,6 +47,8 @@ def should_go_right(event: dict):
         return True
     elif event["text"].startswith("Amount"):
         return True
+    elif event["text"].startswith("Asset tag"):
+        return True
     elif event["text"].startswith("Address"):
         return True
     elif event["text"].startswith("Confirm"):
@@ -80,12 +82,14 @@ def parse_signing_events(events: List[dict]) -> dict:
     # each of these is True if the _previous_ event was matching (so the next text needs to be recorded)
     was_amount = False
     was_address = False
+    was_asset = False
     was_fees = False
 
     cur_output_index = -1
 
     ret["addresses"] = []
     ret["amounts"] = []
+    ret["assets"] = []
     ret["fees"] = ""
 
     for ev in events:
@@ -98,17 +102,21 @@ def parse_signing_events(events: List[dict]) -> dict:
 
             ret["addresses"].append("")
             ret["amounts"].append("")
+            ret["assets"].append("")
 
         if was_address:
             ret["addresses"][-1] += ev["text"]
         if was_amount:
             ret["amounts"][-1] += ev["text"]
+        if was_asset:
+            ret["assets"][-1] += ev["text"]
 
         if was_fees:
             ret["fees"] += ev["text"]
 
         was_amount = ev["text"].startswith("Amount")
         was_address = ev["text"].startswith("Address")
+        was_asset = ev["text"].startswith("Asset tag")
         was_fees = ev["text"].startswith("Fees")
 
     return ret
@@ -129,7 +137,7 @@ def random_wallet_name() -> str:
 
 
 @has_automation(f"{tests_root}/automations/sign_with_any_wallet_accept.json")
-def test_sign_psbt_batch(client: Client, speculos_globals: SpeculosGlobals, is_speculos: bool, enable_slow_tests: bool):
+def test_sign_+psbt_batch(client: Client, speculos_globals: SpeculosGlobals, is_speculos: bool, enable_slow_tests: bool):
     # A series of tests for various script and sighash combinations.
     # Takes quite a long time. It's recommended to enable stdout to see the progress (pytest -s).
     # For the full test of all combinations run with '--enableslowtests'.
@@ -209,6 +217,8 @@ def test_asset_metadata_display(client: Client, comm: SpeculosClient, is_speculo
     assert len(parsed_events["amounts"]) == 1
     assert parsed_events["amounts"][0] == "TEST 123456.78"
     assert parsed_events["fees"] == "TL-BTC 0.00003767"
+    assert len(parsed_events["assets"]) == 1
+    assert parsed_events["assets"][0].lower() == "48f835622f34e8fdc313c90d4a8659aa4afe993e32dcb03ae6ec9ccdc6fcbe18"
 
     for n_input, sigs in test_data["signatures"].items():
         result_sig = result[int(n_input)].hex()

@@ -66,6 +66,10 @@ void ui_validate_output(dispatcher_context_t *context,
                         const char *coin_name,
                         uint64_t amount,
                         uint8_t decimals,
+#ifdef HAVE_LIQUID
+                        const uint8_t asset_tag[static 32],
+                        bool display_asset_tag,
+#endif
                         command_processor_t on_success);
 
 void ui_validate_transaction(dispatcher_context_t *context,

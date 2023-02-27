@@ -41,6 +41,8 @@ typedef struct {
     uint8_t asset_tag[32];
     /// Information about the asset: ticher and precision
     asset_info_t asset_info;
+    /// If true the asset is defined in internal asset list
+    bool built_in_asset;
 } in_out_info_t;
 
 /// Information specific to input

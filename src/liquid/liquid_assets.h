@@ -5,6 +5,7 @@
 
 #include <stdint.h>
 #include <stdbool.h>
+#include <string.h>
 #include "../constants.h"
 
 /// Ticker for unknown asset
@@ -13,6 +14,8 @@
 #define UNKNOWN_ASSET_DECIMALS 0
 /// Size of asset tag in bytes
 #define LIQUID_ASSET_TAG_LEN SHA256_LEN
+/// Size of a hexadecimal asset tag in bytes
+#define LIQUID_ASSET_TAG_HEX_LEN (LIQUID_ASSET_TAG_LEN * 2)
 /// Minimum value of decimals
 #define LIQUID_ASSET_DECIMALS_MIN 0
 /// Maximum value of decimals
@@ -34,6 +37,9 @@ typedef struct {
     asset_info_t info;
 } asset_definition_t;
 
+/// Asset tag of L-BTC or TL-BTC depending on build
+extern const uint8_t liquid_bitcoin_tag[LIQUID_ASSET_TAG_LEN];
+
 /**
  * Finds information about asset
  *
@@ -42,6 +48,17 @@ typedef struct {
  * @return pointer to asset definition structure or NULL if not found
  */
 const asset_info_t* liquid_get_asset_info(const uint8_t tag[static LIQUID_ASSET_TAG_LEN]);
+
+/**
+ * Checks wether the given asset tag corresponds to L-BTC (or TL-BTC for tentnet build)
+ *
+ * @param[in] tag asset tag for look-up
+ * @return true
+ * @return false
+ */
+static inline bool liquid_is_asset_bitcoin(const uint8_t tag[static LIQUID_ASSET_TAG_LEN]) {
+    return 0 == memcmp(tag, liquid_bitcoin_tag, sizeof(liquid_bitcoin_tag));
+}
 
 /**
  * Computes asset tag (asset ID).
@@ -65,6 +82,16 @@ bool liquid_compute_asset_tag(const uint8_t contract_hash[static SHA256_LEN],
                               uint32_t prevout_index,
                               uint8_t asset_tag[static LIQUID_ASSET_TAG_LEN]);
 
+/**
+ * Converts an asset tag to a hexadecimal string
+ *
+ * @param[in] asset_tag
+ *   A 32-byte asset tag.
+ * @param[out] out
+ *   Pointer to a 65-byte output buffer receiving hexadecimal representation of asset tag.
+ */
+void liquid_format_asset_tag(const uint8_t asset_tag[static LIQUID_ASSET_TAG_LEN],
+                             char out[static LIQUID_ASSET_TAG_HEX_LEN + 1]);
 
 #endif
 

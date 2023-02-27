@@ -1236,7 +1236,9 @@ static bool set_in_out_asset(dispatcher_context_t *dc,
             const asset_info_t *p_asset_info = liquid_get_asset_info(asset->tag);
             if (p_asset_info) {
                 state->cur.in_out.asset_info = *p_asset_info;
+                state->cur.in_out.built_in_asset = true;
             } else {
+                state->cur.in_out.built_in_asset = false;
                 asset_metadata_status_t stat = ASSET_METADATA_ABSENT;
                 if (state->global_key_presence & GLOBAL_HAS_ASSET_METADATA) {
                     stat = liquid_get_asset_metadata(dc,
@@ -1746,7 +1748,7 @@ static void process_input_map(dispatcher_context_t *dc) {
     }
     state->inputs_total_value += state->cur.in_out.value;
 
-    if ( !(state->cur.key_read_status & HAS_ASSET) || !(state->cur.key_read_status & HAS_ASSET) ) {
+    if ( !(state->cur.key_read_status & HAS_ASSET) ) {
         PRINTF("Asset tag is not provided for input %u\n", state->cur_input_index);
         SEND_SW(dc, SW_INCORRECT_DATA);
         return;
@@ -2062,8 +2064,19 @@ static void process_output_map(dispatcher_context_t *dc) {
         SEND_SW(dc, SW_INCORRECT_DATA);
         return;
     }
-
     state->cur.in_out.scriptPubKey_len = result_len;
+
+    if ( !(state->cur.key_read_status & HAS_ASSET) ) {
+        PRINTF("Asset tag is not provided for output %u\n", state->cur_output_index);
+        SEND_SW(dc, SW_INCORRECT_DATA);
+        return;
+    }
+
+    if (is_fee_output && !liquid_is_asset_bitcoin(state->cur.in_out.asset_tag)) {
+        PRINTF("Fee output has non-Bitcoin asset");
+        SEND_SW(dc, SW_INCORRECT_DATA);
+        return;
+    }
 
     if (is_fee_output) {
         dc->next(confirm_transaction);
@@ -2288,6 +2301,8 @@ static void output_validate_external(dispatcher_context_t *dc) {
                                state->cur.in_out.asset_info.ticker,
                                state->cur.in_out.value,
                                state->cur.in_out.asset_info.decimals,
+                               state->cur.in_out.asset_tag,
+                               !state->cur.in_out.built_in_asset, /* display_asset_tag */
                                output_next);
         } else { // Unknown asset
             ui_validate_output(dc,
@@ -2296,6 +2311,8 @@ static void output_validate_external(dispatcher_context_t *dc) {
                                UNKNOWN_ASSET_TICKER,
                                state->cur.in_out.value,
                                UNKNOWN_ASSET_DECIMALS,
+                               state->cur.in_out.asset_tag,
+                               true, /* display_asset_tag */
                                output_next);
         }
         return;
@@ -2363,18 +2380,18 @@ static void confirm_transaction(dispatcher_context_t *dc) {
     } else {
 #endif // LIQUID_HAS_SWAP
         // Show final user validation UI
-        if('\0' != *state->cur.in_out.asset_info.ticker) {
+        // For the fee output, asset must be L-BTC or TL-BTC
+        if('\0' != *state->cur.in_out.asset_info.ticker &&
+           liquid_is_asset_bitcoin(state->cur.in_out.asset_tag)) {
             ui_validate_transaction(dc,
                                     state->cur.in_out.asset_info.ticker,
                                     state->fee_value,
                                     state->cur.in_out.asset_info.decimals,
                                     sign_init);
-        } else { // Unknown asset
-            ui_validate_transaction(dc,
-                                    UNKNOWN_ASSET_TICKER,
-                                    state->fee_value,
-                                    UNKNOWN_ASSET_DECIMALS,
-                                    sign_init);
+        } else {
+            PRINTF("Unknown asset in fee output\n");
+            SEND_SW(dc, SW_INCORRECT_DATA);
+            return;
         }
 #ifdef LIQUID_HAS_SWAP
     }
