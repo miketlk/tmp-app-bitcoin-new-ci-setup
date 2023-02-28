@@ -20,141 +20,219 @@
 #include "../../common/varint.h"
 #include "../../crypto.h"
 
-// Maximum size of a single transaction element
+/// Maximum size of a single transaction element
 #define MAX_ELEMENT_LENGTH (16*1024*1024)
-// Maximum number of elements in a vector
+/// Maximum number of elements in a vector
 #define MAX_VECTOR_N_ELEMENTS 1024
 
-// Flag of vout filed: pegin operation
+/// Flag of vout filed: pegin operation
 #define VOUT_FLAG_IS_PEGIN (1LU << 30)
-// Flag of vout filed: input has asset issuance data
+/// Flag of vout filed: input has asset issuance data
 #define VOUT_FLAG_HAS_ISSUANCE (1LU << 31)
-// Bitmask used to remove issue and pegin flags
+/// Bitmask used to remove issue and pegin flags
 #define VOUT_VALUE_MASK 0x3FFFFFFFLU
 
-// Identifiers of commitment field within transaction input
+/// Identifiers of commitment field within transaction input
 typedef enum {
+    /// Amount commitment
     AMOUNT_COMMITMENT = 0,
+    /// Token commitment
     TOKEN_COMMITMENT,
-    ASSET_ISSUANCE_N_COMMITMENTS // last value to define number of commitments
+    /// Last value to define number of commitments
+    ASSET_ISSUANCE_N_COMMITMENTS
 } asset_issuance_commitment_id_t;
 
-// Values of byte defining commitment kind of asset issuance field
+/// Values of header byte defining commitment kind of asset issuance field
 typedef enum {
+    /// A “null” value with no subsequent bytes
     COMMITMENT_NONE = 0x00,
+    /// An “explicit” value with the following 8 bytes denoting a 64-bit value (big-endian)
     COMMITMENT_NONCONFIDENTIAL = 0x01,
-    COMMITMENT_CONFIDENTIAL, // any other byte values
+    /// A byte 0x08 or 0x09 indicating a blinded value as a compressed elliptic curve point. The
+    /// least significant bit of this byte denotes the least significant bit of the y-coordinate.
+    COMMITMENT_CONFIDENTIAL,
 } commitment_kind_t;
 
-// Identifiers of "proof" records within input witness
+/// Identifiers of "proof" records within input witness
 typedef enum {
+    /// Amount proof
     AMOUNT_PROOF = 0,
+    /// Token proof
     TOKEN_PROOF,
-    TXIN_WITNESS_N_PROOFS // last value to define number of proofs
+    /// Last value to define number of proofs
+    TXIN_WITNESS_N_PROOFS
 } txin_witness_proof_id_t;
 
-// Identifiers of vector-type records within input witness
+/// Identifiers of vector-type records within input witness
 typedef enum {
+    /// Script Witness
     SCRIPT_WITNESS_VECTOR = 0,
+    /// Peg-in Witness
     PEGIN_WITNESS_VECTOR,
-    TXIN_WITNESS_N_VECTORS // last value to define number of vector records
+    /// Last value to define number of vector records
+    TXIN_WITNESS_N_VECTORS
 } txin_witness_vector_id_t;
 
 // Identifiers of "proof" records within output witness
 typedef enum {
+    /// Surjection Proof
     SURJECTION_PROOF = 0,
+    /// Range Proof
     RANGE_PROOF,
-    TXOUT_WITNESS_N_PROOFS // last value to define number of proofs
+    /// Last value to define number of proofs
+    TXOUT_WITNESS_N_PROOFS
 } txout_witness_proof_id_t;
 
 struct parse_rawtx_state_s;  // forward declaration
 
+/// State of transaction's input parser
 typedef struct {
-    struct parse_rawtx_state_s *parent_state;      // subparsers can access parent's state
-    unsigned int scriptsig_size;                   // max 10_000 bytes
-    unsigned int scriptsig_counter;                // counter of scriptsig bytes already received
-    uint32_t vout;                                 // raw vout value including flags
-    asset_issuance_commitment_id_t commitment_id;  // identifier of commitment within asset issuance
+    /// Pointer to parent state
+    struct parse_rawtx_state_s *parent_state;
+    /// Size of ScriptSig, max 10_000 bytes
+    unsigned int scriptsig_size;
+    /// Counter of ScriptSig bytes already received
+    unsigned int scriptsig_counter;
+    /// Raw vout value including flags
+    uint32_t vout;
+    /// Identifier of commitment within asset issuance
+    asset_issuance_commitment_id_t commitment_id;
 } parse_rawtxinput_state_t;
 
+/// State of transaction's output parser
 typedef struct {
+    /// Pointer to parent state
     struct parse_rawtx_state_s *parent_state;
-    unsigned int scriptpubkey_size;     // max 10_000 bytes
-    unsigned int scriptpubkey_counter;  // counter of scriptpubkey bytes already received
+    /// Size of ScriptPubKey, max 10_000 bytes
+    unsigned int scriptpubkey_size;
+    /// Counter of ScriptPubKey bytes already received
+    unsigned int scriptpubkey_counter;
 } parse_rawtxoutput_state_t;
 
+/// State of parser processing input witness
 typedef struct {
+    /// Pointer to parent state
     struct parse_rawtx_state_s *parent_state;
     union {
-        txin_witness_proof_id_t proof_id;     // identifier of a currently parsed proof field
-        txin_witness_vector_id_t witness_id;  // identifier of a currently parsed witness field
+        /// Identifier of a currently parsed proof field
+        txin_witness_proof_id_t proof_id;
+        /// Identifier of a currently parsed witness field
+        txin_witness_vector_id_t witness_id;
     };
-    unsigned int vector_n_elements;  // number of vector elements
-    unsigned int vector_index;       // index of the vector element in the witness field
-    unsigned int element_length;     // size of the current element
-    unsigned int element_bytes_read; // number of bytes read of the current element
+    /// Number of vector elements
+    unsigned int vector_n_elements;
+    /// Index of the vector element in the witness field
+    unsigned int vector_index;
+    /// Size of the current element
+    unsigned int element_length;
+    /// Number of bytes read of the current element
+    unsigned int element_bytes_read;
+    /// True if the length of a current witness stack element was read
     bool is_element_length_read;
 } parse_in_witness_state_t;
 
+/// State of parser processing output witness
 typedef struct {
+    /// Pointer to parent state
     struct parse_rawtx_state_s *parent_state;
-    txout_witness_proof_id_t proof_id;  // identifier of a currently parsed field
-    unsigned int field_length;          // size of the current field in bytes
-    unsigned int field_bytes_read;      // number of bytes read of the current field
+    /// Identifier of a currently parsed proof field
+    txout_witness_proof_id_t proof_id;
+    /// Size of the current field in bytes
+    unsigned int field_length;
+    /// Number of bytes read of the current field
+    unsigned int field_bytes_read;
 } parse_out_witness_state_t;
 
+/// Internal state of transaction parser
 typedef struct parse_rawtx_state_s {
+    /// Pointer to SHA-256 context for computing transaction hash
     cx_sha256_t *hash_context;
+    /// Pointer to SHA-256 context for computing issuance hash
     cx_sha256_t *issuance_hash_context;
 
+    /// True if this transaction has a segregated witness
     bool is_segwit;
+    /// Number of transaction's inputs
     unsigned int n_inputs;
+    /// Number of transaction's outputs
     unsigned int n_outputs;
 
     union {
-        // since the parsing stages of inputs, outputs and witnesses are disjoint, we reuse the same
-        // space in memory
+        // Since the parsing stages of inputs, outputs and witnesses are disjoint, we reuse the same
+        // space in memory.
         struct {
-            unsigned int in_counter; // index of input being read
+            /// Index of input being read
+            unsigned int in_counter;
+            /// Context of transaction's input parser
             parser_context_t input_parser_context;
+            /// State of transaction's input parser
             parse_rawtxinput_state_t input_parser_state;
         };
         struct {
-            unsigned int out_counter; // index of output being read
+            /// Index of output being read
+            unsigned int out_counter;
+            /// Context of transaction's output parser
             parser_context_t output_parser_context;
+            /// State of transaction's output parser
             parse_rawtxoutput_state_t output_parser_state;
         };
         struct {
-            unsigned int in_wit_counter;  // index of witness field being read
+            /// Index of witness field being read
+            unsigned int in_wit_counter;
+            /// Context of parser processing input witness
             parser_context_t in_witness_parser_context;
+            /// State of parser processing input witness
             parse_in_witness_state_t in_witness_parser_state;
         };
         struct {
-            unsigned int out_wit_counter;  // index of witness field being read
+            /// Index of witness field being read
+            unsigned int out_wit_counter;
+            /// Context of parser processing output witness
             parser_context_t out_witness_parser_context;
+            /// State of parser processing output witness
             parse_out_witness_state_t out_witness_parser_state;
         };
     };
 
-    int output_index;  // index of queried output, or -1
+    /// Index of a queried output, or -1 if no output is queried
+    int output_index;
 
+    /// Pointer to parser outputs
     txid_parser_outputs_t *parser_outputs;
+    /// Pointer to information on transaction output
     txid_parser_vout_t *parser_output_vout;
 
 } parse_rawtx_state_t;
 
+/// State of PSET transaction parser
 typedef struct pset_parse_rawtx_state_s {
-    // internal state
-    uint8_t store[33];               // buffer for unparsed data
-    unsigned int store_data_length;  // size of data currently in store
+    /// Buffer for unparsed data
+    uint8_t store[33];
+    /// Size of data currently in store
+    unsigned int store_data_length;
+    /// Internal state of transaction parser
     parse_rawtx_state_t parser_state;
+    /// General parser context
     parser_context_t parser_context;
-    bool parser_error;  // set to true if there was an error during parsing
+    /// Set to true if there was an error during parsing
+    bool parser_error;
 } pset_parse_rawtx_state_t;
 
-/*   PARSER FOR A RAWTX INPUT */
 
-// parses the 32-bytes txid of an input in a rawtx
+/*****************************************************************************
+ * PARSER FOR A RAWTX INPUT
+ *****************************************************************************/
+
+/**
+ * Parses the 32-bytes txid of an input in a raw transaction.
+ *
+ * @param[in] state
+ *   Parser state.
+ * @param buffers
+ *   A set of two buffers containing unparsed bytes.
+ *
+ * @return 0 if step continues, 1 if step complete, a negative number on error.
+ */
 static int parse_rawtxinput_txid(parse_rawtxinput_state_t *state, buffer_t *buffers[2]) {
     uint8_t txid[32];
     bool result = dbuffer_read_bytes(buffers, txid, 32);
@@ -164,7 +242,16 @@ static int parse_rawtxinput_txid(parse_rawtxinput_state_t *state, buffer_t *buff
     return result;
 }
 
-// parses the 4-bytes vout of an input in a rawtx
+/**
+ * Parses the 4-bytes vout of an input in a rawtx.
+ *
+ * @param[in] state
+ *   Parser state.
+ * @param buffers
+ *   A set of two buffers containing unparsed bytes.
+ *
+ * @return 0 if step continues, 1 if step complete, a negative number on error.
+ */
 static int parse_rawtxinput_vout(parse_rawtxinput_state_t *state, buffer_t *buffers[2]) {
     uint8_t vout_bytes[4];
     bool result = dbuffer_read_bytes(buffers, vout_bytes, 4);
@@ -179,6 +266,16 @@ static int parse_rawtxinput_vout(parse_rawtxinput_state_t *state, buffer_t *buff
     return result;
 }
 
+/**
+ * Parses the 4-bytes ScriptSig length.
+ *
+ * @param[in] state
+ *   Parser state.
+ * @param buffers
+ *   A set of two buffers containing unparsed bytes.
+ *
+ * @return 0 if step continues, 1 if step complete, a negative number on error.
+ */
 static int parse_rawtxinput_scriptsig_size(parse_rawtxinput_state_t *state, buffer_t *buffers[2]) {
     uint64_t scriptsig_size;
     bool result = dbuffer_read_varint(buffers, &scriptsig_size);
@@ -191,7 +288,18 @@ static int parse_rawtxinput_scriptsig_size(parse_rawtxinput_state_t *state, buff
     return result;
 }
 
-// Does not read any bytes; only initializing the state before the next step
+/**
+ * Initializes state before parsing ScriptSig.
+ *
+ * Does not read any bytes.
+ *
+ * @param[in] state
+ *   Parser state.
+ * @param buffers
+ *   A set of two buffers containing unparsed bytes.
+ *
+ * @return 0 if step continues, 1 if step complete, a negative number on error.
+ */
 static int parse_rawtxinput_scriptsig_init(parse_rawtxinput_state_t *state, buffer_t *buffers[2]) {
     (void) buffers;
 
@@ -200,6 +308,16 @@ static int parse_rawtxinput_scriptsig_init(parse_rawtxinput_state_t *state, buff
     return 1;
 }
 
+/**
+ * Parses ScriptSig field.
+ *
+ * @param[in] state
+ *   Parser state.
+ * @param buffers
+ *   A set of two buffers containing unparsed bytes.
+ *
+ * @return 0 if step continues, 1 if step complete, a negative number on error.
+ */
 static int parse_rawtxinput_scriptsig(parse_rawtxinput_state_t *state, buffer_t *buffers[2]) {
     uint8_t data[32];
 
@@ -225,6 +343,16 @@ static int parse_rawtxinput_scriptsig(parse_rawtxinput_state_t *state, buffer_t 
     }
 }
 
+/**
+ * Parses Sequence field.
+ *
+ * @param[in] state
+ *   Parser state.
+ * @param buffers
+ *   A set of two buffers containing unparsed bytes.
+ *
+ * @return 0 if step continues, 1 if step complete, a negative number on error.
+ */
 static int parse_rawtxinput_sequence(parse_rawtxinput_state_t *state, buffer_t *buffers[2]) {
     uint8_t sequence_bytes[4];
 
@@ -235,7 +363,18 @@ static int parse_rawtxinput_sequence(parse_rawtxinput_state_t *state, buffer_t *
     return result;
 }
 
-static int parse_rawtxinput_asset_issuance_nonce(parse_rawtxinput_state_t *state, buffer_t *buffers[2]) {
+/**
+ * Parses Asset Blinding Nonce field from Asset Issuance.
+ *
+ * @param[in] state
+ *   Parser state.
+ * @param buffers
+ *   A set of two buffers containing unparsed bytes.
+ *
+ * @return 0 if step continues, 1 if step complete, a negative number on error.
+ */
+static int parse_rawtxinput_asset_issuance_nonce(parse_rawtxinput_state_t *state,
+                                                 buffer_t *buffers[2]) {
     if (!(state->vout & VOUT_FLAG_HAS_ISSUANCE)) {
         return 1;  // no asset issuance
     }
@@ -252,7 +391,18 @@ static int parse_rawtxinput_asset_issuance_nonce(parse_rawtxinput_state_t *state
     return result;
 }
 
-static int parse_rawtxinput_asset_issuance_entropy(parse_rawtxinput_state_t *state, buffer_t *buffers[2]) {
+/**
+ * Parses Asset Entropy field from Asset Issuance.
+ *
+ * @param[in] state
+ *   Parser state.
+ * @param buffers
+ *   A set of two buffers containing unparsed bytes.
+ *
+ * @return 0 if step continues, 1 if step complete, a negative number on error.
+ */
+static int parse_rawtxinput_asset_issuance_entropy(parse_rawtxinput_state_t *state,
+                                                   buffer_t *buffers[2]) {
     if (!(state->vout & VOUT_FLAG_HAS_ISSUANCE)) {
         return 1;  // no asset issuance
     }
@@ -269,6 +419,18 @@ static int parse_rawtxinput_asset_issuance_entropy(parse_rawtxinput_state_t *sta
     return result;
 }
 
+/**
+ * Initializes state before parsing amount and token commitments (confidential amounts).
+ *
+ * Does not read any bytes.
+ *
+ * @param[in] state
+ *   Parser state.
+ * @param buffers
+ *   A set of two buffers containing unparsed bytes.
+ *
+ * @return 0 if step continues, 1 if step complete, a negative number on error.
+ */
 static int parse_rawtxinput_asset_issuance_commitments_init(parse_rawtxinput_state_t *state, buffer_t *buffers[2]) {
     (void) buffers;
 
@@ -276,6 +438,16 @@ static int parse_rawtxinput_asset_issuance_commitments_init(parse_rawtxinput_sta
     return 1;
 }
 
+/**
+ * Parses amount or token commitment (confidential amount).
+ *
+ * @param[in] state
+ *   Parser state.
+ * @param buffers
+ *   A set of two buffers containing unparsed bytes.
+ *
+ * @return 0 if step continues, 1 if step complete, a negative number on error.
+ */
 static int parse_rawtxinput_asset_issuance_commitment(parse_rawtxinput_state_t *state, buffer_t *buffers[2]) {
     if (!(state->vout & VOUT_FLAG_HAS_ISSUANCE)) {
         return 1;  // no asset issuance
@@ -312,6 +484,7 @@ static int parse_rawtxinput_asset_issuance_commitment(parse_rawtxinput_state_t *
     return result ? 1 : 0;
 }
 
+/// Table of steps of transaction's input parser
 static const parsing_step_t parse_rawtxinput_steps[] = {
     (parsing_step_t) parse_rawtxinput_txid,
     (parsing_step_t) parse_rawtxinput_vout,
@@ -326,11 +499,25 @@ static const parsing_step_t parse_rawtxinput_steps[] = {
     (parsing_step_t) parse_rawtxinput_asset_issuance_commitment  // token commitment
 };
 
+/// Number of steps of transaction's input parser
 const int n_parse_rawtxinput_steps =
     sizeof(parse_rawtxinput_steps) / sizeof(parse_rawtxinput_steps[0]);
 
-/*   PARSER FOR A RAWTX OUTPUT */
 
+/*****************************************************************************
+ * PARSER FOR A RAWTX OUTPUT
+ *****************************************************************************/
+
+/**
+ * Parses the Asset field.
+ *
+ * @param[in] state
+ *   Parser state.
+ * @param buffers
+ *   A set of two buffers containing unparsed bytes.
+ *
+ * @return 0 if step continues, 1 if step complete, a negative number on error.
+ */
 static int parse_rawtxoutput_asset(parse_rawtxoutput_state_t *state, buffer_t *buffers[2]) {
     uint8_t header;
     bool result = dbuffer_peek(buffers, &header); // peek first byte
@@ -364,6 +551,16 @@ static int parse_rawtxoutput_asset(parse_rawtxoutput_state_t *state, buffer_t *b
     return result;
 }
 
+/**
+ * Parses the Amount field.
+ *
+ * @param[in] state
+ *   Parser state.
+ * @param buffers
+ *   A set of two buffers containing unparsed bytes.
+ *
+ * @return 0 if step continues, 1 if step complete, a negative number on error.
+ */
 static int parse_rawtxoutput_value(parse_rawtxoutput_state_t *state, buffer_t *buffers[2]) {
     uint8_t header;
     bool result = dbuffer_peek(buffers, &header); // peek first byte
@@ -397,6 +594,16 @@ static int parse_rawtxoutput_value(parse_rawtxoutput_state_t *state, buffer_t *b
     return result ? 1 : 0;
 }
 
+/**
+ * Parses the ECDH public key.
+ *
+ * @param[in] state
+ *   Parser state.
+ * @param buffers
+ *   A set of two buffers containing unparsed bytes.
+ *
+ * @return 0 if step continues, 1 if step complete, a negative number on error.
+ */
 static int parse_rawtxoutput_ecdh_pubkey(parse_rawtxoutput_state_t *state, buffer_t *buffers[2]) {
     uint8_t data[33];
     size_t data_len = 0;
@@ -433,6 +640,16 @@ static int parse_rawtxoutput_ecdh_pubkey(parse_rawtxoutput_state_t *state, buffe
     return result ? 1 : 0;
 }
 
+/**
+ * Parses the ScriptPubKey length.
+ *
+ * @param[in] state
+ *   Parser state.
+ * @param buffers
+ *   A set of two buffers containing unparsed bytes.
+ *
+ * @return 0 if step continues, 1 if step complete, a negative number on error.
+ */
 static int parse_rawtxoutput_scriptpubkey_size(parse_rawtxoutput_state_t *state,
                                                buffer_t *buffers[2]) {
     uint64_t scriptpubkey_size;
@@ -455,7 +672,18 @@ static int parse_rawtxoutput_scriptpubkey_size(parse_rawtxoutput_state_t *state,
     return result ? 1 : 0;
 }
 
-// Does not read any bytes; only initializing the state before the next step
+/**
+ * Initializes state before parsing ScriptPubKey.
+ *
+ * Does not read any bytes.
+ *
+ * @param[in] state
+ *   Parser state.
+ * @param buffers
+ *   A set of two buffers containing unparsed bytes.
+ *
+ * @return 0 if step continues, 1 if step complete, a negative number on error.
+ */
 static int parse_rawtxoutput_scriptpubkey_init(parse_rawtxoutput_state_t *state,
                                                buffer_t *buffers[2]) {
     (void) buffers;
@@ -464,6 +692,16 @@ static int parse_rawtxoutput_scriptpubkey_init(parse_rawtxoutput_state_t *state,
     return 1;
 }
 
+/**
+ * Parses ScriptPubKey field.
+ *
+ * @param[in] state
+ *   Parser state.
+ * @param buffers
+ *   A set of two buffers containing unparsed bytes.
+ *
+ * @return 0 if step continues, 1 if step complete, a negative number on error.
+ */
 static int parse_rawtxoutput_scriptpubkey(parse_rawtxoutput_state_t *state, buffer_t *buffers[2]) {
     uint8_t data[32];
 
@@ -513,6 +751,7 @@ static int parse_rawtxoutput_scriptpubkey(parse_rawtxoutput_state_t *state, buff
     }
 }
 
+/// Table of steps of transaction's output parser
 static const parsing_step_t parse_rawtxoutput_steps[] = {
     (parsing_step_t) parse_rawtxoutput_asset,
     (parsing_step_t) parse_rawtxoutput_value,
@@ -522,11 +761,27 @@ static const parsing_step_t parse_rawtxoutput_steps[] = {
     (parsing_step_t) parse_rawtxoutput_scriptpubkey,
 };
 
+/// Number of steps of transaction's output parser
 const int n_parse_rawtxoutput_steps =
     sizeof(parse_rawtxoutput_steps) / sizeof(parse_rawtxoutput_steps[0]);
 
-/*   PARSER FOR TRANSACTION INPUT WITNESS */
 
+/*****************************************************************************
+ * PARSER FOR TRANSACTION INPUT WITNESS
+ *****************************************************************************/
+
+/**
+ * Initializes state before parsing amount or token proof.
+ *
+ * Does not read any bytes.
+ *
+ * @param[in] state
+ *   Parser state.
+ * @param buffers
+ *   A set of two buffers containing unparsed bytes.
+ *
+ * @return 0 if step continues, 1 if step complete, a negative number on error.
+ */
 static int parse_in_witness_proofs_init(parse_in_witness_state_t *state, buffer_t *buffers[2]) {
     (void) buffers;
 
@@ -535,6 +790,16 @@ static int parse_in_witness_proofs_init(parse_in_witness_state_t *state, buffer_
     return 1;
 }
 
+/**
+ * Parses the varint length of amount or token proof.
+ *
+ * @param[in] state
+ *   Parser state.
+ * @param buffers
+ *   A set of two buffers containing unparsed bytes.
+ *
+ * @return 0 if step continues, 1 if step complete, a negative number on error.
+ */
 static int parse_in_witness_proof_length(parse_in_witness_state_t *state, buffer_t *buffers[2]) {
     uint64_t proof_length;
     bool result = dbuffer_read_varint(buffers, &proof_length);
@@ -549,6 +814,16 @@ static int parse_in_witness_proof_length(parse_in_witness_state_t *state, buffer
     return result ? 1 : 0;
 }
 
+/**
+ * Parses the amount or token proof.
+ *
+ * @param[in] state
+ *   Parser state.
+ * @param buffers
+ *   A set of two buffers containing unparsed bytes.
+ *
+ * @return 0 if step continues, 1 if step complete, a negative number on error.
+ */
 static int parse_in_witness_proof(parse_in_witness_state_t *state, buffer_t *buffers[2]) {
     uint8_t data[32];
 
@@ -575,6 +850,18 @@ static int parse_in_witness_proof(parse_in_witness_state_t *state, buffer_t *buf
     }
 }
 
+/**
+ * Initializes state before parsing script or peg-in witness stack.
+ *
+ * Does not read any bytes.
+ *
+ * @param[in] state
+ *   Parser state.
+ * @param buffers
+ *   A set of two buffers containing unparsed bytes.
+ *
+ * @return 0 if step continues, 1 if step complete, a negative number on error.
+ */
 static int parse_in_witness_vectors_init(parse_in_witness_state_t *state, buffer_t *buffers[2]) {
     (void) buffers;
 
@@ -583,6 +870,16 @@ static int parse_in_witness_vectors_init(parse_in_witness_state_t *state, buffer
     return 1;
 }
 
+/**
+ * Parses varint size of script or peg-in witness stack.
+ *
+ * @param[in] state
+ *   Parser state.
+ * @param buffers
+ *   A set of two buffers containing unparsed bytes.
+ *
+ * @return 0 if step continues, 1 if step complete, a negative number on error.
+ */
 static int parse_in_witness_vector_size(parse_in_witness_state_t *state, buffer_t *buffers[2]) {
     uint64_t vector_n_elements;
     bool result = dbuffer_read_varint(buffers, &vector_n_elements);
@@ -598,6 +895,16 @@ static int parse_in_witness_vector_size(parse_in_witness_state_t *state, buffer_
     return result ? 1 : 0;
 }
 
+/**
+ * Parses elements of script or peg-in witness stack.
+ *
+ * @param[in] state
+ *   Parser state.
+ * @param buffers
+ *   A set of two buffers containing unparsed bytes.
+ *
+ * @return 0 if step continues, 1 if step complete, a negative number on error.
+ */
 static int parse_in_witness_vector_elements(parse_in_witness_state_t *state, buffer_t *buffers[2]) {
     // read vector_n_elements elements
     while (state->vector_index < state->vector_n_elements) {
@@ -638,6 +945,7 @@ static int parse_in_witness_vector_elements(parse_in_witness_state_t *state, buf
     return 1;
 }
 
+/// Table of steps of input witness parser
 static const parsing_step_t parse_in_witness_steps[] = {
     (parsing_step_t) parse_in_witness_proofs_init,
     (parsing_step_t) parse_in_witness_proof_length,    // size of amount proof
@@ -651,11 +959,27 @@ static const parsing_step_t parse_in_witness_steps[] = {
     (parsing_step_t) parse_in_witness_vector_elements  // elements of pegin witness
 };
 
+/// Number of steps of input witness parser
 const int n_parse_in_witness_steps =
     sizeof(parse_in_witness_steps) / sizeof(parse_in_witness_steps[0]);
 
-/*   PARSER FOR TRANSACTION OUTPUT WITNESS */
 
+/*****************************************************************************
+ * PARSER FOR TRANSACTION OUTPUT WITNESS
+ *****************************************************************************/
+
+/**
+ * Initializes state before parsing surjection or range proof.
+ *
+ * Does not read any bytes.
+ *
+ * @param[in] state
+ *   Parser state.
+ * @param buffers
+ *   A set of two buffers containing unparsed bytes.
+ *
+ * @return 0 if step continues, 1 if step complete, a negative number on error.
+ */
 static int parse_out_witness_proofs_init(parse_out_witness_state_t *state, buffer_t *buffers[2]) {
     (void) buffers;
 
@@ -664,6 +988,16 @@ static int parse_out_witness_proofs_init(parse_out_witness_state_t *state, buffe
     return 1;
 }
 
+/**
+ * Parses the varint length of surjection or range proof.
+ *
+ * @param[in] state
+ *   Parser state.
+ * @param buffers
+ *   A set of two buffers containing unparsed bytes.
+ *
+ * @return 0 if step continues, 1 if step complete, a negative number on error.
+ */
 static int parse_out_witness_proof_length(parse_out_witness_state_t *state, buffer_t *buffers[2]) {
     uint64_t proof_length;
     bool result = dbuffer_read_varint(buffers, &proof_length);
@@ -678,6 +1012,16 @@ static int parse_out_witness_proof_length(parse_out_witness_state_t *state, buff
     return result ? 1 : 0;
 }
 
+/**
+ * Parses the surjection or range proof.
+ *
+ * @param[in] state
+ *   Parser state.
+ * @param buffers
+ *   A set of two buffers containing unparsed bytes.
+ *
+ * @return 0 if step continues, 1 if step complete, a negative number on error.
+ */
 static int parse_out_witness_proof(parse_out_witness_state_t *state, buffer_t *buffers[2]) {
     uint8_t data[32];
 
@@ -704,6 +1048,7 @@ static int parse_out_witness_proof(parse_out_witness_state_t *state, buffer_t *b
     }
 }
 
+/// Table of steps of output witness parser
 static const parsing_step_t parse_out_witness_steps[] = {
     (parsing_step_t) parse_out_witness_proofs_init,
     (parsing_step_t) parse_out_witness_proof_length, // size of surjection proof
@@ -712,11 +1057,25 @@ static const parsing_step_t parse_out_witness_steps[] = {
     (parsing_step_t) parse_out_witness_proof,        // range proof
 };
 
+/// Number of steps of output witness parser
 const int n_parse_out_witness_steps =
     sizeof(parse_out_witness_steps) / sizeof(parse_out_witness_steps[0]);
 
-/*   PARSER FOR A FULL RAWTX */
 
+/*****************************************************************************
+ * PARSER FOR A FULL RAWTX
+ *****************************************************************************/
+
+/**
+ * Parses Version field.
+ *
+ * @param[in] state
+ *   Parser state.
+ * @param buffers
+ *   A set of two buffers containing unparsed bytes.
+ *
+ * @return 0 if step continues, 1 if step complete, a negative number on error.
+ */
 static int parse_rawtx_version(parse_rawtx_state_t *state, buffer_t *buffers[2]) {
     uint8_t version_bytes[4];
 
@@ -727,9 +1086,20 @@ static int parse_rawtx_version(parse_rawtx_state_t *state, buffer_t *buffers[2])
     return result;
 }
 
-// Checks if this transaction has a segregated witness defined by a flag which
-// is for Elements transactions: 0x00 - non-segwit, 0x01 - segwit.
-// The flag is added to the hash computation as 0x00 to produce txid.
+/**
+ * Checks if this transaction has a segregated witness.
+ *
+ * Checks if this transaction has a segregated witness defined by a flag which is for Elements
+ * transactions: 0x00 - non-segwit, 0x01 - segwit. The flag is added to the hash computation as 0x00
+ * to produce txid.
+ *
+ * @param[in] state
+ *   Parser state.
+ * @param buffers
+ *   A set of two buffers containing unparsed bytes.
+ *
+ * @return 0 if step continues, 1 if step complete, a negative number on error.
+ */
 static int parse_rawtx_check_segwit(parse_rawtx_state_t *state, buffer_t *buffers[2]) {
     uint8_t flag;
     bool result = dbuffer_read_u8(buffers, &flag);
@@ -748,6 +1118,16 @@ static int parse_rawtx_check_segwit(parse_rawtx_state_t *state, buffer_t *buffer
     return result;
 }
 
+/**
+ * Parses varint number of transaction inputs.
+ *
+ * @param[in] state
+ *   Parser state.
+ * @param buffers
+ *   A set of two buffers containing unparsed bytes.
+ *
+ * @return 0 if step continues, 1 if step complete, a negative number on error.
+ */
 static int parse_rawtx_input_count(parse_rawtx_state_t *state, buffer_t *buffers[2]) {
     uint64_t n_inputs;
     bool result = dbuffer_read_varint(buffers, &n_inputs);
@@ -759,6 +1139,18 @@ static int parse_rawtx_input_count(parse_rawtx_state_t *state, buffer_t *buffers
     return result;
 }
 
+/**
+ * Initializes state before parsing transaction inputs.
+ *
+ * Does not read any bytes.
+ *
+ * @param[in] state
+ *   Parser state.
+ * @param buffers
+ *   A set of two buffers containing unparsed bytes.
+ *
+ * @return 0 if step continues, 1 if step complete, a negative number on error.
+ */
 static int parse_rawtx_inputs_init(parse_rawtx_state_t *state, buffer_t *buffers[2]) {
     (void) buffers;
 
@@ -770,6 +1162,16 @@ static int parse_rawtx_inputs_init(parse_rawtx_state_t *state, buffer_t *buffers
     return 1;
 }
 
+/**
+ * Parses transaction inputs.
+ *
+ * @param[in] state
+ *   Parser state.
+ * @param buffers
+ *   A set of two buffers containing unparsed bytes.
+ *
+ * @return 0 if step continues, 1 if step complete, a negative number on error.
+ */
 static int parse_rawtx_inputs(parse_rawtx_state_t *state, buffer_t *buffers[2]) {
     while (state->in_counter < state->n_inputs) {
         while (true) {
@@ -791,6 +1193,16 @@ static int parse_rawtx_inputs(parse_rawtx_state_t *state, buffer_t *buffers[2]) 
     return 1;
 }
 
+/**
+ * Parses varint number of transaction outputs.
+ *
+ * @param[in] state
+ *   Parser state.
+ * @param buffers
+ *   A set of two buffers containing unparsed bytes.
+ *
+ * @return 0 if step continues, 1 if step complete, a negative number on error.
+ */
 static int parse_rawtx_output_count(parse_rawtx_state_t *state, buffer_t *buffers[2]) {
     uint64_t n_outputs;
     bool result = dbuffer_read_varint(buffers, &n_outputs);
@@ -802,6 +1214,18 @@ static int parse_rawtx_output_count(parse_rawtx_state_t *state, buffer_t *buffer
     return result;
 }
 
+/**
+ * Initializes state before parsing transaction outputs.
+ *
+ * Does not read any bytes.
+ *
+ * @param[in] state
+ *   Parser state.
+ * @param buffers
+ *   A set of two buffers containing unparsed bytes.
+ *
+ * @return 0 if step continues, 1 if step complete, a negative number on error.
+ */
 static int parse_rawtx_outputs_init(parse_rawtx_state_t *state, buffer_t *buffers[2]) {
     (void) buffers;
 
@@ -812,6 +1236,16 @@ static int parse_rawtx_outputs_init(parse_rawtx_state_t *state, buffer_t *buffer
     return 1;
 }
 
+/**
+ * Parses transaction outputs.
+ *
+ * @param[in] state
+ *   Parser state.
+ * @param buffers
+ *   A set of two buffers containing unparsed bytes.
+ *
+ * @return 0 if step continues, 1 if step complete, a negative number on error.
+ */
 static int parse_rawtx_outputs(parse_rawtx_state_t *state, buffer_t *buffers[2]) {
     while (state->out_counter < state->n_outputs) {
         while (true) {
@@ -833,6 +1267,16 @@ static int parse_rawtx_outputs(parse_rawtx_state_t *state, buffer_t *buffers[2])
     return 1;
 }
 
+/**
+ * Parses Locktime field.
+ *
+ * @param[in] state
+ *   Parser state.
+ * @param buffers
+ *   A set of two buffers containing unparsed bytes.
+ *
+ * @return 0 if step continues, 1 if step complete, a negative number on error.
+ */
 static int parse_rawtx_locktime(parse_rawtx_state_t *state, buffer_t *buffers[2]) {
     uint8_t locktime_bytes[4];
     bool result = dbuffer_read_bytes(buffers, locktime_bytes, 4);
@@ -842,6 +1286,18 @@ static int parse_rawtx_locktime(parse_rawtx_state_t *state, buffer_t *buffers[2]
     return result;
 }
 
+/**
+ * Initializes state before parsing transaction's input witness data.
+ *
+ * Does not read any bytes.
+ *
+ * @param[in] state
+ *   Parser state.
+ * @param buffers
+ *   A set of two buffers containing unparsed bytes.
+ *
+ * @return 0 if step continues, 1 if step complete, a negative number on error.
+ */
 static int parse_rawtx_in_witnesses_init(parse_rawtx_state_t *state, buffer_t *buffers[2]) {
     (void) buffers;
 
@@ -852,7 +1308,16 @@ static int parse_rawtx_in_witnesses_init(parse_rawtx_state_t *state, buffer_t *b
     return 1;
 }
 
-// Parses the inputs' witness data; currently, no use is made of that data.
+/**
+ * Parses transaction's input witness data.
+ *
+ * @param[in] state
+ *   Parser state.
+ * @param buffers
+ *   A set of two buffers containing unparsed bytes.
+ *
+ * @return 0 if step continues, 1 if step complete, a negative number on error.
+ */
 static int parse_rawtx_in_witnesses(parse_rawtx_state_t *state, buffer_t *buffers[2]) {
     if (!state->is_segwit) {
         return 1;  // no witnesses to parse
@@ -878,6 +1343,18 @@ static int parse_rawtx_in_witnesses(parse_rawtx_state_t *state, buffer_t *buffer
     return 1;
 }
 
+/**
+ * Initializes state before parsing transaction's output witness data.
+ *
+ * Does not read any bytes.
+ *
+ * @param[in] state
+ *   Parser state.
+ * @param buffers
+ *   A set of two buffers containing unparsed bytes.
+ *
+ * @return 0 if step continues, 1 if step complete, a negative number on error.
+ */
 static int parse_rawtx_out_witnesses_init(parse_rawtx_state_t *state, buffer_t *buffers[2]) {
     (void) buffers;
 
@@ -888,7 +1365,16 @@ static int parse_rawtx_out_witnesses_init(parse_rawtx_state_t *state, buffer_t *
     return 1;
 }
 
-// Parses the inputs' witness data; currently, no use is made of that data.
+/**
+ * Parses transaction's output witness data.
+ *
+ * @param[in] state
+ *   Parser state.
+ * @param buffers
+ *   A set of two buffers containing unparsed bytes.
+ *
+ * @return 0 if step continues, 1 if step complete, a negative number on error.
+ */
 static int parse_rawtx_out_witnesses(parse_rawtx_state_t *state, buffer_t *buffers[2]) {
     if (!state->is_segwit) {
         return 1;  // no witnesses to parse
@@ -914,6 +1400,7 @@ static int parse_rawtx_out_witnesses(parse_rawtx_state_t *state, buffer_t *buffe
     return 1;
 }
 
+/// Table of steps of a full transaction
 static const parsing_step_t parse_rawtx_steps[] = {(parsing_step_t) parse_rawtx_version,
                                                    (parsing_step_t) parse_rawtx_check_segwit,
                                                    (parsing_step_t) parse_rawtx_input_count,
@@ -928,8 +1415,17 @@ static const parsing_step_t parse_rawtx_steps[] = {(parsing_step_t) parse_rawtx_
                                                    (parsing_step_t) parse_rawtx_out_witnesses_init,
                                                    (parsing_step_t) parse_rawtx_out_witnesses };
 
+/// Number of steps of a full transaction
 const int n_parse_rawtx_steps = sizeof(parse_rawtx_steps) / sizeof(parse_rawtx_steps[0]);
 
+/**
+ * Callback function processing streamed transaction.
+ *
+ * @param[in,out] data
+ *   Input data buffer to process.
+ * @param cb_state
+ *   User-provided callback state.
+ */
 static void cb_process_data(buffer_t *data, void *cb_state) {
     pset_parse_rawtx_state_t *state = (pset_parse_rawtx_state_t *) cb_state;
 
@@ -998,6 +1494,14 @@ int call_pset_parse_rawtx(dispatcher_context_t *dispatcher_context,
     return 0;
 }
 
+/**
+ * Callback function processing streamed transaction's output.
+ *
+ * @param[in,out] data
+ *   Input data buffer to process.
+ * @param cb_state
+ *   User-provided callback state.
+ */
 static void cb_process_single_output_data(buffer_t *data, void *cb_state) {
     pset_parse_rawtx_state_t *state = (pset_parse_rawtx_state_t *) cb_state;
 
