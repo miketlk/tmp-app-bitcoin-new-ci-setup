@@ -304,24 +304,6 @@ static int blech32_convert_bits(uint8_t *out,
     return 1;
 }
 
-/**
- * Encodes an address in BLECH32/BLECH32M format.
- *
- * @param[out] output
- *   Output buffer.
- * @param[in] output_limit
- *   Maximum number of bytes written to the output buffer.
- * @param[in] hrp
- *   Human readable part, a null-terminated string.
- * @param[in] witver
- *   Witness version.
- * @param[in] witprog
- *   Witness program.
- * @param witprog_len
- *   Length of the witness program in bytes.
- *
- * @return number of bytes written to the output buffer.
- */
 int blech32_addr_encode(char *output,
                         size_t output_limit,
                         const char *hrp,
