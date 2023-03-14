@@ -3,6 +3,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <stddef.h>
+#include <string.h>
 
 /**
  * Reverses data in-place.
@@ -38,6 +39,9 @@ static inline void reverse_copy(uint8_t *dst, const uint8_t *src, size_t len) {
     }
 }
 
+#ifdef __clang__
+extern void explicit_bzero(void *ptr, size_t len);
+#endif
 /**
  * Wrapper for explicit_bzero() supperssing "implicit function declaration" warning.
  *
@@ -51,4 +55,44 @@ static inline void call_explicit_bzero(void *dest, size_t len) {
 #pragma GCC diagnostic ignored "-Wimplicit-function-declaration"
     explicit_bzero(dest, len);
 #pragma GCC diagnostic pop
+}
+
+/**
+ * Tests two blocks of memory for equality.
+ *
+ * This is a wrapper for memcmp() returning a boolean value instead of an integer.
+ *
+ * @param[in] ptr1
+ *   Pointer to block of memory.
+ * @param[in] ptr2
+ *   Pointer to block of memory.
+ * @param[in] num
+ *   Number of bytes to compare.
+ *
+ * @return true if blocks are equal, false otherwise.
+ */
+static inline bool memeq(const void * ptr1, const void * ptr2, size_t num) {
+    return 0 == memcmp(ptr1, ptr2, num);
+}
+
+/**
+ * Tests two null-terminated strings for equality.
+ *
+ * This is a wrapper for strncmp() returning a boolean value instead of an integer.
+ * This function starts comparing the first character of each string. If they are equal to each
+ * other, it continues with the following pairs until the characters differ, until a terminating
+ * null-character is reached, or until num characters match in both strings, whichever happens
+ * first.
+ *
+ * @param[in] str1
+ *   Null-terminated string to be compared.
+ * @param[in] str2
+ *   Null-terminated string to be compared.
+ * @param[in] num
+ *   Maximum number of characters to compare.
+ *
+ * @return true if strings are equal, false otherwise.
+ */
+static inline bool streq(const char * str1, const char * str2, size_t num) {
+    return 0 == strncmp(str1, str2, num);
 }

@@ -11,9 +11,9 @@
 
 #include "../boilerplate/sw.h"
 
-#ifndef SKIP_FOR_CMOCKA
 #include "../crypto.h"
-#else
+
+#ifdef SKIP_FOR_CMOCKA
 // disable problematic macros when compiling unit tests with CMOCKA
 #define PRINTF(...)
 #define PIC(x) (x)
@@ -344,6 +344,18 @@ int parse_policy_map_key_info(buffer_t *buffer, policy_map_key_info_t *out) {
     }
 
     return 0;
+}
+
+bool validate_policy_map_extended_pubkey(const policy_map_key_info_t *key_info,
+                                         uint32_t bip32_pubkey_version) {
+    int status = validate_serialized_extended_pubkey(
+        key_info->ext_pubkey,
+        key_info->master_key_derivation,
+        key_info->has_key_origin ? key_info->master_key_derivation_len : -1,
+        bip32_pubkey_version
+    );
+
+    return EXTENDED_PUBKEY_VALID == status;
 }
 
 static size_t parse_key_index(buffer_t *in_buf) {

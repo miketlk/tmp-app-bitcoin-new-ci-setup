@@ -2434,6 +2434,11 @@ static void sign_init(dispatcher_context_t *dc) {
             SEND_SW(dc, SW_BAD_STATE);  // should never happen
             return;
         }
+        if (!validate_policy_map_extended_pubkey(&our_key_info,
+                                                 G_coin_config->bip32_pubkey_version)) {
+            SEND_SW(dc, SW_INCORRECT_DATA);
+            return;
+        }
 
         uint32_t fpr = read_u32_be(our_key_info.master_key_fingerprint, 0);
         if (fpr == state->master_key_fingerprint) {

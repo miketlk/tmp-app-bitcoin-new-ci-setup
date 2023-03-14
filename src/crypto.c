@@ -19,11 +19,13 @@
 #include <string.h>   // memset, explicit_bzero
 #include <stdbool.h>  // bool
 
+#ifndef SKIP_FOR_CMOCKA
 #include "os.h"
 #include "cx.h"
 #include "cx_stubs.h"
 #include "cx_ecfp.h"
 #include "ox_ec.h"
+#endif
 
 #include "common/base58.h"
 #include "common/bip32.h"
@@ -33,10 +35,16 @@
 
 #include "crypto.h"
 
+#ifndef SKIP_FOR_CMOCKA
 #include "cx_ram.h"
 #include "lcx_ripemd160.h"
 #include "cx_ripemd160.h"
 #include "../../cxram_stash.h"
+#endif
+
+#include "util.h"
+
+#ifndef SKIP_FOR_CMOCKA
 
 /**
  * Generator for secp256k1, value 'g' defined in "Standards for Efficient Cryptography"
@@ -231,18 +239,6 @@ void crypto_hash160(const uint8_t *in, uint16_t inlen, uint8_t out[static 20]) {
     crypto_ripemd160(buffer, 32, out);
 }
 
-int crypto_get_compressed_pubkey(const uint8_t uncompressed_key[static 65],
-                                 uint8_t out[static 33]) {
-    PRINT_STACK_POINTER();
-
-    if (uncompressed_key[0] != 0x04) {
-        return -1;
-    }
-    out[0] = (uncompressed_key[64] % 2 == 1) ? 0x03 : 0x02;
-    memmove(out + 1, uncompressed_key + 1, 32);  // copy x
-    return 0;
-}
-
 int crypto_get_uncompressed_pubkey(const uint8_t compressed_key[static 33],
                                    uint8_t out[static 65]) {
     PRINT_STACK_POINTER();
@@ -272,14 +268,6 @@ int crypto_get_uncompressed_pubkey(const uint8_t compressed_key[static 33],
 
     out[0] = 0x04;
     return 0;
-}
-
-// TODO: missing unit tests
-void crypto_get_checksum(const uint8_t *in, uint16_t in_len, uint8_t out[static 4]) {
-    uint8_t buffer[32];
-    cx_hash_sha256(in, in_len, buffer, 32);
-    cx_hash_sha256(buffer, 32, buffer, 32);
-    memmove(out, buffer, 4);
 }
 
 bool crypto_get_compressed_pubkey_at_path(const uint32_t bip32_path[],
@@ -609,4 +597,86 @@ int crypto_tr_tweak_seckey(uint8_t seckey[static 32]) {
     END_TRY;
 
     return ret;
+}
+
+#endif // SKIP_FOR_CMOCKA
+
+/*****************************************************************************
+ * FUNTIONS COVERED BY CMOCKA UNIT TESTS
+ *****************************************************************************/
+
+// TODO: missing unit tests
+void crypto_get_checksum(const uint8_t *in, uint16_t in_len, uint8_t out[static 4]) {
+    uint8_t buffer[32];
+    cx_hash_sha256(in, in_len, buffer, 32);
+    cx_hash_sha256(buffer, 32, buffer, 32);
+    memmove(out, buffer, 4);
+}
+
+int crypto_get_compressed_pubkey(const uint8_t uncompressed_key[static 65],
+                                 uint8_t out[static 33]) {
+    if (uncompressed_key[0] != 0x04) {
+        return -1;
+    }
+    out[0] = (uncompressed_key[64] % 2 == 1) ? 0x03 : 0x02;
+    memmove(out + 1, uncompressed_key + 1, 32);  // copy x
+    return 0;
+}
+
+int validate_serialized_extended_pubkey(const char *pubkey,
+                                        const uint32_t bip32_path[],
+                                        int bip32_path_len,
+                                        uint32_t bip32_pubkey_version) {
+    if (!pubkey || bip32_path_len < -1 || bip32_path_len > MAX_BIP32_PATH_STEPS ||
+        (bip32_path_len > 0 && !bip32_path)) {
+        return EXTENDED_PUBKEY_INVALID_ARGUMENT;
+    }
+
+    size_t pubkey_len = strnlen(pubkey, MAX_SERIALIZED_PUBKEY_LENGTH + 1);
+    if (!pubkey_len || pubkey_len > MAX_SERIALIZED_PUBKEY_LENGTH) {
+        return EXTENDED_PUBKEY_INVALID_ARGUMENT;
+    }
+
+    serialized_extended_pubkey_check_t ext_pubkey_check;  // extended pubkey and checksum
+    serialized_extended_pubkey_t *ext_pubkey = &ext_pubkey_check.serialized_extended_pubkey;
+
+    if (sizeof(ext_pubkey_check) !=
+        base58_decode(pubkey, pubkey_len, (uint8_t*)&ext_pubkey_check, sizeof(ext_pubkey_check))) {
+        return EXTENDED_PUBKEY_INVALID_BASE58_CODE;
+    }
+
+    uint8_t checksum[4];
+    crypto_get_checksum((uint8_t *)ext_pubkey, sizeof(serialized_extended_pubkey_t), checksum);
+
+    if (!memeq(checksum, ext_pubkey_check.checksum, sizeof(checksum))) {
+        return EXTENDED_PUBKEY_INVALID_CHECKSUM;
+    }
+
+    if (read_u32_be(ext_pubkey->version, 0) != bip32_pubkey_version) {
+        return EXTENDED_PUBKEY_INVALID_VERSION;
+    }
+
+    if (ext_pubkey->depth == 0) {
+        if (read_u32_be(ext_pubkey->child_number, 0) != 0) {
+            return EXTENDED_PUBKEY_INVALID_CHILD_NUMBER;
+        } else if (read_u32_be(ext_pubkey->parent_fingerprint, 0) != 0) {
+            return EXTENDED_PUBKEY_INVALID_PARENT_FINGERPRINT;
+        }
+    }
+
+    if (bip32_path_len > 0) {
+        uint32_t child_number = !bip32_path_len ? 0 : bip32_path[bip32_path_len - 1];
+        if (ext_pubkey->depth != bip32_path_len) {
+            return EXTENDED_PUBKEY_INVALID_DEPTH;
+        } else if (read_u32_be(ext_pubkey->child_number, 0) != child_number) {
+            return EXTENDED_PUBKEY_INVALID_CHILD_NUMBER;
+        }
+    }
+
+    uint8_t prefix = ext_pubkey->compressed_pubkey[0];
+    if (prefix != 0x02 && prefix != 0x03) {
+        return EXTENDED_PUBKEY_INVALID_PREFIX;
+    }
+
+    return EXTENDED_PUBKEY_VALID;
 }

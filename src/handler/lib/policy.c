@@ -1,6 +1,7 @@
 #include <stdlib.h>
 
 #include "policy.h"
+#include "util.h"
 
 #include "../lib/get_merkle_leaf_element.h"
 #include "../../crypto.h"
@@ -108,7 +109,14 @@ static int __attribute__((noinline)) get_extended_pubkey(policy_parser_state_t *
                       sizeof(decoded_pubkey_check)) == -1) {
         return -1;
     }
-    // TODO: validate checksum
+
+    uint8_t checksum[4];
+    crypto_get_checksum((uint8_t *)&decoded_pubkey_check.serialized_extended_pubkey,
+                        sizeof(decoded_pubkey_check.serialized_extended_pubkey),
+                        checksum);
+    if (!memeq(checksum, decoded_pubkey_check.checksum, sizeof(checksum))) {
+        return -1;
+    }
 
     memcpy(out,
            &decoded_pubkey_check.serialized_extended_pubkey,

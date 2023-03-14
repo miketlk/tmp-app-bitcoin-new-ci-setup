@@ -147,17 +147,6 @@ typedef struct {
     size_t key_str_len;   // size of key data string
 } policy_node_blinding_key_t;
 
-// TODO: remove
-#if 0
-typedef enum {
-    SCRIPT_TYPE_P2PKH = 0x00,
-    SCRIPT_TYPE_P2SH = 0x01,
-    SCRIPT_TYPE_P2WPKH = 0x02,
-    SCRIPT_TYPE_P2WSH = 0x03,
-    SCRIPT_TYPE_P2TR = 0x04
-} script_type_e;
-#endif
-
 /**
  * TODO: docs
  */
@@ -186,5 +175,11 @@ int parse_policy_map(buffer_t *in_buf, void *out, size_t out_len);
  * TODO: docs
  */
 void get_policy_wallet_id(policy_map_wallet_header_t *wallet_header, uint8_t out[static 32]);
+
+/**
+ * TODO: docs
+ */
+bool validate_policy_map_extended_pubkey(const policy_map_key_info_t *key_info,
+                                         uint32_t bip32_pubkey_version);
 
 #endif

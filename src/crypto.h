@@ -12,6 +12,28 @@
 #include "./common/varint.h"
 #include "./common/write.h"
 
+/// Validation status of a serialized extended public key
+typedef enum {
+    /// Extended public key is valid
+    EXTENDED_PUBKEY_VALID = 0,
+    /// Invalid function argument
+    EXTENDED_PUBKEY_INVALID_ARGUMENT = -1,
+    /// Invalid Base58 encoding
+    EXTENDED_PUBKEY_INVALID_BASE58_CODE = -2,
+    /// Invalid checksum
+    EXTENDED_PUBKEY_INVALID_CHECKSUM = -3,
+    /// Invalid version bytes
+    EXTENDED_PUBKEY_INVALID_VERSION = -4,
+    /// Invalid depth (derivation level)
+    EXTENDED_PUBKEY_INVALID_DEPTH = -5,
+    /// Invalid child number
+    EXTENDED_PUBKEY_INVALID_CHILD_NUMBER = -6,
+    /// Invalid parent's key fingerprint
+    EXTENDED_PUBKEY_INVALID_PARENT_FINGERPRINT = -7,
+    /// Invalid public key prefix
+    EXTENDED_PUBKEY_INVALID_PREFIX = -8
+} extended_pubkey_status_t;
+
 /**
  * A serialized extended pubkey according to BIP32 specifications.
  * All the fields are represented as fixed-length arrays serialized in big-endian.
@@ -404,3 +426,31 @@ int crypto_tr_tweak_pubkey(uint8_t pubkey[static 32], uint8_t *y_parity, uint8_t
  * key.
  */
 int crypto_tr_tweak_seckey(uint8_t seckey[static 32]);
+
+/**
+ * Computes the base58check-encoded extended pubkey at a given path.
+ *
+ * This function verifies:
+ *   - correctness of Base58 encoding
+ *   - checksum
+ *   - version bytes
+ *   - depth (derivation level), optional
+ *   - parent's key fingerprint (only for master key)
+ *   - child number, optional
+ *   - public key prefix
+ *
+ * @param[in] pubkey
+ *   Base58-encoded extended pubkey, null-terminated string.
+ * @param[in] bip32_path
+ *   Pointer to 32-bit array of BIP-32 derivation steps, may be NULL if bip32_path_len < 1.
+ * @param bip32_path_len
+ *   Number of steps in the BIP32 derivation, -1 if derivation path is not available.
+ * @param bip32_pubkey_version
+ *   Version prefix to use for the pubkey.
+ *
+ * @return one of extended_pubkey_status_t constants: =0 if the pubkey is valid, <0 otherwise.
+ */
+int validate_serialized_extended_pubkey(const char *pubkey,
+                                        const uint32_t bip32_path[],
+                                        int bip32_path_len,
+                                        uint32_t bip32_pubkey_version);

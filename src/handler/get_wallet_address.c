@@ -168,6 +168,10 @@ void handler_get_wallet_address(dispatcher_context_t *dc) {
             SEND_SW(dc, SW_INCORRECT_DATA);
             return;
         }
+        if (!validate_policy_map_extended_pubkey(&key_info, G_coin_config->bip32_pubkey_version)) {
+            SEND_SW(dc, SW_INCORRECT_DATA);
+            return;
+        }
 
         if (read_u32_be(key_info.master_key_fingerprint, 0) != master_key_fingerprint) {
             SEND_SW(dc, SW_INCORRECT_DATA);
