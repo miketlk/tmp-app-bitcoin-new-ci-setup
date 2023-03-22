@@ -428,7 +428,7 @@ int crypto_tr_tweak_pubkey(uint8_t pubkey[static 32], uint8_t *y_parity, uint8_t
 int crypto_tr_tweak_seckey(uint8_t seckey[static 32]);
 
 /**
- * Computes the base58check-encoded extended pubkey at a given path.
+ * Validates the Base58Check-encoded extended pubkey at a given path.
  *
  * This function verifies:
  *   - correctness of Base58 encoding

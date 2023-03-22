@@ -50,11 +50,13 @@ Currently supported wallet policies for multisig:
 
 // TODO: add unit tests to this module
 
+/// Token descriptor
 typedef struct {
-    PolicyNodeType type;
-    const char *name;
+    PolicyNodeType type; ///< Node type
+    const char *name;    ///< Token name
 } token_descriptor_t;
 
+/// Table of token descriptors
 static const token_descriptor_t KNOWN_TOKENS[] = {
     {.type = TOKEN_SH, .name = "sh"},
     {.type = TOKEN_WSH, .name = "wsh"},
@@ -125,22 +127,62 @@ int read_policy_map_wallet(buffer_t *buffer, policy_map_wallet_header_t *header)
     return 0;
 }
 
+/**
+ * Tests if the given character is a decimal digit.
+ *
+ * @param[in] c
+ *   Character to test.
+ *
+ * @return true if the character is a decimal digit, false otherwise.
+ */
 static bool is_digit(char c) {
     return '0' <= c && c <= '9';
 }
 
+/**
+ * Tests if the given character is a latin letter.
+ *
+ * @param[in] c
+ *   Character to test.
+ *
+ * @return true if the character is a latin letter, false otherwise.
+ */
 static bool is_alpha(char c) {
     return ('a' <= c && c <= 'z') || ('A' <= c && c <= 'Z');
 }
 
+/**
+ * Tests if the given character is a digit or a latin letter.
+ *
+ * @param[in] c
+ *   Character to test.
+ *
+ * @return true if the character is a digit or a latin letter, false otherwise.
+ */
 static bool is_alphanumeric(char c) {
     return is_alpha(c) || is_digit(c);
 }
 
+/**
+ * Tests if the given character is a lowercase hexadecimal digit.
+ *
+ * @param[in] c
+ *   Character to test.
+ *
+ * @return true if the character is a lowercase hexadecimal digit, false otherwise.
+ */
 static bool is_lowercase_hex(char c) {
     return is_digit(c) || ('a' <= c && c <= 'f');
 }
 
+/**
+ * Converts a lowercase hexadecimal digit
+ *
+ * @param[in] c
+ *   Input character.
+ *
+ * @return integer corresponding to the given hexadecimal digit.
+ */
 static uint8_t lowercase_hex_to_int(char c) {
     return (uint8_t) (is_digit(c) ? c - '0' : c - 'a' + 10);
 }
@@ -165,10 +207,21 @@ static size_t read_word(buffer_t *buffer, char *out, size_t out_len) {
 #endif // 0
 
 /**
+ * Reads a singel tag from the buffer.
+ *
  * Read up to out_len characters from buffer, until either:
  * - the buffer is exhausted
  * - out_len characters are read
  * - the next character is _not_ in [a-zAZ], [0-9]
+ *
+ * @param[in,out] buffer
+ *   Input buffer.
+ * @param[out] out
+ *   Output buffer where outputted tag will be placed.
+ * @param[in] out_len
+ *   Size of the output buffer in bytes.
+ *
+ * @return length of outputted tag in bytes.
  */
 static size_t read_tag(buffer_t *buffer, char *out, size_t out_len) {
     size_t tag_len = 0;
@@ -181,8 +234,12 @@ static size_t read_tag(buffer_t *buffer, char *out, size_t out_len) {
 }
 
 /**
- * Read the next word from buffer (or up to MAX_TOKEN_LENGTH characters), and
- * returns the index of this word in KNOWN_TOKENS if found; -1 otherwise.
+ * Reads a singel tag from the buffer and finds corresponding type of policy node.
+ *
+ * @param[in,out] buffer
+ *   Input buffer.
+ *
+ * @return type of policy node or -1 if not found.
  */
 static int parse_token(buffer_t *buffer) {
     char word[MAX_TOKEN_LENGTH + 1];
@@ -200,10 +257,17 @@ static int parse_token(buffer_t *buffer) {
 }
 
 /**
- * Parses an unsigned decimal number from buffer, stopping when either the buffer ends, the next
- * character is not a number, or the number is already too big. Leading zeros are not allowed.
- * Returns a valid 0 on success, -1 on failure.
- * The read number is saved into *out on success.
+ * Parses an unsigned decimal number from buffer.
+ *
+ * Parsing stops when either the buffer ends, the next character is not a number, or the number is
+ * already too big. Leading zeros are not allowed.
+ *
+ * @param[in,out] buffer
+ *   Input buffer.
+ * @param[out] out
+ *   Pointer to variable receiving resulting integer.
+ *
+ * @return 0 on success, -1 on failure.
  */
 static int parse_unsigned_decimal(buffer_t *buffer, size_t *out) {
     uint8_t c;
@@ -243,8 +307,19 @@ static int parse_unsigned_decimal(buffer_t *buffer, size_t *out) {
     return 0;
 }
 
-// Reads a derivation step expressed in decimal, with the symbol ' to mark if hardened (h is not
-// supported) Returns 0 on success, -1 on error.
+/**
+ * Reads a derivation step from buffer.
+ *
+ * Reads a derivation step expressed in decimal, with the symbol ' to mark if hardened (h is not
+ * supported).
+ *
+ * @param[in,out] buffer
+ *   Input buffer.
+ * @param[out] out
+ *   Output derivation step.
+ *
+ * @return 0 on success, -1 on error.
+ */
 static int buffer_read_derivation_step(buffer_t *buffer, uint32_t *out) {
     size_t der_step;
     if (parse_unsigned_decimal(buffer, &der_step) == -1 || der_step >= BIP32_FIRST_HARDENED_CHILD) {
@@ -358,6 +433,14 @@ bool validate_policy_map_extended_pubkey(const policy_map_key_info_t *key_info,
     return EXTENDED_PUBKEY_VALID == status;
 }
 
+/**
+ * Parses key index from the input buffer.
+ *
+ * @param[in,out] in_buf
+ *   Input buffer.
+ *
+ * @return a non-negative integer key index or -1 if error.
+ */
 static size_t parse_key_index(buffer_t *in_buf) {
     char c;
     if (!buffer_read_u8(in_buf, (uint8_t *) &c) || c != '@') {
@@ -371,12 +454,27 @@ static size_t parse_key_index(buffer_t *in_buf) {
     return k;
 }
 
+/// Flag: current context is within sh()
 #define CONTEXT_WITHIN_SH      (1U << 0)
+/// Flag: current context is within blinded()
 #define CONTEXT_WITHIN_BLINDED (1U << 1)
 
 /**
+ * Internal function recursively parsing a script expression from the input buffer.
+ *
  * Parses a SCRIPT expression from the in_buf buffer, allocating the nodes and variables in out_buf.
  * The initial pointer in out_buf will contain the root node of the SCRIPT.
+ *
+ * @param[in,out] in_buf
+ *   Input buffer with a script expression to parse.
+ * @param[in,out] out_buf
+ *   Output buffer which receives a tree-like structure of nodes.
+ * @param[in] depth
+ *   Current depth of nested structure.
+ * @param[in] context_flags
+ *   Flags describing current context, a combination of CONTEXT_* constants.
+ *
+ * @return 0 if successful, a negative number on error.
  */
 static int parse_script(buffer_t *in_buf,
                         buffer_t *out_buf,
@@ -633,7 +731,7 @@ int parse_policy_map(buffer_t *in_buf, void *out, size_t out_len) {
 
 #ifndef SKIP_FOR_CMOCKA
 
-void get_policy_wallet_id(policy_map_wallet_header_t *wallet_header, uint8_t out[static 32]) {
+void get_policy_wallet_id(const policy_map_wallet_header_t *wallet_header, uint8_t out[static 32]) {
     cx_sha256_t wallet_hash_context;
     cx_sha256_init(&wallet_hash_context);
 
