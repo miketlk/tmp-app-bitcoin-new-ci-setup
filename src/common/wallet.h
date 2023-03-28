@@ -21,20 +21,14 @@
 
 #ifdef HAVE_LIQUID
 /// Maximum supported number of keys for a policy map.
-#define MAX_POLICY_MAP_COSIGNERS 15
+#define MAX_POLICY_MAP_COSIGNERS 7
 #else
 /// Maximum supported number of keys for a policy map.
 #define MAX_POLICY_MAP_COSIGNERS 5
 #endif
 
-#ifdef HAVE_LIQUID
-// TODO: Add support of 15 public keys
 /// Maximum supported number of keys for a policy map.
-#define MAX_POLICY_MAP_KEYS 5
-#else
-/// Maximum supported number of keys for a policy map.
-#define MAX_POLICY_MAP_KEYS 5
-#endif
+#define MAX_POLICY_MAP_KEYS MAX_POLICY_MAP_COSIGNERS
 
 // The string describing a pubkey can contain:
 // - (optional) the key origin info, which we limit to 46 bytes (2 + 8 + 3*12 = 46 bytes)
