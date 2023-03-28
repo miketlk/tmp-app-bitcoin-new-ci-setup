@@ -240,10 +240,6 @@ static void process_cosigner_info(dispatcher_context_t *dc) {
         }
     }
 
-    // TODO: it would be sensible to validate the pubkey (at least syntactically + validate
-    // checksum)
-    //       Currently we are showing to the user whichever string is passed by the host.
-
     ui_display_policy_map_cosigner_pubkey(dc,
                                           (char *) state->next_pubkey_info,
                                           state->next_pubkey_index,  // 1-indexed for the UI
@@ -277,10 +273,11 @@ static void finalize_response(dispatcher_context_t *dc) {
         return;
     }
 
-    // TODO: force PIN validation to prevent evil maid attacks registering a wallet.
-    //       As only the wallet name is shown when signing from a registered wallet, registering a
-    //       wallet is a sensitive operation, and a fraudulent wallet with the same name would
-    //       result in loss of funds.
+    // Ensure the device is unlocked before outputting the response
+    if (os_global_pin_is_validated() != BOLOS_UX_OK) {
+        SEND_SW(dc, SW_SECURITY_STATUS_NOT_SATISFIED);
+        return;
+    }
 
     struct {
         uint8_t wallet_id[32];
