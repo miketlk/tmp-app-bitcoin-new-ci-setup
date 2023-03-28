@@ -137,7 +137,7 @@ def random_wallet_name() -> str:
 
 
 @has_automation(f"{tests_root}/automations/sign_with_any_wallet_accept.json")
-def test_sign_+psbt_batch(client: Client, speculos_globals: SpeculosGlobals, is_speculos: bool, enable_slow_tests: bool):
+def test_sign_psbt_batch(client: Client, speculos_globals: SpeculosGlobals, is_speculos: bool, enable_slow_tests: bool):
     # A series of tests for various script and sighash combinations.
     # Takes quite a long time. It's recommended to enable stdout to see the progress (pytest -s).
     # For the full test of all combinations run with '--enableslowtests'.
