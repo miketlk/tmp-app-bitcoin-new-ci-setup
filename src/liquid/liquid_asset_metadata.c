@@ -8,6 +8,8 @@
 
 #ifndef SKIP_FOR_CMOCKA
 #include "stream_merkleized_map_value.h"
+#include "get_merkle_leaf_element.h"
+#include "stream_merkle_leaf_element.h"
 #endif
 
 #ifdef SKIP_FOR_CMOCKA
@@ -157,17 +159,23 @@ static const size_t state_table_size = sizeof(state_table) / sizeof(state_table[
 /**
  * Initializes asset metadata parser.
  *
+ * If parameter *ext_asset_info* is non-NULL, the parameter *asset_info* must point to the same
+ * memory address or be NULL.
+ *
  * @param[out] ctx
  *   Instance of parser context to initialize.
  * @param[out] asset_info
- *   Poiter to structure instance receiving decoded values, saved in context.
+ *   Poiter to output asset information structure, may be NULL if *ext_asset_info* is provided.
+ * @param[out] ext_asset_info
+ *   Poiter to output extended asset information structure, may be NULL if not needed.
  *
  * @return true on success, false in case of error.
  */
 STATIC_NO_TEST bool asset_metadata_parser_init(asset_metadata_parser_context_t *ctx,
-                                               asset_info_t *asset_info) {
+                                               asset_info_t *asset_info,
+                                               asset_info_ext_t *ext_asset_info) {
     memset(ctx, 0, sizeof(asset_metadata_parser_context_t));
-    if (!contract_parser_init(&ctx->contract_parser_ctx, asset_info)) {
+    if (!contract_parser_init(&ctx->contract_parser_ctx, asset_info, ext_asset_info)) {
         return false;
     }
     return true;
@@ -252,12 +260,13 @@ asset_metadata_status_t liquid_get_asset_metadata(
     dispatcher_context_t *dispatcher_context,
     const merkleized_map_commitment_t *global_map,
     const uint8_t asset_tag[static LIQUID_ASSET_TAG_LEN],
-    asset_info_t *asset_info) {
+    asset_info_t *asset_info,
+    asset_info_ext_t *ext_asset_info) {
     LOG_PROCESSOR(dispatcher_context, __FILE__, __LINE__, __func__);
 
     // Initialize context
     asset_metadata_parser_context_t context;
-    if (!asset_metadata_parser_init(&context, asset_info)) {
+    if (!asset_metadata_parser_init(&context, asset_info, ext_asset_info)) {
         return ASSET_METADATA_ERROR;
     }
 
@@ -273,6 +282,61 @@ asset_metadata_status_t liquid_get_asset_metadata(
                                                /* len_callback= */ NULL,
                                                cb_process_data,
                                                &context);
+    if (len < 0) {
+        return ASSET_METADATA_ABSENT;
+    }
+
+    return asset_metadata_parser_finalize(&context, asset_tag) ?
+        ASSET_METADATA_READY : ASSET_METADATA_ERROR;
+}
+
+asset_metadata_status_t liquid_get_asset_metadata_by_leaf_index(
+    dispatcher_context_t *dispatcher_context,
+    const merkleized_map_commitment_t *global_map,
+    uint32_t leaf_index,
+    uint8_t asset_tag[static LIQUID_ASSET_TAG_LEN],
+    asset_info_t *asset_info,
+    asset_info_ext_t *ext_asset_info) {
+    LOG_PROCESSOR(dispatcher_context, __FILE__, __LINE__, __func__);
+
+    // Initialize context
+    asset_metadata_parser_context_t context;
+    if (!asset_metadata_parser_init(&context, asset_info, ext_asset_info)) {
+        return ASSET_METADATA_ERROR;
+    }
+
+    // Read the key (with keydata) from the Merkle tree by providing leaf index
+    uint8_t key[sizeof(pset_metadata_key) + LIQUID_ASSET_TAG_LEN];
+    int key_len = call_get_merkle_leaf_element(dispatcher_context,
+                                               global_map->keys_root,
+                                               (uint32_t)global_map->size,
+                                               leaf_index,
+                                               key,
+                                               sizeof(key));
+
+    if (-4 == key_len) {
+        // Key size is larger than expected
+        return ASSET_METADATA_WRONG_KEY;
+    } else if (key_len < 0) {
+        return ASSET_METADATA_ERROR;
+    }
+
+    if ((size_t)key_len != sizeof(key) ||
+        !memeq(key, pset_metadata_key, sizeof(pset_metadata_key))) {
+        return ASSET_METADATA_WRONG_KEY;
+    }
+
+    // Save asset tag from keydata
+    reverse_copy(asset_tag, key + sizeof(pset_metadata_key), LIQUID_ASSET_TAG_LEN);
+
+    int len = call_stream_merkle_leaf_element(dispatcher_context,
+                                              global_map->values_root,
+                                              (uint32_t)global_map->size,
+                                              leaf_index,
+                                              /* len_callback= */ NULL,
+                                              cb_process_data,
+                                              &context);
+
     if (len < 0) {
         return ASSET_METADATA_ABSENT;
     }

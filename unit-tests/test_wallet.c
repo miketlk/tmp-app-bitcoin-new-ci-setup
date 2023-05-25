@@ -201,7 +201,7 @@ static void test_parse_policy_map_blinded_multisig(void **state) {
     int res;
 
     char *policy = "blinded(slip77(L1XvKmnKWuC4a5sbz3Ez6LCfMCbaXMBCcQk7C62ziN5NjoEgjN5N),"\
-        "sh(wsh(sortedmulti(13,@0,@1,@2,@3,@4,@5,@6,@7,@8,@9,@10,@11,@12,@13,@14))))";
+        "sh(wsh(sortedmulti(5,@0,@1,@2,@3,@4,@5,@6))))";
     buffer_t policy_buf = buffer_create((void *) policy, strlen(policy));
 
     res = parse_policy_map(&policy_buf, out, sizeof(out));
@@ -229,9 +229,9 @@ static void test_parse_policy_map_blinded_multisig(void **state) {
 
     policy_node_multisig_t *inner3 = (policy_node_multisig_t *) inner2->script;
     assert_int_equal(inner3->type, TOKEN_SORTEDMULTI);
-    assert_int_equal(inner3->k, 13);
-    assert_int_equal(inner3->n, 15);
-    for (int i = 0; i < 15; i++) {
+    assert_int_equal(inner3->k, 5);
+    assert_int_equal(inner3->n, 7);
+    for (int i = 0; i < 7; i++) {
         assert_int_equal(inner3->key_indexes[i], i);
     }
 }

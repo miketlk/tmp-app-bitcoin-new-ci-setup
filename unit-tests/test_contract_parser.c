@@ -13,12 +13,12 @@
 typedef struct {
     const char *contract_str;
     uint8_t hash[SHA256_LEN];
-    asset_info_t asset_info;
+    asset_info_ext_t asset;
 } contract_test_data_t;
 
 typedef struct {
     uint8_t hash[SHA256_LEN];
-    asset_info_t asset_info;
+    asset_info_ext_t asset;
 } parser_outputs_t;
 
 static const contract_test_data_t contract_test_data[] = {
@@ -37,9 +37,13 @@ static const contract_test_data_t contract_test_data[] = {
             0x3a, 0x7b, 0xfb, 0xaa, 0xa6, 0xaa, 0x61, 0xf7,
             0xbf, 0xc7, 0x83, 0x3c, 0xa0, 0x3c, 0xde, 0x82
         },
-        .asset_info = {
-            .ticker = "USDt",
-            .decimals = 8
+        .asset = {
+            .info = {
+                .ticker = "USDt",
+                .decimals = 8
+            },
+            .name = "Tether USD",
+            .domain = "tether.to"
         }
     },
     // liquid.beer ASP (Atomic Swap Pint)
@@ -57,9 +61,13 @@ static const contract_test_data_t contract_test_data[] = {
             0x64, 0xeb, 0x43, 0x4e, 0xef, 0x25, 0xb3, 0xf3,
             0x14, 0xaf, 0xcf, 0x0c, 0x0a, 0xd7, 0x07, 0x3f
         },
-        .asset_info = {
-            .ticker = "ASP",
-            .decimals = 2
+        .asset = {
+            .info = {
+                .ticker = "ASP",
+                .decimals = 2
+            },
+            .name = "Atomic Swap Pint",
+            .domain = "liquid.beer"
         }
     }
 };
@@ -68,7 +76,18 @@ static bool parse_contract(const char *contract, parser_outputs_t *outs) {
     contract_parser_context_t ctx;
     buffer_t contract_buffer = buffer_create((void*)contract, strlen(contract));
 
-    if (contract_parser_init(&ctx, &outs->asset_info)) {
+    if (contract_parser_init(&ctx, NULL, &outs->asset)) {
+        contract_parser_process(&ctx, &contract_buffer);
+        return contract_parser_finalize(&ctx, outs->hash);
+    }
+    return false;
+}
+
+static bool parse_contract_basic_info(const char *contract, parser_outputs_t *outs) {
+    contract_parser_context_t ctx;
+    buffer_t contract_buffer = buffer_create((void*)contract, strlen(contract));
+
+    if (contract_parser_init(&ctx, &outs->asset.info, NULL)) {
         contract_parser_process(&ctx, &contract_buffer);
         return contract_parser_finalize(&ctx, outs->hash);
     }
@@ -80,15 +99,41 @@ static void test_contract_parser_valid(void **state) {
 
     int n_vectors = sizeof(contract_test_data) / sizeof(contract_test_data[0]);
     const contract_test_data_t *p_vect = contract_test_data;
-
     parser_outputs_t outs;
+
     for(int i = 0; i < n_vectors; ++i, p_vect++) {
         memset(&outs, 0xee, sizeof(outs));
         bool res = parse_contract(p_vect->contract_str, &outs);
         assert_true(res);
         assert_memory_equal(outs.hash, p_vect->hash, sizeof(outs.hash));
-        assert_string_equal(outs.asset_info.ticker, p_vect->asset_info.ticker);
-        assert_int_equal((int)outs.asset_info.decimals, (int)p_vect->asset_info.decimals);
+        assert_string_equal(outs.asset.info.ticker, p_vect->asset.info.ticker);
+        assert_int_equal((int)outs.asset.info.decimals, (int)p_vect->asset.info.decimals);
+        assert_string_equal(outs.asset.name, p_vect->asset.name);
+        assert_string_equal(outs.asset.domain, p_vect->asset.domain);
+    }
+}
+
+static void test_contract_parser_basic_info_only(void **state) {
+    (void) state;
+
+    int n_vectors = sizeof(contract_test_data) / sizeof(contract_test_data[0]);
+    const contract_test_data_t *p_vect = contract_test_data;
+    parser_outputs_t outs;
+
+    for(int i = 0; i < n_vectors; ++i, p_vect++) {
+        memset(&outs, 0xee, sizeof(outs));
+        bool res = parse_contract_basic_info(p_vect->contract_str, &outs);
+        assert_true(res);
+        assert_memory_equal(outs.hash, p_vect->hash, sizeof(outs.hash));
+        assert_string_equal(outs.asset.info.ticker, p_vect->asset.info.ticker);
+        assert_int_equal((int)outs.asset.info.decimals, (int)p_vect->asset.info.decimals);
+
+        // Check that remaining bytes of extended asset information are unchanged
+        const uint8_t *p_ext_byte = (const uint8_t*)&outs.asset + sizeof(outs.asset.info);
+        for (size_t j = 0; j <sizeof(outs.asset) - sizeof(outs.asset.info); ++j) {
+            assert_int_equal((int)*p_ext_byte, 0xee);
+            ++p_ext_byte;
+        }
     }
 }
 
@@ -109,17 +154,17 @@ static void test_contract_parser_missing_fields(void **state) {
         "\"ticker\":\"USDt\","\
         "\"version\":0}";
 
-    static const char missing_ticker[] =
+    static const char missing_name[] =
         "{\"entity\":{\"domain\":\"tether.to\"},"\
         "\"issuer_pubkey\":\"0337cceec0beea0232ebe14cba0197a9fbd45fcf2ec946749de920e71434c2b904\","\
-        "\"name\":\"Tether USD\","\
         "\"precision\":8,"\
+        "\"ticker\":\"USDt\","\
         "\"version\":0}";
 
     parser_outputs_t outs;
     assert_true(parse_contract(complete, &outs));
     assert_false(parse_contract(missing_precision, &outs));
-    assert_false(parse_contract(missing_ticker, &outs));
+    assert_false(parse_contract(missing_name, &outs));
 }
 
 static void test_contract_parser_skip_nested_arrays(void **state) {
@@ -136,8 +181,10 @@ static void test_contract_parser_skip_nested_arrays(void **state) {
 
     parser_outputs_t outs;
     assert_true(parse_contract(contract, &outs));
-    assert_string_equal(outs.asset_info.ticker, "ASP");
-    assert_int_equal((int)outs.asset_info.decimals, 2);
+    assert_string_equal(outs.asset.info.ticker, "ASP");
+    assert_int_equal((int)outs.asset.info.decimals, 2);
+    assert_string_equal(outs.asset.name, "Atomic Swap Pint");
+    assert_string_equal(outs.asset.domain, "liquid.beer");
 }
 
 static void test_contract_parser_skip_nested_objects(void **state) {
@@ -154,8 +201,28 @@ static void test_contract_parser_skip_nested_objects(void **state) {
 
     parser_outputs_t outs;
     assert_true(parse_contract(contract, &outs));
-    assert_string_equal(outs.asset_info.ticker, "ASP");
-    assert_int_equal((int)outs.asset_info.decimals, 2);
+    assert_string_equal(outs.asset.info.ticker, "ASP");
+    assert_int_equal((int)outs.asset.info.decimals, 2);
+    assert_string_equal(outs.asset.name, "Atomic Swap Pint");
+    assert_string_equal(outs.asset.domain, "liquid.beer");
+}
+
+static void test_contract_parser_no_ticker(void **state) {
+    (void) state;
+
+    static const char contract[] =
+        "{\"entity\":{\"domain\":\"tether.to\"},"\
+        "\"issuer_pubkey\":\"0337cceec0beea0232ebe14cba0197a9fbd45fcf2ec946749de920e71434c2b904\","\
+        "\"name\":\"Tether USD\","\
+        "\"precision\":8,"\
+        "\"version\":0}";
+
+    parser_outputs_t outs;
+    assert_true(parse_contract(contract, &outs));
+    assert_string_equal(outs.asset.info.ticker, UNKNOWN_ASSET_TICKER);
+    assert_int_equal((int)outs.asset.info.decimals, 8);
+    assert_string_equal(outs.asset.name, "Tether USD");
+    assert_string_equal(outs.asset.domain, "tether.to");
 }
 
 static void test_contract_parser_limits(void **state) {
@@ -164,20 +231,28 @@ static void test_contract_parser_limits(void **state) {
 
     { // Maximum values
         static const char contract[] =
-            "{\"precision\":19,"\
+            "{\"entity\":{\"domain\":\"abcdefghijklmnopqrstuvwxyz.abcd\"},"\
+            "\"name\":\"Abcdefghijklmnopqrstuvwxyzabcde\","\
+            "\"precision\":19,"\
             "\"ticker\":\"ABCDEFGHIJ\"}";
         assert_true(parse_contract(contract, &outs));
-        assert_string_equal(outs.asset_info.ticker, "ABCDEFGHIJ");
-        assert_int_equal((int)outs.asset_info.decimals, 19);
+        assert_string_equal(outs.asset.info.ticker, "ABCDEFGHIJ");
+        assert_int_equal((int)outs.asset.info.decimals, 19);
+        assert_string_equal(outs.asset.name, "Abcdefghijklmnopqrstuvwxyzabcde");
+        assert_string_equal(outs.asset.domain, "abcdefghijklmnopqrstuvwxyz.abcd");
     }
 
     { // Minimum values
         static const char contract[] =
-            "{\"precision\":0,"\
+            "{\"entity\":{\"domain\":\"a\"},"\
+            "\"name\":\"A\","\
+            "\"precision\":0,"\
             "\"ticker\":\"A\"}";
         assert_true(parse_contract(contract, &outs));
-        assert_string_equal(outs.asset_info.ticker, "A");
-        assert_int_equal((int)outs.asset_info.decimals, 0);
+        assert_string_equal(outs.asset.info.ticker, "A");
+        assert_int_equal((int)outs.asset.info.decimals, 0);
+        assert_string_equal(outs.asset.name, "A");
+        assert_string_equal(outs.asset.domain, "a");
     }
 
     { // Precision higher than allowed
@@ -231,9 +306,11 @@ static void test_contract_parser_corrupted(void **state) {
 int main() {
     const struct CMUnitTest tests[] = {
         cmocka_unit_test(test_contract_parser_valid),
+        cmocka_unit_test(test_contract_parser_basic_info_only),
         cmocka_unit_test(test_contract_parser_missing_fields),
         cmocka_unit_test(test_contract_parser_skip_nested_arrays),
         cmocka_unit_test(test_contract_parser_skip_nested_objects),
+        cmocka_unit_test(test_contract_parser_no_ticker),
         cmocka_unit_test(test_contract_parser_limits),
         cmocka_unit_test(test_contract_parser_corrupted),
     };

@@ -126,6 +126,8 @@ typedef struct {
         unsigned int cur_output_index;
         /// Allocator's index of SHA-256 conexts
         unsigned int sha_context_index;
+        /// Global key index
+        unsigned int cur_global_key_index;
     };
 
     // Shared memory area for input/output information and SHA-256 contexts

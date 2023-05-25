@@ -20,6 +20,10 @@
 #define LIQUID_ASSET_DECIMALS_MIN 0
 /// Maximum value of decimals
 #define LIQUID_ASSET_DECIMALS_MAX 19
+/// Maximum length of asset name
+#define MAX_ASSET_NAME_LENGTH 31
+/// Maximum length of asset domain
+#define MAX_ASSET_DOMAIN_LENGTH 31
 
 /// Information about an asset
 typedef struct {
@@ -28,6 +32,16 @@ typedef struct {
     /// Number of decimal digits in fractional part
     uint8_t decimals;
 } asset_info_t;
+
+/// Extended information about an asset, may be casted to asset_info_t
+typedef struct {
+    /// Basic information about an asset
+    asset_info_t info;
+    /// Asset name, a text string
+    char name[MAX_ASSET_NAME_LENGTH + 1];
+    /// Asset domain, a text string
+    char domain[MAX_ASSET_DOMAIN_LENGTH + 1];
+} asset_info_ext_t;
 
 /// Definition of an asset
 typedef struct {

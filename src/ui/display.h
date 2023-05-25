@@ -4,6 +4,7 @@
 #include "../boilerplate/dispatcher.h"
 
 #include "../common/wallet.h"
+#include "../liquid/liquid_assets.h"
 
 /**
  * Callback to reuse action with approve/reject in step FLOW.
@@ -82,4 +83,9 @@ void ui_validate_transaction(dispatcher_context_t *context,
 void ui_warn_unknown_asset(dispatcher_context_t *context,
                            const uint8_t asset_tag[static 32],
                            const command_processor_t on_success);
+
+void ui_validate_asset(dispatcher_context_t *context,
+                       const uint8_t asset_tag[static 32],
+                       const asset_info_ext_t *asset_info,
+                       const command_processor_t on_success);
 #endif

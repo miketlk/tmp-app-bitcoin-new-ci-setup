@@ -55,6 +55,10 @@ def should_go_right(event: dict):
         return True
     elif event["text"].startswith("Fees"):
         return True
+    elif event["text"].startswith("Asset name"):
+        return True
+    elif event["text"].startswith("Asset domain"):
+        return True
     return False
 
 
@@ -84,6 +88,7 @@ def parse_signing_events(events: List[dict]) -> dict:
     was_address = False
     was_asset = False
     was_fees = False
+    was_output = False
 
     cur_output_index = -1
 
@@ -94,6 +99,7 @@ def parse_signing_events(events: List[dict]) -> dict:
 
     for ev in events:
         if ev["text"].startswith("output #"):
+            was_output = True
             idx_str = ev["text"][8:]
 
             assert int(idx_str) - 1 == cur_output_index + 1  # should not skip outputs
@@ -104,15 +110,15 @@ def parse_signing_events(events: List[dict]) -> dict:
             ret["amounts"].append("")
             ret["assets"].append("")
 
-        if was_address:
-            ret["addresses"][-1] += ev["text"]
-        if was_amount:
-            ret["amounts"][-1] += ev["text"]
-        if was_asset:
-            ret["assets"][-1] += ev["text"]
-
-        if was_fees:
-            ret["fees"] += ev["text"]
+        if was_output:
+            if was_address:
+                ret["addresses"][-1] += ev["text"]
+            if was_amount:
+                ret["amounts"][-1] += ev["text"]
+            if was_asset:
+                ret["assets"][-1] += ev["text"]
+            if was_fees:
+                ret["fees"] += ev["text"]
 
         was_amount = ev["text"].startswith("Amount")
         was_address = ev["text"].startswith("Address")

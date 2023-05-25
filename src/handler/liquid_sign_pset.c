@@ -161,6 +161,17 @@ typedef struct {
     bool error;             ///< Flag indicating error during handling of keys
 } output_keys_callback_state_t;
 
+/*****************************************************************************
+ * Asset validation
+ *****************************************************************************/
+
+/**
+ * Processes global map, iterating over all global keys.
+ *
+ * @param[in,out] dc
+ *   Dispatcher context.
+ */
+static void process_global_map(dispatcher_context_t *dc);
 
 /*****************************************************************************
  * Input validation
@@ -1244,7 +1255,8 @@ static bool set_in_out_asset(dispatcher_context_t *dc,
                     stat = liquid_get_asset_metadata(dc,
                                                      &state->global_map,
                                                      asset->tag,
-                                                     &state->cur.in_out.asset_info);
+                                                     &state->cur.in_out.asset_info,
+                                                     NULL);
                 }
                 if (ASSET_METADATA_ABSENT == stat) {
                     memset(&state->cur.in_out.asset_info, 0, sizeof(state->cur.in_out.asset_info));
@@ -1533,16 +1545,51 @@ void handler_liquid_sign_pset(dispatcher_context_t *dc) {
         // we already know n_inputs and n_outputs, so we skip reading from the global map
     }
 
-    state->cur_input_index = 0;
+    state->cur_global_key_index = 0;
 
     if (state->is_wallet_canonical) {
         // Canonical wallet, we start processing the psbt directly
-        dc->next(process_input_map);
+        dc->next(process_global_map);
     } else {
 
         // Show screen to authorize spend from a registered wallet
-        ui_authorize_wallet_spend(dc, wallet_header.name, process_input_map);
+        ui_authorize_wallet_spend(dc, wallet_header.name, process_global_map);
     }
+}
+
+static void process_global_map(dispatcher_context_t *dc) {
+    sign_pset_state_t *state = (sign_pset_state_t *) &G_command_state;
+
+    LOG_PROCESSOR(dc, __FILE__, __LINE__, __func__);
+
+    uint8_t asset_tag[LIQUID_ASSET_TAG_LEN];
+    asset_info_ext_t asset;
+
+    while (state->cur_global_key_index < state->global_map.size) {
+        asset_metadata_status_t stat = liquid_get_asset_metadata_by_leaf_index(
+            dc,
+            &state->global_map,
+            state->cur_global_key_index,
+            asset_tag,
+            NULL,
+            &asset
+        );
+
+        ++state->cur_global_key_index;
+
+        if (ASSET_METADATA_READY == stat) {
+            ui_validate_asset(dc, asset_tag, &asset, process_global_map);
+            return;
+        } else if (ASSET_METADATA_ERROR == stat) {
+            PRINTF("Asset metadata error\n");
+            SEND_SW(dc, SW_INCORRECT_DATA);
+            return;
+        }
+    }
+
+    // All global keys are processed
+    state->cur_input_index = 0;
+    dc->next(process_input_map);
 }
 
 /** INPUTS VERIFICATION FLOW
@@ -2081,7 +2128,11 @@ static void process_output_map(dispatcher_context_t *dc) {
     if (is_fee_output) {
         dc->next(confirm_transaction);
     } else {
-        dc->next(check_output_commitments);
+        if('\0' == *state->cur.in_out.asset_info.ticker) {
+            ui_warn_unknown_asset(dc, state->cur.in_out.asset_tag, check_output_commitments);
+        } else {
+            dc->next(check_output_commitments);
+        }
     }
 }
 

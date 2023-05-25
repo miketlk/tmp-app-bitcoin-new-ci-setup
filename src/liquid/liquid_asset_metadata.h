@@ -16,7 +16,9 @@ typedef enum {
     /// Asset metadata is absent in PSET for the given asset tag
     ASSET_METADATA_ABSENT = -1,
     /// An error occurred while retreiving asset metadata or the metadata is invalid
-    ASSET_METADATA_ERROR = -2
+    ASSET_METADATA_ERROR = -2,
+    /// Merkle tree leaf specified by index has a wrong key
+    ASSET_METADATA_WRONG_KEY = -3
 } asset_metadata_status_t;
 
 /// Contex of asset metadata parser
@@ -42,6 +44,9 @@ typedef struct {
 /**
  * Reads and verifies asset metadata from a PSET map for the given asset tag.
  *
+ * If parameter *ext_asset_info* is non-NULL, the parameter *asset_info* must point to the same
+ * memory address or be NULL.
+ *
  * @param[in,out] dispatcher_context
  *   Dispatcher context used for I/O operations with host.
  * @param[in] global_map
@@ -49,7 +54,9 @@ typedef struct {
  * @param[in] asset_tag
  *   Asset tag used to search for metadata.
  * @param[out] asset_info
- *   Pointer to asset information structure filled with received asset metadata.
+ *   Poiter to output asset information structure, may be NULL if *ext_asset_info* is provided.
+ * @param[out] ext_asset_info
+ *   Poiter to output extended asset information structure, may be NULL if not needed.
  *
  * @return status of asset metadata.
  *
@@ -60,6 +67,42 @@ asset_metadata_status_t liquid_get_asset_metadata(
     dispatcher_context_t *dispatcher_context,
     const merkleized_map_commitment_t *global_map,
     const uint8_t asset_tag[static LIQUID_ASSET_TAG_LEN],
-    asset_info_t *asset_info);
+    asset_info_t *asset_info,
+    asset_info_ext_t *ext_asset_info);
+
+/**
+ * Reads and verifies asset metadata from a PSET map from the given Merkle tree leaf.
+ *
+ * This function returns ASSET_METADATA_WRONG_KEY if the key stored in Merkle tree leaf doesn't
+ * correspond to PSBT_ELEMENTS_HWW_GLOBAL_ASSET_METADATA.
+ * 
+ * If parameter *ext_asset_info* is non-NULL, the parameter *asset_info* must point to the same
+ * memory address or be NULL.
+ *
+ * @param[in,out] dispatcher_context
+ *   Dispatcher context used for I/O operations with host.
+ * @param[in] global_map
+ *   Commitment to merkleized key-value map of global PSET fields.
+ * @param[in] leaf_index
+ *   Leaf index.
+ * @param[out] asset_tag
+ *   Buffer receiving asset tag retrieved from keydata.
+ * @param[out] asset_info
+ *   Poiter to output asset information structure, may be NULL if *ext_asset_info* is provided.
+ * @param[out] ext_asset_info
+ *   Poiter to output extended asset information structure, may be NULL if not needed.
+ *
+ * @return status of asset metadata.
+ *
+ * NOTE: this function does _not_ check that the keys are lexicographically sorted; the sanity check
+ * needs to be done before.
+ */
+asset_metadata_status_t liquid_get_asset_metadata_by_leaf_index(
+    dispatcher_context_t *dispatcher_context,
+    const merkleized_map_commitment_t *global_map,
+    uint32_t leaf_index,
+    uint8_t asset_tag[static LIQUID_ASSET_TAG_LEN],
+    asset_info_t *asset_info,
+    asset_info_ext_t *ext_asset_info);
 
 #endif // SKIP_FOR_CMOCKA

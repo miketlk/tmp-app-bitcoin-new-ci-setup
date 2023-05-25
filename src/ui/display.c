@@ -81,6 +81,15 @@ typedef struct {
 } ui_asset_state_t;
 #endif
 
+#ifdef HAVE_LIQUID
+typedef struct {
+    char tag_hex[LIQUID_ASSET_TAG_HEX_LEN + 1];
+    char ticker[MAX_ASSET_TICKER_LENGTH + 1];
+    char name[MAX_ASSET_NAME_LENGTH + 1];
+    char domain[MAX_ASSET_DOMAIN_LENGTH + 1];
+} ui_validate_asset_state_t;
+#endif
+
 /**
  * Union of all the states for each of the UI screens, in order to save memory.
  */
@@ -94,6 +103,7 @@ typedef union {
     ui_validate_transaction_state_t validate_transaction;
 #ifdef HAVE_LIQUID
     ui_asset_state_t asset;
+    ui_validate_asset_state_t validate_asset;
 #endif
 } ui_state_t;
 
@@ -355,6 +365,36 @@ UX_STEP_NOCB(ux_output_asset_tag_step,
                  .title = "Asset tag",
                  .text = g_ui_state.validate_output.tag_hex,
              });
+
+// Step with icon and text with name of a wallet being registered
+UX_STEP_NOCB(ux_va_confirm_asset_step,
+             pnn,
+             {
+                 &C_icon_eye,
+                 "Confirm asset",
+                 g_ui_state.validate_asset.ticker,
+             });
+
+UX_STEP_NOCB(ux_va_review_asset_tag_step,
+             bnnn_paging,
+             {
+                 .title = "Asset tag",
+                 .text = g_ui_state.validate_asset.tag_hex,
+             });
+
+UX_STEP_NOCB(ux_va_review_asset_name_step,
+             bnnn_paging,
+             {
+                 .title = "Asset name",
+                 .text = g_ui_state.validate_asset.name,
+             });
+
+UX_STEP_NOCB(ux_va_review_asset_domain_step,
+             bnnn_paging,
+             {
+                 .title = "Asset domain",
+                 .text = g_ui_state.validate_asset.domain,
+             });
 #endif // HAVE_LIQUID
 
 // FLOW to display BIP32 path and a message hash to sign:
@@ -548,6 +588,21 @@ UX_FLOW(ux_display_output_address_amount_asset_flow,
         &ux_validate_amount_step,
         &ux_output_asset_tag_step,
         &ux_validate_address_step,
+        &ux_display_approve_step,
+        &ux_display_reject_step);
+
+// FLOW to validate an asset
+// #1 screen: eye icon + "Confirm asset" + asset ticker
+// #2 screen: asset tag (paginated)
+// #3 screen: asset name (paginated)
+// #4 screen: asset domain (paginated)
+// #5 screen: approve button
+// #6 screen: reject button
+UX_FLOW(ux_validate_asset_flow,
+        &ux_va_confirm_asset_step,
+        &ux_va_review_asset_tag_step,
+        &ux_va_review_asset_name_step,
+        &ux_va_review_asset_domain_step,
         &ux_display_approve_step,
         &ux_display_reject_step);
 #endif
@@ -776,4 +831,24 @@ void ui_warn_unknown_asset(dispatcher_context_t *context,
 
     ux_flow_init(0, ux_display_warning_unknown_asset_flow, NULL);
 }
+
+void ui_validate_asset(dispatcher_context_t *context,
+                       const uint8_t asset_tag[static 32],
+                       const asset_info_ext_t *asset_info,
+                       const command_processor_t on_success) {
+
+    context->pause();
+
+    ui_validate_asset_state_t *state = (ui_validate_asset_state_t *) &g_ui_state;
+
+    liquid_format_asset_tag(asset_tag, state->tag_hex);
+    strlcpy(state->ticker, asset_info->info.ticker, sizeof(state->ticker));
+    strlcpy(state->name, asset_info->name, sizeof(state->name));
+    strlcpy(state->domain, asset_info->domain, sizeof(state->domain));
+
+    g_next_processor = on_success;
+
+    ux_flow_init(0, ux_validate_asset_flow, NULL);
+}
+
 #endif

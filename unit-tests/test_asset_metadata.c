@@ -105,7 +105,8 @@ static const asset_metadata_vector_t asset_test_data[] = {
 };
 
 extern bool asset_metadata_parser_init(asset_metadata_parser_context_t *ctx,
-                                       asset_info_t *asset_info);
+                                       asset_info_t *asset_info,
+                                       asset_info_ext_t *ext_asset_info);
 extern void asset_metadata_parser_process(asset_metadata_parser_context_t *ctx,
                                           buffer_t *data);
 extern bool asset_metadata_parser_finalize(asset_metadata_parser_context_t *ctx,
@@ -116,7 +117,7 @@ static asset_info_t* parse_metadata(buffer_t *data,
     asset_metadata_parser_context_t ctx;
     asset_info_t *asset_info = malloc(sizeof(asset_info_t));
 
-    if (asset_info && asset_metadata_parser_init(&ctx, asset_info)) {
+    if (asset_info && asset_metadata_parser_init(&ctx, asset_info, NULL)) {
         asset_metadata_parser_process(&ctx, data);
         if (asset_metadata_parser_finalize(&ctx, asset_tag)) {
             return asset_info;

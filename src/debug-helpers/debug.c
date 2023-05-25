@@ -148,3 +148,30 @@ void print_hex(const char *msg, const void *buf, unsigned int len) {
     }
     debug_write("\n");
 }
+
+void print_uint(const char *msg, unsigned int word) {
+    debug_write(msg);
+    debug_write_dec(word);
+    debug_write("\n");
+}
+
+void print_strn(const char *msg, const char *str, int len) {
+    char buf[4];
+    int idx = 0;
+    buf[sizeof(buf) - 1] = '\0';
+
+    debug_write(msg);
+
+    while ((len < 0 || len--) && *str) {
+        buf[idx++] = *str++;
+        if (idx == sizeof(buf) - 1) {
+            debug_write(buf);
+            idx = 0;
+        }
+    }
+    if (idx) {
+        buf[idx] = '\0';
+        debug_write(buf);
+    }
+    debug_write("\n");
+}
