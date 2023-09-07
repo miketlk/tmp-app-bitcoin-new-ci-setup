@@ -31,7 +31,6 @@ void print_strn(const char *msg, const char *str, int len);
 #define PRINT_HASH(msg, sha256_context)
 #define PRINT_DATA_HASH(msg, buf, len)
 #define PRINT_HEX(msg, buf, len)
-#define PRINT_STR(str)
 #define PRINT_UINT(msg, word)
 #define PRINT_STR(msg, str)
 #define PRINT_STRN(msg, str, len)

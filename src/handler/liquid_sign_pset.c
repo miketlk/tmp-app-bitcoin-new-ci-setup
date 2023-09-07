@@ -186,6 +186,14 @@ static void process_global_map(dispatcher_context_t *dc);
 static void process_input_map(dispatcher_context_t *dc);
 
 /**
+ * Puts confirmed input's asset to cache to avoid repetitive confirmation requests.
+ *
+ * @param[in,out] dc
+ *   Dispatcher context.
+ */
+static void cache_confirmed_input_asset(dispatcher_context_t *dc);
+
+/**
  * Checks asset and value commitments of current input.
  *
  * @param[in,out] dc
@@ -229,6 +237,14 @@ static void verify_outputs_init(dispatcher_context_t *dc);
  *   Dispatcher context.
  */
 static void process_output_map(dispatcher_context_t *dc);
+
+/**
+ * Puts confirmed output's asset to cache to avoid repetitive confirmation requests.
+ *
+ * @param[in,out] dc
+ *   Dispatcher context.
+ */
+static void cache_confirmed_output_asset(dispatcher_context_t *dc);
 
 /**
  * Checks asset and value commitments of current output.
@@ -1310,6 +1326,40 @@ static bool sha_context_free(sign_pset_state_t *state, const cx_sha256_t *contex
 }
 
 /**
+ * Searches through cached assets for a given asset tag.
+ *
+ * @param[in] cache
+ *   Instance of the cache structure.
+ * @param[in] asset_tag
+ *   Asset tag to search for.
+ *
+ * @return true if asset is found, false otherwise.
+ */
+static bool asset_cache_find(const asset_cache_t *cache,
+                             const uint8_t asset_tag[static LIQUID_ASSET_TAG_LEN]) {
+    for (int i = 0; i < cache->asset_n; ++i) {
+        if (memeq(cache->asset_tags[i], asset_tag, sizeof(cache->asset_tags[0]))) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static void asset_cache_put(asset_cache_t *cache,
+                            const uint8_t asset_tag[static LIQUID_ASSET_TAG_LEN]) {
+    if (!asset_cache_find(cache, asset_tag)) {
+        memcpy(cache->asset_tags[cache->write_idx], asset_tag, sizeof(cache->asset_tags[0]));
+
+        if (++cache->write_idx >= ASSET_CACHE_SIZE) {
+            cache->write_idx = 0;
+        }
+        if (++cache->asset_n > ASSET_CACHE_SIZE) {
+            cache->asset_n = ASSET_CACHE_SIZE;
+        }
+    }
+}
+
+/**
  * Entry point of the command handler.
  *
  * Validates the input, initializes the hash context and starts accumulating the wallet header in
@@ -1801,12 +1851,20 @@ static void process_input_map(dispatcher_context_t *dc) {
         return;
     }
 
-    if('\0' == *state->cur.in_out.asset_info.ticker) {
+    if('\0' == *state->cur.in_out.asset_info.ticker &&
+       !asset_cache_find(&state->asset_cache, state->cur.in_out.asset_tag)) {
         // Warn the user about unknown asset
-        ui_warn_unknown_asset(dc, state->cur.in_out.asset_tag, check_input_commitments);
+        ui_warn_unknown_asset(dc, state->cur.in_out.asset_tag, cache_confirmed_input_asset);
     } else {
         dc->next(check_input_commitments);
     }
+}
+
+static void cache_confirmed_input_asset(dispatcher_context_t *dc) {
+    sign_pset_state_t *state = (sign_pset_state_t *) &G_command_state;
+
+    asset_cache_put(&state->asset_cache, state->cur.in_out.asset_tag);
+    dc->next(check_input_commitments);
 }
 
 static void check_input_commitments(dispatcher_context_t *dc) {
@@ -2128,12 +2186,20 @@ static void process_output_map(dispatcher_context_t *dc) {
     if (is_fee_output) {
         dc->next(confirm_transaction);
     } else {
-        if('\0' == *state->cur.in_out.asset_info.ticker) {
-            ui_warn_unknown_asset(dc, state->cur.in_out.asset_tag, check_output_commitments);
+        if('\0' == *state->cur.in_out.asset_info.ticker &&
+           !asset_cache_find(&state->asset_cache, state->cur.in_out.asset_tag)) {
+            ui_warn_unknown_asset(dc, state->cur.in_out.asset_tag, cache_confirmed_output_asset);
         } else {
             dc->next(check_output_commitments);
         }
     }
+}
+
+static void cache_confirmed_output_asset(dispatcher_context_t *dc) {
+    sign_pset_state_t *state = (sign_pset_state_t *) &G_command_state;
+
+    asset_cache_put(&state->asset_cache, state->cur.in_out.asset_tag);
+    dc->next(check_output_commitments);
 }
 
 static void check_output_commitments(dispatcher_context_t *dc) {

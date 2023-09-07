@@ -14,6 +14,12 @@
 #define MAX_N_INPUTS_CAN_SIGN 512
 /// Size of memory pool where SHA-256 contexts are allocated (number of units)
 #define SIGN_PSET_SHA_CONTEXT_POOL_SIZE 3
+/// Size of cache holding asset tags of confirmed assets
+#define ASSET_CACHE_SIZE 1
+
+#if ASSET_CACHE_SIZE > 254
+#error Requested size of asset cache is not supported
+#endif
 
 /// Common information that applies to either an input or an output
 typedef struct {
@@ -34,11 +40,11 @@ typedef struct {
     /// Value or amount
     uint64_t value;
     /// Value commitment
-    uint8_t value_commitment[33];
+    uint8_t value_commitment[LIQUID_COMMITMENT_LEN];
     /// Asset commitment
-    uint8_t asset_commitment[33];
+    uint8_t asset_commitment[LIQUID_COMMITMENT_LEN];
     /// Asset tag
-    uint8_t asset_tag[32];
+    uint8_t asset_tag[LIQUID_ASSET_TAG_LEN];
     /// Information about the asset: ticher and precision
     asset_info_t asset_info;
     /// If true the asset is defined in internal asset list
@@ -82,6 +88,16 @@ typedef struct  {
     /// A combination of key_presence_flags_t bits.
     uint32_t key_read_status;
 } overlayed_in_out_info_t;
+
+/// Asset cache, holding tags of confirmed assets
+typedef struct {
+    /// Cache buffer containing asset tags
+    uint8_t asset_tags[ASSET_CACHE_SIZE][LIQUID_ASSET_TAG_LEN];
+    /// Number of assets in cache
+    uint8_t asset_n;
+    /// Write index in cache
+    uint8_t write_idx;
+} asset_cache_t;
 
 /// State of SIGN_PSBT command in Liquid application
 typedef struct {
@@ -151,19 +167,19 @@ typedef struct {
         } wallet_policy;
         struct {
             /// SHA256 of the serialization of all input outpoints
-            uint8_t sha_prevouts[32];
+            uint8_t sha_prevouts[SHA256_LEN];
             /// SHA256 of the serialization of all input amounts or amount commitments
-            uint8_t sha_amounts[32];
+            uint8_t sha_amounts[SHA256_LEN];
             /// SHA256 of the serialization of all input scriptPubKey
-            uint8_t sha_scriptpubkeys[32];
+            uint8_t sha_scriptpubkeys[SHA256_LEN];
             /// SHA256 of the serialization of nSequence of all inputs
-            uint8_t sha_sequences[32];
+            uint8_t sha_sequences[SHA256_LEN];
             /// SHA256 of the serialization of all output amount
-            uint8_t sha_outputs[32];
+            uint8_t sha_outputs[SHA256_LEN];
             /// SHA256 of the serialization of all input issuance information
-            uint8_t sha_issuances[32];
+            uint8_t sha_issuances[SHA256_LEN];
             /// SHA256 of the serialization of all output rangeproofs
-            uint8_t sha_rangeproofs[32];
+            uint8_t sha_rangeproofs[SHA256_LEN];
         } hashes;
     };
     /// Pinter to "unwrapped" wallet policy with removed blinding key
@@ -197,6 +213,9 @@ typedef struct {
     uint32_t global_key_presence;
     /// Commitment to a merkleized key-value map of global fields
     merkleized_map_commitment_t global_map;
+
+    /// Asset cache, holding tags of confirmed assets
+    asset_cache_t asset_cache;
 } sign_pset_state_t;
 
 /**
