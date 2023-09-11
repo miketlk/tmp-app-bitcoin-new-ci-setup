@@ -11,6 +11,7 @@
 // clang-format off
 // HACK: define empty functions for the expected imports in cx.h and os.h.
 int cx_ecfp_generate_pair ( cx_curve_t curve, cx_ecfp_public_key_t * pubkey, cx_ecfp_private_key_t * privkey, int keepprivate ){return 0;}
+int cx_ecfp_generate_pair_no_throw ( cx_curve_t curve, cx_ecfp_public_key_t * pubkey, cx_ecfp_private_key_t * privkey, int keepprivate ){return 0;}
 int cx_hash ( cx_hash_t * hash, int mode, const unsigned char * in, unsigned int len, unsigned char * out, unsigned int out_len ){return 0;}
 int cx_ecfp_init_private_key ( cx_curve_t curve, const unsigned char * rawkey, unsigned int key_len, cx_ecfp_private_key_t * pvkey ){return 0;}
 int cx_ripemd160_init ( cx_ripemd160_t * hash ){return 0;}

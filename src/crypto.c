@@ -91,7 +91,11 @@ static int secp256k1_point(const uint8_t scalar[static 32], uint8_t out[static 6
  */
 static int secp256k1_point(const uint8_t k[static 32], uint8_t out[static 65]) {
     memcpy(out, secp256k1_generator, 65);
+// TODO: convert to cx_ecfp_scalar_mult_no_throw()
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
     return cx_ecfp_scalar_mult(CX_CURVE_SECP256K1, out, 65, k, 32);
+#pragma GCC diagnostic pop
 }
 
 int crypto_derive_private_key(cx_ecfp_private_key_t *private_key,
@@ -105,17 +109,25 @@ int crypto_derive_private_key(cx_ecfp_private_key_t *private_key,
         TRY {
             // derive the seed with bip32_path
 
+// TODO: convert to os_derive_bip32_no_throw()
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
             os_perso_derive_node_bip32(CX_CURVE_256K1,
                                        bip32_path,
                                        bip32_path_len,
                                        raw_private_key,
                                        chain_code);
+#pragma GCC diagnostic pop
 
+// TODO: convert to cx_ecfp_init_private_key_no_throw()
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
             // new private_key from raw
             cx_ecfp_init_private_key(CX_CURVE_256K1,
                                      raw_private_key,
                                      sizeof(raw_private_key),
                                      private_key);
+#pragma GCC diagnostic pop
         }
         CATCH_ALL {
             ret = -1;
@@ -156,10 +168,14 @@ int bip32_CKDpub(const serialized_extended_pubkey_t *parent,
     uint8_t *I_L = &I[0];
     uint8_t *I_R = &I[32];
 
+// TODO: convert to cx_math_cmp_no_throw()
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
     // fail if I_L is not smaller than the group order n, but the probability is < 1/2^128
     if (cx_math_cmp(I_L, secp256k1_n, 32) >= 0) {
         return -1;
     }
+#pragma GCC diagnostic pop
 
     uint8_t child_uncompressed_pubkey[65];
 
@@ -171,6 +187,9 @@ int bip32_CKDpub(const serialized_extended_pubkey_t *parent,
         uint8_t K_par[65];
         crypto_get_uncompressed_pubkey(parent->compressed_pubkey, K_par);
 
+// TODO: convert to cx_ecfp_add_point_no_throw()
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
         // add K_par
         if (cx_ecfp_add_point(CX_CURVE_SECP256K1,
                               child_uncompressed_pubkey,
@@ -180,6 +199,7 @@ int bip32_CKDpub(const serialized_extended_pubkey_t *parent,
             return -3;  // the point at infinity is not a valid child pubkey (should never happen in
                         // practice)
         }
+#pragma GCC diagnostic pop
     }
 
     memmove(child->version, parent->version, MIN(4, sizeof(child->version)));
@@ -254,12 +274,17 @@ int crypto_get_uncompressed_pubkey(const uint8_t compressed_key[static 33],
 
     // we use y for intermediate results, in order to save memory
 
+// TODO: convert to cx_math_powm_no_throw()
+// TODO: convert to cx_math_addm_no_throw()
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
     uint8_t e = 3;
     cx_math_powm(y, x, &e, 1, secp256k1_p, 32);  // tmp = x^3 (mod p)
     uint8_t scalar[32] = {0};
     scalar[31] = 7;
     cx_math_addm(y, y, scalar, secp256k1_p, 32);                      // tmp = x^3 + 7 (mod p)
     cx_math_powm(y, y, secp256k1_sqr_exponent, 32, secp256k1_p, 32);  // tmp = sqrt(x^3 + 7) (mod p)
+#pragma GCC diagnostic pop
 
     // if the prefix and y don't have the same parity, take the opposite root (mod p)
     if (((prefix ^ y[31]) & 1) != 0) {
@@ -294,8 +319,12 @@ bool crypto_get_compressed_pubkey_at_path(const uint32_t bip32_path[],
                 memmove(chain_code, keydata.chain_code, 32);
             }
 
+// TODO: convert to cx_ecfp_generate_pair_no_throw()
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
             // generate corresponding public key
             cx_ecfp_generate_pair(CX_CURVE_256K1, &public_key, &private_key, 1);
+#pragma GCC diagnostic pop
 
             memmove(keydata.raw_public_key, public_key.W + 1, sizeof(keydata.raw_public_key));
 
@@ -340,6 +369,9 @@ void crypto_derive_symmetric_key(const char *label, size_t label_len, uint8_t ke
 
     memcpy(label_copy, label, MIN(label_len, sizeof(label_copy)));
 
+// TODO: convert to os_derive_bip32_with_seed_no_throw()
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
     os_perso_derive_node_with_seed_key(HDW_SLIP21,
                                        CX_CURVE_SECP256K1,
                                        (uint32_t *) label_copy,
@@ -348,6 +380,7 @@ void crypto_derive_symmetric_key(const char *label, size_t label_len, uint8_t ke
                                        NULL,
                                        NULL,
                                        0);
+#pragma GCC diagnostic pop
 }
 
 // TODO: Split serialization from key derivation?
@@ -432,6 +465,9 @@ int crypto_ecdsa_sign_sha256_hash_with_key(const uint32_t bip32_path[],
     BEGIN_TRY {
         TRY {
             crypto_derive_private_key(&private_key, chain_code, bip32_path, bip32_path_len);
+// TODO: convert to cx_ecdsa_sign_no_throw()
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
             sig_len = cx_ecdsa_sign(&private_key,
                                     CX_RND_RFC6979,
                                     CX_SHA256,
@@ -440,6 +476,7 @@ int crypto_ecdsa_sign_sha256_hash_with_key(const uint32_t bip32_path[],
                                     out,
                                     MAX_DER_SIG_LEN,
                                     &info_internal);
+#pragma GCC diagnostic pop
         }
         CATCH_ALL {
             error = true;
@@ -495,6 +532,13 @@ static int crypto_tr_lift_x(const uint8_t x[static 32], uint8_t out[static 65]) 
     // we use the memory for the x-coordinate of the output as a temporary variable
     uint8_t *c = out + 1;
 
+// TODO: convert to cx_math_cmp_no_throw()
+// TODO: convert to cx_math_powm_no_throw()
+// TODO: convert to cx_math_addm_no_throw()
+// TODO: convert to cx_math_sub_no_throw()
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+
     uint8_t e = 3;
     cx_math_powm(c, x, &e, 1, secp256k1_p, 32);  // c = x^3 (mod p)
     uint8_t scalar[32] = {0};
@@ -521,6 +565,7 @@ static int crypto_tr_lift_x(const uint8_t x[static 32], uint8_t out[static 65]) 
     memcpy(out + 1, x, 32);
 
     return 0;
+#pragma GCC diagnostic pop
 }
 
 // Like taproot_tweak_pubkey of BIP0341, with empty string h
@@ -530,10 +575,14 @@ int crypto_tr_tweak_pubkey(uint8_t pubkey[static 32], uint8_t *y_parity, uint8_t
 
     crypto_tr_tagged_hash(BIP0341_taptweak_tag, sizeof(BIP0341_taptweak_tag), pubkey, 32, t);
 
+// TODO: convert to cx_math_cmp_no_throw()
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
     // fail if t is not smaller than the curve order
     if (cx_math_cmp(t, secp256k1_n, 32) >= 0) {
         return -1;
     }
+#pragma GCC diagnostic pop
 
     uint8_t Q[65];
 
@@ -547,9 +596,13 @@ int crypto_tr_tweak_pubkey(uint8_t pubkey[static 32], uint8_t *y_parity, uint8_t
         return -1;
     }
 
+// TODO: convert to cx_ecfp_add_point_no_throw()
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
     if (cx_ecfp_add_point(CX_CURVE_SECP256K1, Q, Q, lifted_pubkey, sizeof(Q)) == 0) {
         return -1;  // the point at infinity is not valid (should never happen in practice)
     }
+#pragma GCC diagnostic pop
 
     *y_parity = Q[64] & 1;
     memcpy(out, Q + 1, 32);
@@ -577,14 +630,22 @@ int crypto_tr_tweak_seckey(uint8_t seckey[static 32]) {
                                   32,
                                   t);
 
+// TODO: convert to cx_math_cmp_no_throw()
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
             // fail if t is not smaller than the curve order
             if (cx_math_cmp(t, secp256k1_n, 32) >= 0) {
                 CLOSE_TRY;
                 ret = -1;
                 goto end;
             }
+#pragma GCC diagnostic pop
 
+// TODO: convert to cx_math_addm_no_throw()
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
             cx_math_addm(seckey, seckey, t, secp256k1_n, 32);
+#pragma GCC diagnostic pop
         }
         CATCH_ALL {
             ret = -1;

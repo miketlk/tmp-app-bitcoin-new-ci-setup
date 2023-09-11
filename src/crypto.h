@@ -112,7 +112,11 @@ int bip32_CKDpub(const serialized_extended_pubkey_t *parent,
  * @return the return value of cx_hash.
  */
 static inline int crypto_hash_update(cx_hash_t *hash_context, const void *in, size_t in_len) {
+// TODO: convert to cx_hash_no_throw()
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
     return cx_hash(hash_context, 0, in, in_len, NULL, 0);
+#pragma GCC diagnostic pop
 }
 
 /**
@@ -129,7 +133,11 @@ static inline int crypto_hash_update(cx_hash_t *hash_context, const void *in, si
  * @return the return value of cx_hash.
  */
 static inline int crypto_hash_digest(cx_hash_t *hash_context, uint8_t *out, size_t out_len) {
+// TODO: convert to cx_hash_no_throw()
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
     return cx_hash(hash_context, CX_LAST, NULL, 0, out, out_len);
+#pragma GCC diagnostic pop
 }
 
 /**
