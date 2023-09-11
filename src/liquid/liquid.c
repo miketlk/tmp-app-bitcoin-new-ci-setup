@@ -84,7 +84,7 @@ bool liquid_get_blinding_public_key(const uint8_t mbk[static 32],
                                                           &privkey_inst);
 
     // Generate corresponding public key
-    ok = ok && CX_OK == cx_ecfp_generate_pair(CX_CURVE_256K1, &pubkey_inst, &privkey_inst, 1);
+    ok = ok && CX_OK == cx_ecfp_generate_pair_no_throw(CX_CURVE_256K1, &pubkey_inst, &privkey_inst, 1);
 
     // Save produced public key in compressed or uncompressed format
     if (ok) {
