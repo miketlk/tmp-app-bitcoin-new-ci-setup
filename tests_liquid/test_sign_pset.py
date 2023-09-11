@@ -59,6 +59,10 @@ def should_go_right(event: dict):
         return True
     elif event["text"].startswith("Asset domain"):
         return True
+    elif event["text"].startswith("The asset"):
+        return True
+    elif event["text"].startswith("Reject"):
+        return True
     return False
 
 
@@ -75,6 +79,8 @@ def ux_thread_sign_pset(speculos_client: SpeculosClient, all_events: List[dict])
             speculos_client.press_and_release("right")
         elif event["text"] == "Approve":
             speculos_client.press_and_release("both")
+        elif event["text"] == "Continue":
+            speculos_client.press_and_release("both")
         elif event["text"] == "Accept":
             speculos_client.press_and_release("both")
             break
@@ -88,18 +94,25 @@ def parse_signing_events(events: List[dict]) -> dict:
     was_address = False
     was_asset = False
     was_fees = False
-    was_output = False
+
+    section = None
+    prev_text = []
 
     cur_output_index = -1
 
     ret["addresses"] = []
     ret["amounts"] = []
+    ret["unknown_assets"] = []
     ret["assets"] = []
     ret["fees"] = ""
 
     for ev in events:
-        if ev["text"].startswith("output #"):
-            was_output = True
+        if ( not section and ev["text"].startswith("Asset tag") and len(prev_text) >= 2 and
+            prev_text[-1] == "is unknown" and prev_text[-2] == "The asset" ):
+            section = 'unknown_asset'
+            ret["unknown_assets"].append("")
+        elif ev["text"].startswith("output #"):
+            section = 'output'
             idx_str = ev["text"][8:]
 
             assert int(idx_str) - 1 == cur_output_index + 1  # should not skip outputs
@@ -110,7 +123,7 @@ def parse_signing_events(events: List[dict]) -> dict:
             ret["amounts"].append("")
             ret["assets"].append("")
 
-        if was_output:
+        if section == 'output':
             if was_address:
                 ret["addresses"][-1] += ev["text"]
             if was_amount:
@@ -119,11 +132,17 @@ def parse_signing_events(events: List[dict]) -> dict:
                 ret["assets"][-1] += ev["text"]
             if was_fees:
                 ret["fees"] += ev["text"]
+        elif section == 'unknown_asset':
+            if len(prev_text) >= 2 and prev_text[-1].startswith("Asset tag"):
+                ret["unknown_assets"][-1] += ev["text"]
+            elif not ev["text"].startswith("Asset tag"):
+                section = None
 
         was_amount = ev["text"].startswith("Amount")
         was_address = ev["text"].startswith("Address")
         was_asset = ev["text"].startswith("Asset tag")
         was_fees = ev["text"].startswith("Fees")
+        prev_text.append(ev["text"])
 
     return ret
 
@@ -227,6 +246,51 @@ def test_asset_metadata_display(client: Client, comm: SpeculosClient, is_speculo
     assert parsed_events["assets"][0].lower() == "48f835622f34e8fdc313c90d4a8659aa4afe993e32dcb03ae6ec9ccdc6fcbe18"
 
     for n_input, sigs in test_data["signatures"].items():
+        result_sig = result[int(n_input)].hex()
+        assert len(result_sig) >= 100 and len(result_sig) <= 144
+        assert result_sig.startswith("304")
+        assert result_sig in sigs["final_scriptwitness"]
+
+def test_unknown_asset_display(client: Client, comm: SpeculosClient, is_speculos: bool):
+    # Test correctness of displayed unknown asset information when processing PSET with embedded
+    # asset metadata.
+
+    client.debug = False # !!!!!
+
+    if not is_speculos:
+        pytest.skip("Requires speculos")
+
+    with open(f"{tests_root}/pset/unknown_asset.json", "r") as read_file:
+        test_data = json.load(read_file)["valid"]["wpkh"]
+
+    wallet = BlindedWallet(
+        name="Cold storage",
+        blinding_key=test_data["mbk"],
+        policy_map="wpkh(@0)",
+        keys_info=test_data["keys_info"]
+    )
+
+    test_vector = test_data["tests"][0]
+    pset = PSET()
+    pset.deserialize(test_vector["pset"])
+
+    all_events: List[dict] = []
+    x = threading.Thread(target=ux_thread_sign_pset, args=[comm, all_events])
+    x.start()
+    result = client.sign_psbt(pset, wallet, wallet_hmac=None)
+    x.join()
+
+    parsed_events = parse_signing_events(all_events)
+
+    assert len(parsed_events["amounts"]) == 1
+    assert parsed_events["amounts"][0] == "??? 12345678"
+    assert parsed_events["fees"] == "TL-BTC 0.00003767"
+    assert len(parsed_events["unknown_assets"]) == 1
+    assert parsed_events["unknown_assets"][0].lower() == test_vector["asset_tag"]
+    assert len(parsed_events["assets"]) == 1
+    assert parsed_events["assets"][0].lower() == test_vector["asset_tag"]
+
+    for n_input, sigs in test_vector["signatures"].items():
         result_sig = result[int(n_input)].hex()
         assert len(result_sig) >= 100 and len(result_sig) <= 144
         assert result_sig.startswith("304")
