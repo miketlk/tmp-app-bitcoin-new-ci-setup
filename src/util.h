@@ -6,6 +6,34 @@
 #include <string.h>
 
 /**
+ * Fall-through between switch labels as Clang C attribute
+ */
+#if defined (__has_c_attribute)
+#if __has_c_attribute(fallthrough)
+#define UTIL_FALLTHROUGH [[fallthrough]]
+#endif
+
+/**
+ * Fall-through between switch labels as Clang C++ attribute
+ */
+#elif defined(__cplusplus) && defined(__has_cpp_attribute)
+#if __has_cpp_attribute(fallthrough)
+#define UTIL_FALLTHROUGH [[fallthrough]]
+#endif
+#endif
+
+/**
+ * Fall-through between switch labels as GCC attribute
+ */
+#ifndef UTIL_FALLTHROUGH
+#if defined(__GNUC__) && __GNUC__ >= 4
+#define UTIL_FALLTHROUGH __attribute__ ((fallthrough))
+#else
+#define UTIL_FALLTHROUGH
+#endif
+#endif
+
+/**
  * Reverses data in-place.
  *
  * @param[in,out] buf

@@ -16,6 +16,7 @@
 ********************************************************************************/
 
 #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+#pragma GCC diagnostic ignored "-Wimplicit-fallthrough"
 
 #include "btchip_internal.h"
 #include "btchip_apdu_constants.h"

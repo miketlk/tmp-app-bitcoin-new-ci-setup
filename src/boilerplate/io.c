@@ -21,6 +21,7 @@
 #include "os.h"
 #include "ux.h"
 
+#include "util.h"
 #include "io.h"
 #include "globals.h"
 #include "sw.h"
@@ -95,6 +96,7 @@ uint8_t io_event(uint8_t channel) {
                 THROW(EXCEPTION_IO_RESET);
             }
             /* fallthrough */
+            UTIL_FALLTHROUGH;
         case SEPROXYHAL_TAG_DISPLAY_PROCESSED_EVENT:
             UX_DISPLAYED_EVENT({});
             break;
