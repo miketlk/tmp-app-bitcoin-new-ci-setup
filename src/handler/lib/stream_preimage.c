@@ -90,14 +90,14 @@ int call_stream_preimage(dispatcher_context_t *dispatcher_context,
             return -8;
         }
 
-        uint8_t *data_ptr =
+        uint8_t *data_ptr2 =
             dispatcher_context->read_buffer.ptr + dispatcher_context->read_buffer.offset;
 
         // update hash
-        crypto_hash_update(&hash_context.header, data_ptr, n_bytes);
+        crypto_hash_update(&hash_context.header, data_ptr2, n_bytes);
 
         // call callback with data
-        buffer_t buf = buffer_create(data_ptr, n_bytes);
+        buffer_t buf = buffer_create(data_ptr2, n_bytes);
         callback(&buf, callback_state);
 
         bytes_remaining -= n_bytes;

@@ -2577,8 +2577,8 @@ static void sign_init(dispatcher_context_t *dc) {
                 our_key_found = true;
 
                 state->our_key_derivation_length = our_key_info.master_key_derivation_len;
-                for (int i = 0; i < our_key_info.master_key_derivation_len; i++) {
-                    state->our_key_derivation[i] = our_key_info.master_key_derivation[i];
+                for (int j = 0; j < our_key_info.master_key_derivation_len; j++) {
+                    state->our_key_derivation[j] = our_key_info.master_key_derivation[j];
                 }
 
                 break;
