@@ -255,8 +255,6 @@ def test_unknown_asset_display(client: Client, comm: SpeculosClient, is_speculos
     # Test correctness of displayed unknown asset information when processing PSET with embedded
     # asset metadata.
 
-    client.debug = False # !!!!!
-
     if not is_speculos:
         pytest.skip("Requires speculos")
 
