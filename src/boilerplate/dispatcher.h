@@ -123,7 +123,16 @@ void apdu_dispatcher(command_descriptor_t const cmd_descriptors[],
 
 // Debug utilities
 
-#ifdef HAVE_LOG_PROCESSOR
+#ifdef HAVE_CCMD_PRINTF
+extern int ccmd_printf(dispatcher_context_t *dc, const char *format, ... );
+#define CCMD_PRINTF ccmd_printf
+#else
+#define CCMD_PRINTF(...)
+#endif
+
+#if defined(HAVE_CCMD_PRINTF) && defined(HAVE_CCMD_PRINTF)
+#define LOG_PROCESSOR(dc, file, line, func) ccmd_printf(dc, "->%s", func)
+#elif defined(HAVE_LOG_PROCESSOR)
 // Print current filename, line number and function name.
 // Indents according to the nesting depth for subprocessors.
 void print_dispatcher_info(dispatcher_context_t *dc,
@@ -134,13 +143,6 @@ void print_dispatcher_info(dispatcher_context_t *dc,
 #define LOG_PROCESSOR(dc, file, line, func) print_dispatcher_info(dc, file, line, func)
 #else
 #define LOG_PROCESSOR(dc, file, line, func)
-#endif
-
-#ifdef HAVE_CCMD_PRINTF
-extern int ccmd_printf(dispatcher_context_t *dc, const char *format, ... );
-#define CCMD_PRINTF ccmd_printf
-#else
-#define CCMD_PRINTF(...)
 #endif
 
 #ifdef HAVE_APDU_LOG

@@ -161,12 +161,16 @@ static buffer_t* create_metadata(const asset_metadata_vector_t *vect) {
     size_t contract_len = strlen(vect->contract_str);
     size_t data_len = varint_size(contract_len) + contract_len + sizeof(vect->prevout_txid) + 4;
 
+    // Reverse prevoutTxid before storing in asset metadata
+    uint8_t prevout_txid_rev[SHA256_LEN];
+    reverse_copy(prevout_txid_rev, vect->prevout_txid, sizeof(prevout_txid_rev));
+
     buffer_t *buffer = alloc_buffer(data_len);
     if (buffer) {
         bool ok = varint_write(buffer_get_cur(buffer), 0, contract_len) > 0 &&
             buffer_seek_cur(buffer, varint_size(contract_len)) &&
             buffer_write_bytes(buffer, (const uint8_t*)vect->contract_str, contract_len) &&
-            buffer_write_bytes(buffer, vect->prevout_txid, sizeof(vect->prevout_txid)) &&
+            buffer_write_bytes(buffer, prevout_txid_rev, sizeof(prevout_txid_rev)) &&
             buffer_write_u32(buffer, vect->prevout_index, LE) &&
             buffer_seek_set(buffer, 0);
 

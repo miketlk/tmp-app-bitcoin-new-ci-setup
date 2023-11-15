@@ -218,7 +218,7 @@ def test_asset_metadata_display(client: Client, comm: SpeculosClient, is_speculo
         pytest.skip("Requires speculos")
 
     with open(f"{tests_root}/pset/asset_metadata.json", "r") as read_file:
-        test_data = json.load(read_file)
+        test_data = json.load(read_file)["valid"]["wpkh"]
 
     wallet = BlindedWallet(
         name="Cold storage",
@@ -227,29 +227,32 @@ def test_asset_metadata_display(client: Client, comm: SpeculosClient, is_speculo
         keys_info=test_data["keys_info"]
     )
 
-    pset = PSET()
-    pset.deserialize(test_data["pset"])
+    # Loop through all test vectors
+    for test_vector in test_data["tests"]:
+        pset = PSET()
+        pset.deserialize(test_vector["pset"])
+        contract = json.loads(test_vector["asset_contract"])
 
-    all_events: List[dict] = []
-    x = threading.Thread(target=ux_thread_sign_pset, args=[comm, all_events])
-    x.start()
-    result = client.sign_psbt(pset, wallet, wallet_hmac=None)
-    x.join()
-    parsed_events = parse_signing_events(all_events)
+        all_events: List[dict] = []
+        x = threading.Thread(target=ux_thread_sign_pset, args=[comm, all_events])
+        x.start()
+        result = client.sign_psbt(pset, wallet, wallet_hmac=None)
+        x.join()
+        parsed_events = parse_signing_events(all_events)
 
-    assert len(parsed_events["addresses"]) == 1
-    assert parsed_events["addresses"][0] == "ert1qwmjpsj49ytzfh0sy36fcwwan0q9nvgndrm7ltl"
-    assert len(parsed_events["amounts"]) == 1
-    assert parsed_events["amounts"][0] == "TEST 123456.78"
-    assert parsed_events["fees"] == "TL-BTC 0.00003767"
-    assert len(parsed_events["assets"]) == 1
-    assert parsed_events["assets"][0].lower() == "48f835622f34e8fdc313c90d4a8659aa4afe993e32dcb03ae6ec9ccdc6fcbe18"
+        assert len(parsed_events["addresses"]) == 1
+        assert parsed_events["addresses"][0] == test_vector["destination_address"]["unconfidential"]
+        assert len(parsed_events["amounts"]) == 1
+        assert parsed_events["amounts"][0] == format_amount(contract["ticker"], test_vector["amount"], contract["precision"])
+        assert parsed_events["fees"] == format_amount("TL-BTC", test_vector["fee"])
+        assert len(parsed_events["assets"]) == 1
+        assert parsed_events["assets"][0].lower() == test_vector["asset_tag"]
 
-    for n_input, sigs in test_data["signatures"].items():
-        result_sig = result[int(n_input)].hex()
-        assert len(result_sig) >= 100 and len(result_sig) <= 144
-        assert result_sig.startswith("304")
-        assert result_sig in sigs["final_scriptwitness"]
+        for n_input, sigs in test_vector["signatures"].items():
+            result_sig = result[int(n_input)].hex()
+            assert len(result_sig) >= 100 and len(result_sig) <= 144
+            assert result_sig.startswith("304")
+            assert result_sig in sigs["final_scriptwitness"]
 
 def test_unknown_asset_display(client: Client, comm: SpeculosClient, is_speculos: bool):
     # Test correctness of displayed unknown asset information when processing PSET with embedded
@@ -268,28 +271,29 @@ def test_unknown_asset_display(client: Client, comm: SpeculosClient, is_speculos
         keys_info=test_data["keys_info"]
     )
 
-    test_vector = test_data["tests"][0]
-    pset = PSET()
-    pset.deserialize(test_vector["pset"])
+    # Loop through all test vectors
+    for test_vector in test_data["tests"]:
+        pset = PSET()
+        pset.deserialize(test_vector["pset"])
 
-    all_events: List[dict] = []
-    x = threading.Thread(target=ux_thread_sign_pset, args=[comm, all_events])
-    x.start()
-    result = client.sign_psbt(pset, wallet, wallet_hmac=None)
-    x.join()
+        all_events: List[dict] = []
+        x = threading.Thread(target=ux_thread_sign_pset, args=[comm, all_events])
+        x.start()
+        result = client.sign_psbt(pset, wallet, wallet_hmac=None)
+        x.join()
 
-    parsed_events = parse_signing_events(all_events)
+        parsed_events = parse_signing_events(all_events)
 
-    assert len(parsed_events["amounts"]) == 1
-    assert parsed_events["amounts"][0] == "??? 12345678"
-    assert parsed_events["fees"] == "TL-BTC 0.00003767"
-    assert len(parsed_events["unknown_assets"]) == 1
-    assert parsed_events["unknown_assets"][0].lower() == test_vector["asset_tag"]
-    assert len(parsed_events["assets"]) == 1
-    assert parsed_events["assets"][0].lower() == test_vector["asset_tag"]
+        assert len(parsed_events["amounts"]) == 1
+        assert parsed_events["amounts"][0] == format_amount("???", test_vector["amount"], 0)
+        assert parsed_events["fees"] == format_amount("TL-BTC", test_vector["fee"])
+        assert len(parsed_events["unknown_assets"]) == 1
+        assert parsed_events["unknown_assets"][0].lower() == test_vector["asset_tag"]
+        assert len(parsed_events["assets"]) == 1
+        assert parsed_events["assets"][0].lower() == test_vector["asset_tag"]
 
-    for n_input, sigs in test_vector["signatures"].items():
-        result_sig = result[int(n_input)].hex()
-        assert len(result_sig) >= 100 and len(result_sig) <= 144
-        assert result_sig.startswith("304")
-        assert result_sig in sigs["final_scriptwitness"]
+        for n_input, sigs in test_vector["signatures"].items():
+            result_sig = result[int(n_input)].hex()
+            assert len(result_sig) >= 100 and len(result_sig) <= 144
+            assert result_sig.startswith("304")
+            assert result_sig in sigs["final_scriptwitness"]

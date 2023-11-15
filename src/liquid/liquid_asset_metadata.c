@@ -118,6 +118,8 @@ parser_state_t state_prevout_txid(asset_metadata_parser_context_t *ctx, buffer_t
     while (buffer_read_u8(data, &byte)) {
         ctx->prevout_txid[ctx->read_idx++] = byte;
         if (sizeof(ctx->prevout_txid) == ctx->read_idx) {
+            // prevoutTxid is stored in the opposite byte order comparing to JSON
+            reverse_inplace(ctx->prevout_txid, sizeof(ctx->prevout_txid));
             return STATE_PREVOUT_INDEX;
         }
     }

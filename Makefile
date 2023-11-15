@@ -15,6 +15,12 @@
 #   limitations under the License.
 # ****************************************************************************
 
+ifdef DEBUG
+ifndef DEBUG_LOG_LEVEL
+DEBUG_LOG_LEVEL := $(DEBUG)
+endif
+endif
+
 ifeq ($(BOLOS_SDK),)
 $(error Environment variable BOLOS_SDK is not set)
 endif
@@ -822,20 +828,20 @@ CFLAGS    += -include debug-helpers/debug.h
 
 # DEFINES   += HAVE_PRINT_STACK_POINTER
 
-ifndef DEBUG
-    DEBUG = 0
-endif
-
 ifeq ($(TEST),1)
     $(warning On-device tests should only be run with Speculos!)
-    DEBUG = 10
+    DEBUG_LOG_LEVEL = 10
     DEFINES += RUN_ON_DEVICE_TESTS
 endif
 
-ifeq ($(DEBUG),0)
+ifndef DEBUG_LOG_LEVEL
+    DEBUG_LOG_LEVEL = 0
+endif
+
+ifeq ($(DEBUG_LOG_LEVEL),0)
         DEFINES   += PRINTF\(...\)=
 else
-        ifeq ($(DEBUG),10)
+        ifeq ($(DEBUG_LOG_LEVEL),10)
                 $(warning Using semihosted PRINTF. Only run with Speculos!)
                 DEFINES += HAVE_PRINTF HAVE_SEMIHOSTED_PRINTF PRINTF=semihosted_printf
                 #DEFINES += HAVE_LOG_PROCESSOR
