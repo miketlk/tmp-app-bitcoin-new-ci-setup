@@ -5,7 +5,7 @@
 #include "btchip_bcd.h"
 
 int handle_get_printable_amount(get_printable_amount_parameters_t *params,
-                                const btchip_altcoin_config_t *config) {
+                                const global_context_t *config) {
     params->printable_amount[0] = 0;
     if (params->amount_length > 8) {
         PRINTF("Amount is too big");

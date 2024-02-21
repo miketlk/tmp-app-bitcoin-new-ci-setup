@@ -8,10 +8,6 @@
 #include "../common/segwit_addr.h"
 #include "../crypto.h"
 
-#ifndef DISABLE_LEGACY_SUPPORT
-#include "../legacy/cashaddr.h"
-#endif
-
 #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
 
 // constants previously defined in btchip_apdu_get_wallet_public_key.h
@@ -35,17 +31,6 @@ bool get_address_from_compressed_public_key(unsigned char format,
     int address_length;
 
     // clang-format off
-#ifndef DISABLE_LEGACY_SUPPORT
-    bool cashAddr = (format == P2_CASHADDR);
-    if (cashAddr) {
-        uint8_t tmp[20];
-        crypto_hash160(compressed_pub_key,  // IN
-                       33,                  // INLEN
-                       tmp);
-        if (!cashaddr_encode(tmp, 20, (uint8_t*) address, max_address_length, CASHADDR_P2PKH))
-            return false;
-    } else
-#endif
     if (format == P2_LEGACY) {
         // clang-format on
         uint8_t tmp[20];
@@ -99,7 +84,7 @@ bool get_address_from_compressed_public_key(unsigned char format,
     return true;
 }
 
-int handle_check_address(check_address_parameters_t* params, btchip_altcoin_config_t* coin_config) {
+int handle_check_address(check_address_parameters_t* params, global_context_t* coin_config) {
     unsigned char compressed_public_key[33];
     PRINTF("Params on the address %d\n", (unsigned int) params);
     PRINTF("Address to check %s\n", params->address_to_check);

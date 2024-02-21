@@ -1,6 +1,7 @@
 #pragma once
 
 #include "stdbool.h"
+#include "context.h"
 
 #define RUN_APPLICATION 1
 
@@ -48,3 +49,14 @@ typedef struct create_transaction_parameters_s {
     char* destination_address;
     char* destination_address_extra_id;
 } create_transaction_parameters_t;
+
+struct libargs_s {
+    unsigned int id;
+    unsigned int command;
+    global_context_t *coin_config; // TODO: remove !!!
+    union {
+        check_address_parameters_t *check_address;
+        create_transaction_parameters_t *create_transaction;
+        get_printable_amount_parameters_t *get_printable_amount;
+    };
+};

@@ -45,11 +45,6 @@ ifndef COIN
 COIN=liquid_regtest
 endif
 
-# Custom NanoS linking script to overlap legacy globals and new globals
-ifeq ($(TARGET_NAME),TARGET_NANOS)
-SCRIPT_LD:=$(CURDIR)/script-nanos.ld
-endif
-
 # Flags: BOLOS_SETTINGS, GLOBAL_PIN, DERIVE_MASTER
 # Dependency to Bitcoin app (for altcoins)
 APP_LOAD_FLAGS=--appFlags 0xa50 --dep Bitcoin:$(APPVERSION)
@@ -128,8 +123,6 @@ else ifeq ($(COIN),bitcoin_lite)
 DEFINES_LIB=
 APP_LOAD_FLAGS=--appFlags 0xa50
 
-DEFINES   += DISABLE_LEGACY_SUPPORT
-
 # Bitcoin mainnet, no legacy support
 DEFINES   += BIP32_PUBKEY_VERSION=0x0488B21E
 DEFINES   += BIP44_COIN_TYPE=0
@@ -146,8 +139,6 @@ else ifeq ($(COIN),bitcoin_testnet_lite)
 # we're not using the lib :)
 DEFINES_LIB=
 APP_LOAD_FLAGS=--appFlags 0xa50
-
-DEFINES   += DISABLE_LEGACY_SUPPORT
 
 # Bitcoin testnet, no legacy support
 DEFINES   += BIP32_PUBKEY_VERSION=0x043587CF
@@ -189,8 +180,6 @@ DEFINES_LIB=
 # Flags: DERIVE_MASTER, GLOBAL_PIN, BOLOS_SETTINGS
 APP_LOAD_FLAGS=--appFlags 0x250
 
-DEFINES   += DISABLE_LEGACY_SUPPORT
-
 # Liquid regtest
 DEFINES   += BIP32_PUBKEY_VERSION=0x043587CF
 DEFINES   += BIP44_COIN_TYPE=1
@@ -219,8 +208,6 @@ else ifeq ($(COIN),liquid_regtest_headless)
 DEFINES_LIB=
 # Flags: DERIVE_MASTER, GLOBAL_PIN, BOLOS_SETTINGS
 APP_LOAD_FLAGS=--appFlags 0x250
-
-DEFINES   += DISABLE_LEGACY_SUPPORT
 
 # Liquid regtest headless
 DEFINES   += BIP32_PUBKEY_VERSION=0x043587CF
@@ -252,8 +239,6 @@ DEFINES_LIB=
 # Flags: DERIVE_MASTER, GLOBAL_PIN, BOLOS_SETTINGS
 APP_LOAD_FLAGS=--appFlags 0x250
 
-DEFINES   += DISABLE_LEGACY_SUPPORT
-
 # Liquid
 DEFINES   += BIP32_PUBKEY_VERSION=0x0488B21E
 DEFINES   += BIP44_COIN_TYPE=1776
@@ -281,8 +266,6 @@ else ifeq ($(COIN),liquid_headless)
 DEFINES_LIB=
 # Flags: DERIVE_MASTER, GLOBAL_PIN, BOLOS_SETTINGS
 APP_LOAD_FLAGS=--appFlags 0x250
-
-DEFINES   += DISABLE_LEGACY_SUPPORT
 
 # Liquid Headless
 DEFINES   += BIP32_PUBKEY_VERSION=0x0488B21E
@@ -784,7 +767,6 @@ all: default
 
 # TODO: double check if all those flags are still relevant/needed (was copied from legacy app-bitcoin)
 
-DEFINES   += APPNAME=\"$(APPNAME)\"
 DEFINES   += APPVERSION=\"$(APPVERSION)\"
 DEFINES   += MAJOR_VERSION=$(APPVERSION_M) MINOR_VERSION=$(APPVERSION_N) PATCH_VERSION=$(APPVERSION_P)
 DEFINES   += OS_IO_SEPROXYHAL
@@ -847,7 +829,7 @@ else
                 #DEFINES += HAVE_LOG_PROCESSOR
                 #DEFINES += HAVE_APDU_LOG
                 #DEFINES += HAVE_PRINT_STACK_POINTER
-        else ifeq ($(DEBUG),11)
+        else ifeq ($(DEBUG_LOG_LEVEL),11)
                 $(warning CCMD PRINTF is used! APDU exchage is affected.)
                 DEFINES += HAVE_CCMD_PRINTF
         else
@@ -882,12 +864,14 @@ CC      := $(CLANGPATH)clang
 AS      := $(GCCPATH)arm-none-eabi-gcc
 LD      := $(GCCPATH)arm-none-eabi-gcc
 LDLIBS  += -lm -lgcc -lc
-ifeq ($(DEBUG),0)
+
+ifeq ($(DEBUG_LOG_LEVEL),0)
+    $(info *** Release version is being built ***)
     CFLAGS  += -Oz
     LDFLAGS += -O3 -Os
 else
-    $(info Debug version is being built)
-    CFLAGS  += -Og
+    $(info *** Debug version is being built ***)
+    CFLAGS  += -Og -g
     LDFLAGS += -Og
 endif
 

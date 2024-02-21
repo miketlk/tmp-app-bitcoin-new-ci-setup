@@ -15,31 +15,13 @@
  *  limitations under the License.
  ********************************************************************************/
 
-#ifndef DISABLE_LEGACY_SUPPORT
-// only needed for FLAG_PEERCOIN_UNITS below
-#include "../legacy/include/btchip_context.h"
-#endif  // DISABLE_LEGACY_SUPPORT
-
 #define SCRATCH_SIZE 21
 
 unsigned char btchip_convert_hex_amount_to_displayable_no_globals(const unsigned char* amount,
                                                                   unsigned int config_flag __attribute__((unused)),
                                                                   unsigned char* out) {
-    unsigned char LOOP1;
-    unsigned char LOOP2;
-
-#ifndef DISABLE_LEGACY_SUPPORT
-    if (!(config_flag & FLAG_PEERCOIN_UNITS)) {
-        LOOP1 = 13;
-        LOOP2 = 8;
-    } else {
-        LOOP1 = 15;
-        LOOP2 = 6;
-    }
-#else
-    LOOP1 = 13;
-    LOOP2 = 8;
-#endif
+    unsigned char LOOP1 = 13;
+    unsigned char LOOP2 = 8;
 
     unsigned short scratch[SCRATCH_SIZE];
     unsigned char offset = 0;
