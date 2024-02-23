@@ -54,7 +54,6 @@ int get_script_type(const uint8_t script[], size_t script_len) {
 // TODO: add unit tests
 int get_script_address(const uint8_t script[],
                        size_t script_len,
-                       const global_context_t *coin_config,
                        char *out,
                        size_t out_len) {
     int script_type = get_script_type(script, script_len);
@@ -63,8 +62,8 @@ int get_script_address(const uint8_t script[],
         case SCRIPT_TYPE_P2PKH:
         case SCRIPT_TYPE_P2SH: {
             int offset = (script_type == SCRIPT_TYPE_P2PKH) ? 3 : 2;
-            int ver = (script_type == SCRIPT_TYPE_P2PKH) ? coin_config->p2pkh_version
-                                                         : coin_config->p2sh_version;
+            int ver = (script_type == SCRIPT_TYPE_P2PKH) ? COIN_P2PKH_VERSION
+                                                         : COIN_P2SH_VERSION;
             addr_len = base58_encode_address(script + offset, ver, out, out_len - 1);
             if (addr_len < 0) {
                 return -1;
@@ -81,15 +80,12 @@ int get_script_address(const uint8_t script[],
             int version = (script[0] == 0 ? 0 : script[0] - 80);
 
             // make sure that the output buffer is long enough
-            size_t prefix_len = strnlen(coin_config->native_segwit_prefix,
-                                        sizeof(coin_config->native_segwit_prefix_val));
-            if (prefix_len >= sizeof(coin_config->native_segwit_prefix_val) ||
-                (out_len < 73 + prefix_len)) {
+            if (out_len < 73 + strlen(COIN_NATIVE_SEGWIT_PREFIX)) {
                 return -1;
             }
 
             int ret = segwit_addr_encode(out,
-                                         coin_config->native_segwit_prefix,
+                                         COIN_NATIVE_SEGWIT_PREFIX,
                                          version,
                                          script + 2,
                                          prog_len);

@@ -79,9 +79,9 @@ void ui_menu_main() {
         ux_stack_push();
     }
 
-    if (G_coin_config->bip32_pubkey_version == BIP32_PUBKEY_VERSION_MAINNET) {  // mainnet
+    if (BIP32_PUBKEY_VERSION == BIP32_PUBKEY_VERSION_MAINNET) {  // mainnet
         ux_flow_init(0, ux_menu_main_flow_bitcoin, NULL);
-    } else if (G_coin_config->bip32_pubkey_version == BIP32_PUBKEY_VERSION_TESTNET) {  // testnet
+    } else if (BIP32_PUBKEY_VERSION == BIP32_PUBKEY_VERSION_TESTNET) {  // testnet
         ux_flow_init(0, ux_menu_main_flow_bitcoin_testnet, NULL);
     } else {
         ux_flow_init(0, ux_menu_main_flow_altcoin, NULL);  // some altcoin

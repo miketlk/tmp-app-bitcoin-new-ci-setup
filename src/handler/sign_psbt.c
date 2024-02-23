@@ -52,8 +52,6 @@
 
 #include "../swap/swap_globals.h"
 
-extern global_context_t *G_coin_config;
-
 // Input validation
 static void process_input_map(dispatcher_context_t *dc);
 static void check_input_owned(dispatcher_context_t *dc);
@@ -913,7 +911,6 @@ static void output_validate_external(dispatcher_context_t *dc) {
     char output_address[MAX(MAX_ADDRESS_LENGTH_STR + 1, MAX_OPRETURN_OUTPUT_DESC_SIZE)];
     int address_len = get_script_address(state->cur.in_out.scriptPubKey,
                                          state->cur.in_out.scriptPubKey_len,
-                                         G_coin_config,
                                          output_address,
                                          sizeof(output_address));
     if (address_len < 0) {
@@ -955,7 +952,7 @@ static void output_validate_external(dispatcher_context_t *dc) {
         ui_validate_output(dc,
                            state->external_outputs_count,
                            output_address,
-                           G_coin_config->name_short,
+                           COIN_COINID_SHORT,
                            state->cur.output.value,
                            BITCOIN_DECIMALS,
                            output_next);
@@ -1021,7 +1018,7 @@ static void confirm_transaction(dispatcher_context_t *dc) {
         dc->next(sign_init);
     } else {
         // Show final user validation UI
-        ui_validate_transaction(dc, G_coin_config->name_short, fee, BITCOIN_DECIMALS, sign_init);
+        ui_validate_transaction(dc, COIN_COINID_SHORT, fee, BITCOIN_DECIMALS, sign_init);
     }
 }
 
@@ -1061,7 +1058,7 @@ static void sign_init(dispatcher_context_t *dc) {
             SEND_SW(dc, SW_BAD_STATE);  // should never happen
             return;
         }
-        if (!validate_policy_map_extended_pubkey(&key_info, G_coin_config->bip32_pubkey_version)) {
+        if (!validate_policy_map_extended_pubkey(&key_info, BIP32_PUBKEY_VERSION)) {
             SEND_SW(dc, SW_INCORRECT_DATA);
             return;
         }
@@ -1074,7 +1071,7 @@ static void sign_init(dispatcher_context_t *dc) {
             int serialized_pubkey_len =
                 get_serialized_extended_pubkey_at_path(our_key_info.master_key_derivation,
                                                        our_key_info.master_key_derivation_len,
-                                                       G_coin_config->bip32_pubkey_version,
+                                                       BIP32_PUBKEY_VERSION,
                                                        pubkey_derived);
             if (serialized_pubkey_len == -1) {
                 SEND_SW(dc, SW_BAD_STATE);

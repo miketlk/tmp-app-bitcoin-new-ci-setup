@@ -64,8 +64,6 @@ static void next_cosigner(dispatcher_context_t *dc);
  */
 static void finalize_response(dispatcher_context_t *dc);
 
-extern global_context_t *G_coin_config;
-
 /**
  * Unwraps top-level blinded tag and checks whether enclosed wallet policy is acceptable.
  *
@@ -197,7 +195,7 @@ static void process_cosigner_info(dispatcher_context_t *dc) {
         SEND_SW(dc, SW_INCORRECT_DATA);
         return;
     }
-    if (!validate_policy_map_extended_pubkey(&key_info, G_coin_config->bip32_pubkey_version)) {
+    if (!validate_policy_map_extended_pubkey(&key_info, BIP32_PUBKEY_VERSION)) {
         SEND_SW(dc, SW_INCORRECT_DATA);
         return;
     }
@@ -227,7 +225,7 @@ static void process_cosigner_info(dispatcher_context_t *dc) {
         int serialized_pubkey_len =
             get_serialized_extended_pubkey_at_path(key_info.master_key_derivation,
                                                    key_info.master_key_derivation_len,
-                                                   G_coin_config->bip32_pubkey_version,
+                                                   BIP32_PUBKEY_VERSION,
                                                    pubkey_derived);
         if (serialized_pubkey_len == -1) {
             SEND_SW(dc, SW_BAD_STATE);

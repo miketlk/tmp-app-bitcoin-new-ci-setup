@@ -84,7 +84,7 @@ bool get_address_from_compressed_public_key(unsigned char format,
     return true;
 }
 
-int handle_check_address(check_address_parameters_t* params, global_context_t* coin_config) {
+int handle_check_address(check_address_parameters_t* params) {
     unsigned char compressed_public_key[33];
     PRINTF("Params on the address %d\n", (unsigned int) params);
     PRINTF("Address to check %s\n", params->address_to_check);
@@ -110,9 +110,9 @@ int handle_check_address(check_address_parameters_t* params, global_context_t* c
     char address[MAX_ADDRESS_LENGTH_STR + 1];
     if (!get_address_from_compressed_public_key(params->address_parameters[0],
                                                 compressed_public_key,
-                                                coin_config->p2pkh_version,
-                                                coin_config->p2sh_version,
-                                                coin_config->native_segwit_prefix,
+                                                COIN_P2PKH_VERSION,
+                                                COIN_P2SH_VERSION,
+                                                COIN_NATIVE_SEGWIT_PREFIX,
                                                 address,
                                                 sizeof(address))) {
         PRINTF("Can't create address from given public key\n");

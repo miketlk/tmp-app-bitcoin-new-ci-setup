@@ -65,7 +65,7 @@ void ui_menu_main() {
         ux_stack_push();
     }
 
-    if (G_coin_config->bip32_pubkey_version == BIP32_PUBKEY_VERSION_MAINNET) {  // mainnet
+    if (BIP32_PUBKEY_VERSION == BIP32_PUBKEY_VERSION_MAINNET) {  // mainnet
         ux_flow_init(0, ux_menu_main_flow_liquid, NULL);
     } else {  // regtest
         ux_flow_init(0, ux_menu_main_flow_liquid_regtest, NULL);

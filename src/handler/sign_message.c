@@ -26,8 +26,6 @@
 #include "../ui/display.h"
 #include "../ui/menu.h"
 
-extern global_context_t *G_coin_config;
-
 /**
  * Signs Bitcoin Message Signing digest and sends response.
  *

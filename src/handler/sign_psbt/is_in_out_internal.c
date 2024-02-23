@@ -9,8 +9,6 @@
 #include "../../common/script.h"
 #include "../../constants.h"
 
-extern global_context_t *G_coin_config;
-
 int is_in_out_internal(dispatcher_context_t *dispatcher_context,
                        const transaction_signer_state_t *state,
                        const in_out_info_t *in_out_info,
@@ -88,7 +86,7 @@ int is_in_out_internal(dispatcher_context_t *dispatcher_context,
 
     if (state->is_wallet_canonical) {
         // for canonical wallets, the path must be exactly as expected for a change output
-        uint32_t coin_types[2] = {G_coin_config->bip44_coin_type, G_coin_config->bip44_coin_type2};
+        uint32_t coin_types[2] = {BIP44_COIN_TYPE, BIP44_COIN_TYPE_2};
         if (!is_address_path_standard(bip32_path,
                                       bip32_path_len,
                                       state->bip44_purpose,

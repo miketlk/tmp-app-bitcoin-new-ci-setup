@@ -72,9 +72,6 @@ the right paths to identify internal inputs/outputs.
 
 #include "../debug-helpers/debug.h"
 
-// Pointer to global coin configuration
-extern global_context_t *G_coin_config;
-
 /// Bits indicating presense (or status) of input's/output's field(s) in PSET
 typedef enum {
     /// PSBT_IN_BIP32_DERIVATION or PSBT_IN_TAP_BIP32_DERIVATION
@@ -2370,7 +2367,6 @@ static void output_validate_external(dispatcher_context_t *dc) {
     char output_address[MAX(MAX_ADDRESS_LENGTH_STR + 1, MAX_OPRETURN_OUTPUT_DESC_SIZE)];
     int address_len = get_script_address(state->cur.in_out.scriptPubKey,
                                          state->cur.in_out.scriptPubKey_len,
-                                         G_coin_config,
                                          output_address,
                                          sizeof(output_address));
     if (address_len < 0) {
@@ -2552,7 +2548,7 @@ static void sign_init(dispatcher_context_t *dc) {
             return;
         }
         if (!validate_policy_map_extended_pubkey(&our_key_info,
-                                                 G_coin_config->bip32_pubkey_version)) {
+                                                 BIP32_PUBKEY_VERSION)) {
             SEND_SW(dc, SW_INCORRECT_DATA);
             return;
         }
@@ -2565,7 +2561,7 @@ static void sign_init(dispatcher_context_t *dc) {
             int serialized_pubkey_len =
                 get_serialized_extended_pubkey_at_path(our_key_info.master_key_derivation,
                                                        our_key_info.master_key_derivation_len,
-                                                       G_coin_config->bip32_pubkey_version,
+                                                       BIP32_PUBKEY_VERSION,
                                                        pubkey_derived);
             if (serialized_pubkey_len == -1) {
                 SEND_SW(dc, SW_BAD_STATE);

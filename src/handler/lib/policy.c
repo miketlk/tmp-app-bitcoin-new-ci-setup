@@ -10,8 +10,6 @@
 #include "../../common/wif.h"
 #include "../../liquid/liquid.h"
 
-extern global_context_t G_context;
-
 #ifdef HAVE_LIQUID
 #define MAX_POLICY_DEPTH 4
 #else
