@@ -6,6 +6,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <string.h>
+#include "decorators.h"
 #include "../constants.h"
 
 /// Ticker for unknown asset
@@ -91,10 +92,10 @@ static inline bool liquid_is_asset_bitcoin(const uint8_t tag[static LIQUID_ASSET
  *
  * @return true on success, false in case of error.
  */
-bool liquid_compute_asset_tag(const uint8_t contract_hash[static SHA256_LEN],
-                              const uint8_t prevout_txid[static SHA256_LEN],
-                              uint32_t prevout_index,
-                              uint8_t asset_tag[static LIQUID_ASSET_TAG_LEN]);
+WARN_UNUSED_RESULT bool liquid_compute_asset_tag(const uint8_t contract_hash[static SHA256_LEN],
+                                                 const uint8_t prevout_txid[static SHA256_LEN],
+                                                 uint32_t prevout_index,
+                                                 uint8_t asset_tag[static LIQUID_ASSET_TAG_LEN]);
 
 /**
  * Converts an asset tag to a hexadecimal string

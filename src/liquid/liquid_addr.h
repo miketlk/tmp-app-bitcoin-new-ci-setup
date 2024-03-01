@@ -5,6 +5,7 @@
 #include <stddef.h>   // size_t
 #include <stdint.h>   // uint*_t
 #include <stdbool.h>  // bool
+#include "decorators.h"
 
 // Prefix of confidential address
 #define LIQUID_ADDR_PREFIX_CA
@@ -32,14 +33,14 @@
  * @return the length of the encoded output on success, -1 on failure (that is, if the output
  *   would be longer than out_len).
  */
-int liquid_encode_address_base58(const uint8_t *in,
-                                 size_t in_len,
-                                 uint32_t prefix,
-                                 uint32_t version,
-                                 const uint8_t *pub_key,
-                                 size_t pub_key_len,
-                                 char *out,
-                                 size_t out_len);
+WARN_UNUSED_RESULT int liquid_encode_address_base58(const uint8_t *in,
+                                                    size_t in_len,
+                                                    uint32_t prefix,
+                                                    uint32_t version,
+                                                    const uint8_t *pub_key,
+                                                    size_t pub_key_len,
+                                                    char *out,
+                                                    size_t out_len);
 
 /**
  * Creates a confidential SegWit address.
@@ -64,13 +65,13 @@ int liquid_encode_address_base58(const uint8_t *in,
  * @return the length of the encoded output on success, -1 on failure (that is, if the output
  *   would be longer than out_len).
  */
-int liquid_encode_address_segwit(const uint8_t *witprog,
-                                 size_t witprog_len,
-                                 const char *prefix,
-                                 uint32_t version,
-                                 const uint8_t *pub_key,
-                                 size_t pub_key_len,
-                                 char *out,
-                                 size_t out_len);
+WARN_UNUSED_RESULT int liquid_encode_address_segwit(const uint8_t *witprog,
+                                                    size_t witprog_len,
+                                                    const char *prefix,
+                                                    uint32_t version,
+                                                    const uint8_t *pub_key,
+                                                    size_t pub_key_len,
+                                                    char *out,
+                                                    size_t out_len);
 
 #endif // HAVE_LIQUID

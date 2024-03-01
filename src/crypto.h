@@ -76,10 +76,10 @@ extern const uint8_t secp256k1_sqr_exponent[32];
  *
  * @return 0 if success, -1 otherwise.
  */
-int crypto_derive_private_key(cx_ecfp_private_key_t *private_key,
-                              uint8_t chain_code[static 32],
-                              const uint32_t *bip32_path,
-                              uint8_t bip32_path_len);
+WARN_UNUSED_RESULT int crypto_derive_private_key(cx_ecfp_private_key_t *private_key,
+                                                 uint8_t chain_code[static 32],
+                                                 const uint32_t *bip32_path,
+                                                 uint8_t bip32_path_len);
 
 /**
  * Initialize public key given private key.
@@ -95,9 +95,9 @@ int crypto_derive_private_key(cx_ecfp_private_key_t *private_key,
  * @return 0 if success, a negative number on failure.
  *
  */
-int bip32_CKDpub(const serialized_extended_pubkey_t *parent,
-                 uint32_t index,
-                 serialized_extended_pubkey_t *child);
+WARN_UNUSED_RESULT int bip32_CKDpub(const serialized_extended_pubkey_t *parent,
+                                    uint32_t index,
+                                    serialized_extended_pubkey_t *child);
 
 /**
  * Convenience wrapper for cx_hash to add some data to an initialized hash context.
@@ -108,15 +108,10 @@ int bip32_CKDpub(const serialized_extended_pubkey_t *parent,
  *   Pointer to the data to be added to the hash computation.
  * @param[in] in_len
  *   Size of the passed data.
- *
- * @return the return value of cx_hash.
  */
-static inline int crypto_hash_update(cx_hash_t *hash_context, const void *in, size_t in_len) {
-// TODO: convert to cx_hash_no_throw()
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
-    return cx_hash(hash_context, 0, in, in_len, NULL, 0);
-#pragma GCC diagnostic pop
+static inline void crypto_hash_update(cx_hash_t *hash_context, const void *in, size_t in_len) {
+    int ret = cx_hash_no_throw(hash_context, 0, in, in_len, NULL, 0);
+    LEDGER_ASSERT(CX_OK == ret, "It should not fail");
 }
 
 /**
@@ -129,15 +124,10 @@ static inline int crypto_hash_update(cx_hash_t *hash_context, const void *in, si
  *   Pointer to the output buffer for the result.
  * @param[in] out_len
  *   Size of output buffer, which must be large enough to contain the result.
- *
- * @return the return value of cx_hash.
  */
-static inline int crypto_hash_digest(cx_hash_t *hash_context, uint8_t *out, size_t out_len) {
-// TODO: convert to cx_hash_no_throw()
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
-    return cx_hash(hash_context, CX_LAST, NULL, 0, out, out_len);
-#pragma GCC diagnostic pop
+static inline void crypto_hash_digest(cx_hash_t *hash_context, uint8_t *out, size_t out_len) {
+    int ret = cx_hash_no_throw(hash_context, CX_LAST, NULL, 0, out, out_len);
+    LEDGER_ASSERT(CX_OK == ret, "It should not fail");
 }
 
 /**
@@ -147,11 +137,9 @@ static inline int crypto_hash_digest(cx_hash_t *hash_context, uint8_t *out, size
  *  The context of the hash, which must already be initialized.
  * @param[in] data
  *  The uint8_t to be added to the hash.
- *
- * @return the return value of cx_hash.
  */
-static inline int crypto_hash_update_u8(cx_hash_t *hash_context, uint8_t data) {
-    return crypto_hash_update(hash_context, &data, 1);
+static inline void crypto_hash_update_u8(cx_hash_t *hash_context, uint8_t data) {
+    crypto_hash_update(hash_context, &data, 1);
 }
 
 /**
@@ -165,10 +153,10 @@ static inline int crypto_hash_update_u8(cx_hash_t *hash_context, uint8_t data) {
  *
  * @return the return value of cx_hash.
  */
-static inline int crypto_hash_update_u16(cx_hash_t *hash_context, uint16_t data) {
+static inline void crypto_hash_update_u16(cx_hash_t *hash_context, uint16_t data) {
     uint8_t buf[2];
     write_u16_be(buf, 0, data);
-    return crypto_hash_update(hash_context, &buf, sizeof(buf));
+    crypto_hash_update(hash_context, &buf, sizeof(buf));
 }
 
 /**
@@ -179,13 +167,11 @@ static inline int crypto_hash_update_u16(cx_hash_t *hash_context, uint16_t data)
  *  The context of the hash, which must already be initialized.
  * @param[in] data
  *  The uint64_t to be added to the hash as a bitcoin-style varint.
- *
- * @return the return value of cx_hash.
  */
-static inline int crypto_hash_update_varint(cx_hash_t *hash_context, uint64_t data) {
+static inline void crypto_hash_update_varint(cx_hash_t *hash_context, uint64_t data) {
     uint8_t buf[9];
     int len = varint_write(buf, 0, data);
-    return crypto_hash_update(hash_context, &buf, len);
+    crypto_hash_update(hash_context, &buf, len);
 }
 
 /**
@@ -196,13 +182,11 @@ static inline int crypto_hash_update_varint(cx_hash_t *hash_context, uint64_t da
  *  The context of the hash, which must already be initialized.
  * @param[in] data
  *  The uint32_t to be added to the hash.
- *
- * @return the return value of cx_hash.
  */
-static inline int crypto_hash_update_u32(cx_hash_t *hash_context, uint32_t data) {
+static inline void crypto_hash_update_u32(cx_hash_t *hash_context, uint32_t data) {
     uint8_t buf[4];
     write_u32_be(buf, 0, data);
-    return crypto_hash_update(hash_context, &buf, sizeof(buf));
+    crypto_hash_update(hash_context, &buf, sizeof(buf));
 }
 
 /**
@@ -212,10 +196,8 @@ static inline int crypto_hash_update_u32(cx_hash_t *hash_context, uint32_t data)
  *  The context of the hash, which must already be initialized.
  * @param[in] n_zeros
  *  The number of zero bytes to be added to the hash.
- *
- * @return the return value of cx_hash.
  */
-int crypto_hash_update_zeros(cx_hash_t *hash_context, size_t n_zeros);
+void crypto_hash_update_zeros(cx_hash_t *hash_context, size_t n_zeros);
 
 /**
  * Computes RIPEMD160(in).
@@ -254,7 +236,7 @@ void crypto_hash160(const uint8_t *in, uint16_t in_len, uint8_t *out);
  *
  * @return 0 on success, a negative number on failure.
  */
-int crypto_get_compressed_pubkey(const uint8_t uncompressed_key[static 65], uint8_t out[static 33]);
+WARN_UNUSED_RESULT int crypto_get_compressed_pubkey(const uint8_t uncompressed_key[static 65], uint8_t out[static 33]);
 
 /**
  * Computes the 65-bytes uncompressed public key from the compressed 33-bytes public key.
@@ -269,7 +251,7 @@ int crypto_get_compressed_pubkey(const uint8_t uncompressed_key[static 65], uint
  *
  * @return 0 on success, a negative number on failure.
  */
-int crypto_get_uncompressed_pubkey(const uint8_t compressed_key[static 33], uint8_t out[static 65]);
+WARN_UNUSED_RESULT int crypto_get_uncompressed_pubkey(const uint8_t compressed_key[static 33], uint8_t out[static 65]);
 
 /**
  * Computes the checksum as the first 4 bytes of the double sha256 hash of the input data.
@@ -298,10 +280,10 @@ void crypto_get_checksum(const uint8_t *in, uint16_t in_len, uint8_t out[static 
  *
  * @return true on success, false in case of error.
  */
-bool crypto_get_compressed_pubkey_at_path(const uint32_t bip32_path[],
-                                          uint8_t bip32_path_len,
-                                          uint8_t pubkey[static 33],
-                                          uint8_t chain_code[]);
+WARN_UNUSED_RESULT bool crypto_get_compressed_pubkey_at_path(const uint32_t bip32_path[],
+                                                             uint8_t bip32_path_len,
+                                                             uint8_t pubkey[static 33],
+                                                             uint8_t chain_code[]);
 
 /**
  * Computes the fingerprint of a compressed key as per BIP32; that is, the first 4 bytes of the
@@ -318,7 +300,7 @@ uint32_t crypto_get_key_fingerprint(const uint8_t pub_key[static 33]);
  * Computes the fingerprint of the master key as per BIP32.
  *
  * @return the fingerprint of the master key.
- */
+  */
 uint32_t crypto_get_master_key_fingerprint();
 
 /**
@@ -336,10 +318,10 @@ uint32_t crypto_get_master_key_fingerprint();
  *
  * @return the length of the output pubkey (not including the null character), or -1 on error.
  */
-int get_serialized_extended_pubkey_at_path(const uint32_t bip32_path[],
-                                           uint8_t bip32_path_len,
-                                           uint32_t bip32_pubkey_version,
-                                           char out[static MAX_SERIALIZED_PUBKEY_LENGTH + 1]);
+WARN_UNUSED_RESULT int get_serialized_extended_pubkey_at_path(const uint32_t bip32_path[],
+                                                              uint8_t bip32_path_len,
+                                                              uint32_t bip32_pubkey_version,
+                                                              char out[static MAX_SERIALIZED_PUBKEY_LENGTH + 1]);
 
 /**
  * Derives the level-1 symmetric key at the given label using SLIP-0021.
@@ -351,8 +333,10 @@ int get_serialized_extended_pubkey_at_path(const uint32_t bip32_path[],
  *   Length of the label.
  * @param[out] key
  *   Pointer to a 32-byte output buffer that will contain the generated key.
+ *
+ * @return true on success, false in case of error.
  */
-void crypto_derive_symmetric_key(const char *label, size_t label_len, uint8_t key[static 32]);
+WARN_UNUSED_RESULT bool crypto_derive_symmetric_key(const char *label, size_t label_len, uint8_t key[static 32]);
 
 /**
  * Encodes a 20-bytes hash in base58 with checksum, after prepending a version prefix.
@@ -372,7 +356,7 @@ void crypto_derive_symmetric_key(const char *label, size_t label_len, uint8_t ke
  * @return the length of the encoded output on success, -1 on failure (that is, if the output
  *   would be longer than out_len).
  */
-int base58_encode_address(const uint8_t in[20], uint32_t version, char *out, size_t out_len);
+WARN_UNUSED_RESULT int base58_encode_address(const uint8_t in[20], uint32_t version, char *out, size_t out_len);
 
 /**
  * Signs a SHA-256 hash using the ECDSA with deterministic nonce accordin to RFC6979; the signing
@@ -393,11 +377,11 @@ int base58_encode_address(const uint8_t in[20], uint32_t version, char *out, siz
  *
  * @return the length of the signature on success, or -1 in case of error.
  */
-int crypto_ecdsa_sign_sha256_hash_with_key(const uint32_t bip32_path[],
-                                           size_t bip32_path_len,
-                                           const uint8_t hash[static 32],
-                                           uint8_t out[static MAX_DER_SIG_LEN],
-                                           uint32_t *info);
+WARN_UNUSED_RESULT int crypto_ecdsa_sign_sha256_hash_with_key(const uint32_t bip32_path[],
+                                                              size_t bip32_path_len,
+                                                              const uint8_t hash[static 32],
+                                                              uint8_t out[static MAX_DER_SIG_LEN],
+                                                              uint32_t *info);
 
 /**
  * Initializes the "tagged" SHA256 hash with the given tag, as defined by BIP-0340.
@@ -422,8 +406,10 @@ void crypto_tr_tagged_hash_init(cx_sha256_t *hash_context, const uint8_t *tag, u
  * final tweaked pubkey.
  * @param[out]  out
  *  Pointer to the a 32-byte array that will contain the x coordinate of the tweaked key.
+ *
+ * @return 0 on success, or -1 in case of error.
  */
-int crypto_tr_tweak_pubkey(uint8_t pubkey[static 32], uint8_t *y_parity, uint8_t out[static 32]);
+WARN_UNUSED_RESULT int crypto_tr_tweak_pubkey(uint8_t pubkey[static 32], uint8_t *y_parity, uint8_t out[static 32]);
 
 /**
  * Builds a tweaked public key from a BIP340 public key array.
@@ -432,8 +418,10 @@ int crypto_tr_tweak_pubkey(uint8_t pubkey[static 32], uint8_t *y_parity, uint8_t
  * @param[in|out] seckey
  *   Pointer to the 32-byte containing the secret key; it will contain the output tweaked secret
  * key.
+ *
+ * @return 0 on success, or -1 in case of error.
  */
-int crypto_tr_tweak_seckey(uint8_t seckey[static 32]);
+WARN_UNUSED_RESULT int crypto_tr_tweak_seckey(uint8_t seckey[static 32]);
 
 /**
  * Validates the Base58Check-encoded extended pubkey at a given path.
@@ -458,7 +446,7 @@ int crypto_tr_tweak_seckey(uint8_t seckey[static 32]);
  *
  * @return one of extended_pubkey_status_t constants: =0 if the pubkey is valid, <0 otherwise.
  */
-int validate_serialized_extended_pubkey(const char *pubkey,
-                                        const uint32_t bip32_path[],
-                                        int bip32_path_len,
-                                        uint32_t bip32_pubkey_version);
+WARN_UNUSED_RESULT int validate_serialized_extended_pubkey(const char *pubkey,
+                                                           const uint32_t bip32_path[],
+                                                           int bip32_path_len,
+                                                           uint32_t bip32_pubkey_version);

@@ -3,6 +3,7 @@
 #include <stddef.h>   // size_t
 #include <stdint.h>   // uint*_t
 #include <stdbool.h>  // bool
+#include "decorators.h"
 
 /**
  * Encodes address using Blech32 encoding.
@@ -22,12 +23,12 @@
  *
  * @return number of bytes written to the output buffer, 0 if failure.
  */
-int blech32_addr_encode(char *output,
-                        size_t output_limit,
-                        const char *hrp,
-                        uint8_t witver,
-                        const uint8_t *witprog,
-                        size_t witprog_len);
+WARN_UNUSED_RESULT int blech32_addr_encode(char *output,
+                                           size_t output_limit,
+                                           const char *hrp,
+                                           uint8_t witver,
+                                           const uint8_t *witprog,
+                                           size_t witprog_len);
 
 /**
  * Decodes address using Blech32 encoding.
@@ -47,9 +48,9 @@ int blech32_addr_encode(char *output,
  *
  * @return nonzero if successful, 0 if failure.
  */
-int blech32_addr_decode(uint8_t *witver,
-                        uint8_t *witdata,
-                        size_t witdata_limit,
-                        size_t *witdata_len,
-                        const char *hrp,
-                        const char *addr);
+WARN_UNUSED_RESULT int blech32_addr_decode(uint8_t *witver,
+                                           uint8_t *witdata,
+                                           size_t witdata_limit,
+                                           size_t *witdata_len,
+                                           const char *hrp,
+                                           const char *addr);

@@ -14,7 +14,7 @@
  *
  * @return true - OK, false - error
  */
-static inline bool hash_init_sha256(cx_sha256_t* sha256_context) {
+WARN_UNUSED_RESULT static inline bool hash_init_sha256(cx_sha256_t* sha256_context) {
     return CX_OK == cx_sha256_init_no_throw(sha256_context);
 }
 
@@ -30,7 +30,7 @@ static inline bool hash_init_sha256(cx_sha256_t* sha256_context) {
  *
  * @return true - OK, false - error
  */
-static inline bool hash_update(cx_hash_t *hash_context, const void *in, size_t in_len) {
+WARN_UNUSED_RESULT static inline bool hash_update(cx_hash_t *hash_context, const void *in, size_t in_len) {
     return CX_OK == cx_hash_no_throw(hash_context, 0, in, in_len, NULL, 0);
 }
 
@@ -44,7 +44,7 @@ static inline bool hash_update(cx_hash_t *hash_context, const void *in, size_t i
  *
  * @return true - OK, false - error
  */
-static inline bool hash_update_u8(cx_hash_t *hash_context, uint8_t data) {
+WARN_UNUSED_RESULT static inline bool hash_update_u8(cx_hash_t *hash_context, uint8_t data) {
     return hash_update(hash_context, &data, 1);
 }
 
@@ -60,7 +60,7 @@ static inline bool hash_update_u8(cx_hash_t *hash_context, uint8_t data) {
  *
  * @return true - OK, false - error
  */
-static inline bool hash_update_reversed(cx_hash_t *hash_context, const void *in, size_t in_len) {
+WARN_UNUSED_RESULT static inline bool hash_update_reversed(cx_hash_t *hash_context, const void *in, size_t in_len) {
     const uint8_t *p_in = (const uint8_t *)in + in_len - 1;
     int res = (int)true;
     for (size_t i = 0; i < in_len; ++i) {
@@ -80,7 +80,7 @@ static inline bool hash_update_reversed(cx_hash_t *hash_context, const void *in,
  *
  * @return true - OK, false - error
  */
-static inline bool hash_update_u32_be(cx_hash_t *hash_context, uint32_t data) {
+WARN_UNUSED_RESULT static inline bool hash_update_u32_be(cx_hash_t *hash_context, uint32_t data) {
     uint8_t buf[4];
     write_u32_be(buf, 0, data);
     return hash_update(hash_context, &buf, sizeof(buf));
@@ -97,7 +97,7 @@ static inline bool hash_update_u32_be(cx_hash_t *hash_context, uint32_t data) {
  *
  * @return true - OK, false - error
  */
-static inline bool hash_update_u32_le(cx_hash_t *hash_context, uint32_t data) {
+WARN_UNUSED_RESULT static inline bool hash_update_u32_le(cx_hash_t *hash_context, uint32_t data) {
     uint8_t buf[4];
     write_u32_le(buf, 0, data);
     return hash_update(hash_context, &buf, sizeof(buf));
@@ -116,6 +116,6 @@ static inline bool hash_update_u32_le(cx_hash_t *hash_context, uint32_t data) {
  *
  * @return true - OK, false - error
  */
-static inline bool hash_digest(cx_hash_t *hash_context, uint8_t *out, size_t out_len) {
+WARN_UNUSED_RESULT static inline bool hash_digest(cx_hash_t *hash_context, uint8_t *out, size_t out_len) {
     return CX_OK == cx_hash_no_throw(hash_context, CX_LAST, NULL, 0, out, out_len);
 }

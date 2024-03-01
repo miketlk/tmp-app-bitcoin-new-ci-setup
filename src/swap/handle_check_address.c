@@ -8,8 +8,6 @@
 #include "../common/segwit_addr.h"
 #include "../crypto.h"
 
-#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
-
 // constants previously defined in btchip_apdu_get_wallet_public_key.h
 #define P1_NO_DISPLAY    0x00
 #define P1_DISPLAY       0x01
@@ -70,7 +68,9 @@ bool get_address_from_compressed_public_key(unsigned char format,
                 uint8_t tweaked_key[32];
 
                 uint8_t parity;
-                crypto_tr_tweak_pubkey(compressed_pub_key + 1, &parity, tweaked_key);
+                if (0 != crypto_tr_tweak_pubkey(compressed_pub_key + 1, &parity, tweaked_key)) {
+                    return false;
+                }
 
                 if (!segwit_addr_encode(address, native_segwit_prefix, 1, tweaked_key, 32)) {
                     return false;

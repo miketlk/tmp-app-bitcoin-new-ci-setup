@@ -3642,31 +3642,18 @@ static void sign_sighash_schnorr(dispatcher_context_t *dc) {
     uint8_t sig[64];
     size_t sig_len;
 
-    volatile bool error = false;
-    BEGIN_TRY {
-        TRY {
-            crypto_derive_private_key(&private_key, chain_code, sign_path, sign_path_len);
-            crypto_tr_tweak_seckey(seckey);
+    bool error = 0 != crypto_derive_private_key(&private_key, chain_code, sign_path, sign_path_len);
+    error = error || 0 > crypto_tr_tweak_seckey(seckey);
 
-            unsigned int err = cx_ecschnorr_sign_no_throw(&private_key,
-                                                          CX_ECSCHNORR_BIP0340 | CX_RND_TRNG,
-                                                          CX_SHA256,
-                                                          state->sighash,
-                                                          32,
-                                                          sig,
-                                                          &sig_len);
-            if (err != CX_OK) {
-                error = true;
-            }
-        }
-        CATCH_ALL {
-            error = true;
-        }
-        FINALLY {
-            explicit_bzero(&private_key, sizeof(private_key));
-        }
-    }
-    END_TRY;
+    error = error || CX_OK != cx_ecschnorr_sign_no_throw(&private_key,
+                                                         CX_ECSCHNORR_BIP0340 | CX_RND_TRNG,
+                                                         CX_SHA256,
+                                                         state->sighash,
+                                                         32,
+                                                         sig,
+                                                         &sig_len);
+
+    explicit_bzero(&private_key, sizeof(private_key));
 
     if (error) {
         // unexpected error when signing

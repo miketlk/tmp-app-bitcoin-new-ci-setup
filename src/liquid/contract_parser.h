@@ -5,6 +5,7 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <stdbool.h>
+#include "decorators.h"
 #include "constants.h"
 #include "buffer.h"
 #include "liquid_assets.h"
@@ -70,9 +71,9 @@ typedef struct {
  *
  * @return true on success, false in case of error.
  */
-bool contract_parser_init(contract_parser_context_t *ctx,
-                          asset_info_t *asset_info,
-                          asset_info_ext_t *ext_asset_info);
+WARN_UNUSED_RESULT bool contract_parser_init(contract_parser_context_t *ctx,
+                                             asset_info_t *asset_info,
+                                             asset_info_ext_t *ext_asset_info);
 
 /**
  * Processes input contract data.
@@ -99,7 +100,7 @@ void contract_parser_process(contract_parser_context_t *ctx, buffer_t *data);
  *
  * @return true on success, false in case of error.
  */
-bool contract_parser_finalize(contract_parser_context_t *ctx,
-                              uint8_t hash[static SHA256_LEN]);
+WARN_UNUSED_RESULT bool contract_parser_finalize(contract_parser_context_t *ctx,
+                                                 uint8_t hash[static SHA256_LEN]);
 
 #endif // HAVE_LIQUID

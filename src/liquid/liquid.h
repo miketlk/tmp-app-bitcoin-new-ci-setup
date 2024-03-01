@@ -3,6 +3,7 @@
 #include <stddef.h>   // size_t
 #include <stdint.h>   // uint*_t
 #include <stdbool.h>  // bool
+#include "decorators.h"
 
 #include "../common/wallet.h"
 
@@ -66,7 +67,7 @@ extern const liquid_network_config_t G_liquid_network_config;
  *
  * @return true - OK, false - error
  */
-bool liquid_get_master_blinding_key(uint8_t mbk[static 32]);
+WARN_UNUSED_RESULT bool liquid_get_master_blinding_key(uint8_t mbk[static 32]);
 
 
 /**
@@ -83,10 +84,10 @@ bool liquid_get_master_blinding_key(uint8_t mbk[static 32]);
  *
  * @return true - OK, false - error
  */
-bool liquid_get_blinding_key(const uint8_t mbk[static 32],
-                             const uint8_t *script,
-                             size_t script_length,
-                             uint8_t blinding_key[static 32]);
+WARN_UNUSED_RESULT bool liquid_get_blinding_key(const uint8_t mbk[static 32],
+                                                const uint8_t *script,
+                                                size_t script_length,
+                                                uint8_t blinding_key[static 32]);
 
 
 /**
@@ -119,13 +120,13 @@ const char* liquid_confidential_segwit_prefix(const char* segwit_prefix);
  *
  * @return size of produced address in bytes, or -1 in case of error.
  */
-int liquid_get_script_confidential_address(const uint8_t *script,
-                                           size_t script_len,
-                                           const liquid_network_config_t *network_config,
-                                           const uint8_t *pub_key,
-                                           size_t pub_key_len,
-                                           char *out,
-                                           size_t out_len);
+WARN_UNUSED_RESULT int liquid_get_script_confidential_address(const uint8_t *script,
+                                                              size_t script_len,
+                                                              const liquid_network_config_t *network_config,
+                                                              const uint8_t *pub_key,
+                                                              size_t pub_key_len,
+                                                              char *out,
+                                                              size_t out_len);
 
 /**
  * Unwraps blinded tag and extracts master blinding key from wallet policy.
@@ -146,12 +147,12 @@ int liquid_get_script_confidential_address(const uint8_t *script,
  *
  * @return true on success, false in case of error.
  */
-bool liquid_policy_unwrap_blinded(const policy_node_t **p_policy,
-                                  bool *p_is_blinded,
-                                  uint8_t *blinding_key,
-                                  size_t blinding_key_len,
-                                  uint32_t *p_wif_flags,
-                                  liquid_blinding_key_type_t *p_key_type);
+WARN_UNUSED_RESULT bool liquid_policy_unwrap_blinded(const policy_node_t **p_policy,
+                                                     bool *p_is_blinded,
+                                                     uint8_t *blinding_key,
+                                                     size_t blinding_key_len,
+                                                     uint32_t *p_wif_flags,
+                                                     liquid_blinding_key_type_t *p_key_type);
 
 
 /**
@@ -172,9 +173,9 @@ bool liquid_policy_unwrap_blinded(const policy_node_t **p_policy,
  *
  * @return true on success, false in case of error.
  */
-bool liquid_get_blinding_public_key(const uint8_t mbk[static 32],
-                                    const uint8_t *script,
-                                    size_t script_length,
-                                    uint8_t *pubkey,
-                                    size_t *p_pubkey_len,
-                                    liquid_pubkey_compression_t pubkey_compression);
+WARN_UNUSED_RESULT bool liquid_get_blinding_public_key(const uint8_t mbk[static 32],
+                                                       const uint8_t *script,
+                                                       size_t script_length,
+                                                       uint8_t *pubkey,
+                                                       size_t *p_pubkey_len,
+                                                       liquid_pubkey_compression_t pubkey_compression);

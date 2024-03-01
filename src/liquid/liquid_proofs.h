@@ -37,12 +37,12 @@ extern const uint8_t secp256k1_scalar_max[32];
  *
  * @return true if proof was valid and proved the given value, false otherwise
  */
-bool liquid_rangeproof_verify_exact(const uint8_t *proof,
-                                    size_t plen,
-                                    uint64_t value,
-                                    const uint8_t *commit,
-                                    size_t commit_len,
-                                    const uint8_t generator[static LIQUID_GENERATOR_LEN]);
+WARN_UNUSED_RESULT bool liquid_rangeproof_verify_exact(const uint8_t *proof,
+                                                       size_t plen,
+                                                       uint64_t value,
+                                                       const uint8_t *commit,
+                                                       size_t commit_len,
+                                                       const uint8_t generator[static LIQUID_GENERATOR_LEN]);
 
 /**
  * Parses a 33-byte generator byte sequence into a generator object
@@ -56,8 +56,8 @@ bool liquid_rangeproof_verify_exact(const uint8_t *proof,
  *
  * @return true if generator parsed successfully
  */
-bool liquid_generator_parse(uint8_t generator[static LIQUID_GENERATOR_LEN],
-                            const uint8_t input[static LIQUID_COMMITMENT_LEN]);
+WARN_UNUSED_RESULT bool liquid_generator_parse(uint8_t generator[static LIQUID_GENERATOR_LEN],
+                                               const uint8_t input[static LIQUID_COMMITMENT_LEN]);
 
 /**
  * Verifies a single-input surjectionproof
@@ -73,10 +73,10 @@ bool liquid_generator_parse(uint8_t generator[static LIQUID_GENERATOR_LEN],
  *
  * @return true if proof was valid, false otherwise
  */
-bool liquid_surjectionproof_verify_single(const uint8_t *proof,
-                                          size_t plen,
-                                          const uint8_t input_tag[static LIQUID_GENERATOR_LEN],
-                                          const uint8_t output_tag[static LIQUID_GENERATOR_LEN]);
+WARN_UNUSED_RESULT bool liquid_surjectionproof_verify_single(const uint8_t *proof,
+                                                             size_t plen,
+                                                             const uint8_t input_tag[static LIQUID_GENERATOR_LEN],
+                                                             const uint8_t output_tag[static LIQUID_GENERATOR_LEN]);
 
 /**
  * Generates a generator for the curve.
@@ -88,5 +88,5 @@ bool liquid_surjectionproof_verify_single(const uint8_t *proof,
  *
  * @return false in the highly unlikely case the seed is not acceptable, true otherwise
  */
-bool liquid_generator_generate(uint8_t gen[static LIQUID_GENERATOR_LEN],
-                               const uint8_t seed32_reversed[static 32]);
+WARN_UNUSED_RESULT bool liquid_generator_generate(uint8_t gen[static LIQUID_GENERATOR_LEN],
+                                                  const uint8_t seed32_reversed[static 32]);
