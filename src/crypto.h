@@ -12,6 +12,9 @@
 #include "./common/varint.h"
 #include "./common/write.h"
 
+#include "ledger_assert.h"
+#include "decorators.h"
+
 /// Validation status of a serialized extended public key
 typedef enum {
     /// Extended public key is valid
@@ -38,19 +41,38 @@ typedef enum {
  * A serialized extended pubkey according to BIP32 specifications.
  * All the fields are represented as fixed-length arrays serialized in big-endian.
  */
-typedef struct serialized_extended_pubkey_s {
+typedef struct {
     uint8_t version[4];
     uint8_t depth;
     uint8_t parent_fingerprint[4];
     uint8_t child_number[4];
     uint8_t chain_code[32];
     uint8_t compressed_pubkey[33];
-} serialized_extended_pubkey_t;
+} __attribute__((packed)) serialized_extended_pubkey_t;
 
 typedef struct {
     serialized_extended_pubkey_t serialized_extended_pubkey;
     uint8_t checksum[4];
-} serialized_extended_pubkey_check_t;
+} __attribute__((packed)) serialized_extended_pubkey_check_t;
+
+/**
+ * A serialized extended privkey according to BIP32 specifications.
+ * All the fields are represented as fixed-length arrays serialized in big-endian.
+ */
+typedef struct {
+    uint8_t version[4];
+    uint8_t depth;
+    uint8_t parent_fingerprint[4];
+    uint8_t child_number[4];
+    uint8_t chain_code[32];
+    uint8_t null_prefix;
+    uint8_t privkey[32];
+} __attribute__((packed)) serialized_extended_privkey_t;
+
+typedef struct {
+    serialized_extended_privkey_t serialized_extended_privkey;
+    uint8_t checksum[4];
+} __attribute__((packed)) serialized_extended_privkey_check_t;
 
 // Generator for secp256k1, value 'g'
 extern const uint8_t secp256k1_generator[65];
@@ -301,7 +323,7 @@ uint32_t crypto_get_key_fingerprint(const uint8_t pub_key[static 33]);
  *
  * @return the fingerprint of the master key.
   */
-uint32_t crypto_get_master_key_fingerprint();
+uint32_t crypto_get_master_key_fingerprint(void);
 
 /**
  * Computes the base58check-encoded extended pubkey at a given path.

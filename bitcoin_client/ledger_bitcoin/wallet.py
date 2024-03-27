@@ -1,6 +1,7 @@
 from enum import IntEnum
 from typing import List
 
+import hmac
 from hashlib import sha256
 
 from .common import serialize_str, AddressType, write_varint
@@ -25,6 +26,9 @@ class Wallet:
     @property
     def id(self) -> bytes:
         return sha256(self.serialize()).digest()
+
+    def hmac(self, wallet_registration_key: bytes | bytearray) -> bytes:
+        return hmac.new(wallet_registration_key, self.id, sha256).digest()
 
 
 class PolicyMapWallet(Wallet):
@@ -104,20 +108,20 @@ class MultisigWallet(PolicyMapWallet):
         self.threshold = threshold
 
 
-def wrap_blinded_slip77(policy_map: str, mbk: str = ""):
-    """Add top level blinded() descriptor to wallet policy with SLIP-0077 derivation"""
+def wrap_ct(policy_map: str, blinding_key: str = ""):
+    """Add top level ct() descriptor to wallet policy"""
 
-    if not mbk:
-        raise ValueError(f"Invalid master blinding key: '{mbk}'")
+    if not blinding_key:
+        raise ValueError(f"Invalid blinding key descriptor: '{blinding_key}'")
 
-    return "".join([f"blinded(slip77({mbk}),", policy_map, ")"])
+    return "".join([f"ct({blinding_key},", policy_map, ")"])
 
 
 class BlindedWallet(PolicyMapWallet):
     """Blinded wallet for Liquid application"""
 
     def __init__(self, name: str, blinding_key: str, policy_map: str, keys_info: List[str]):
-        super().__init__(name, wrap_blinded_slip77(policy_map, blinding_key), keys_info)
+        super().__init__(name, wrap_ct(policy_map, blinding_key), keys_info)
 
 
 class BlindedMultisigWallet(MultisigWallet):
@@ -125,4 +129,4 @@ class BlindedMultisigWallet(MultisigWallet):
 
     def __init__(self, name: str, blinding_key: str, address_type: AddressType, threshold: int, keys_info: List[str], sorted: bool = True) -> None:
         super().__init__(name, address_type, threshold, keys_info, sorted)
-        self.policy_map = wrap_blinded_slip77(self.policy_map, blinding_key)
+        self.policy_map = wrap_ct(self.policy_map, blinding_key)

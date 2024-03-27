@@ -40,7 +40,7 @@ static void test_base58_checksum(void **state) {
     assert_int_equal(checksum, 0x507A5B8D);
 }
 
-int main() {
+int main(void) {
     const struct CMUnitTest tests[] = {
         cmocka_unit_test(test_base58),
         cmocka_unit_test(test_base58_checksum)

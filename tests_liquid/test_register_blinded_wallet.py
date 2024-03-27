@@ -13,7 +13,7 @@ import pytest
 def test_register_blinded_wallet_accept_sh_wit(client: Client, speculos_globals):
     wallet = BlindedMultisigWallet(
         name="Cold storage",
-        blinding_key="L1XvKmnKWuC4a5sbz3Ez6LCfMCbaXMBCcQk7C62ziN5NjoEgjN5N",
+        blinding_key="slip77(80b796c76c895bda151cd5c40f3a11afcd96d66f99347a760d3f7b8aaa5815b5)",
         address_type=AddressType.SH_WIT,
         threshold=2,
         keys_info=[
@@ -35,7 +35,7 @@ def test_register_blinded_wallet_accept_sh_wit(client: Client, speculos_globals)
 def test_register_blinded_wallet_accept_wit(client: Client, speculos_globals):
     wallet = BlindedMultisigWallet(
         name="Cold storage",
-        blinding_key="L1XvKmnKWuC4a5sbz3Ez6LCfMCbaXMBCcQk7C62ziN5NjoEgjN5N",
+        blinding_key="slip77(80b796c76c895bda151cd5c40f3a11afcd96d66f99347a760d3f7b8aaa5815b5)",
         address_type=AddressType.WIT,
         threshold=2,
         keys_info=[
@@ -58,7 +58,7 @@ def test_register_blinded_wallet_accept_wit(client: Client, speculos_globals):
 def test_register_blinded_wallet_reject_header(client: Client):
     wallet = BlindedMultisigWallet(
         name="Reject me!",
-        blinding_key="L1XvKmnKWuC4a5sbz3Ez6LCfMCbaXMBCcQk7C62ziN5NjoEgjN5N",
+        blinding_key="slip77(80b796c76c895bda151cd5c40f3a11afcd96d66f99347a760d3f7b8aaa5815b5)",
         address_type=AddressType.WIT,
         threshold=2,
         keys_info=[
@@ -80,7 +80,7 @@ def test_register_blinded_wallet_invalid_names(client: Client):
     ]:
         wallet = BlindedMultisigWallet(
             name=invalid_name,
-            blinding_key="L1XvKmnKWuC4a5sbz3Ez6LCfMCbaXMBCcQk7C62ziN5NjoEgjN5N",
+            blinding_key="slip77(80b796c76c895bda151cd5c40f3a11afcd96d66f99347a760d3f7b8aaa5815b5)",
             address_type=AddressType.WIT,
             threshold=2,
             keys_info=[
@@ -100,7 +100,7 @@ def test_register_blinded_wallet_unsupported_policy(client: Client):
     with pytest.raises(NotSupportedError):
         client.register_wallet(BlindedWallet(
             name="Unsupported",
-            blinding_key="L1XvKmnKWuC4a5sbz3Ez6LCfMCbaXMBCcQk7C62ziN5NjoEgjN5N",
+            blinding_key="slip77(80b796c76c895bda151cd5c40f3a11afcd96d66f99347a760d3f7b8aaa5815b5)",
             policy_map="sh(pkh(@0))",  # unusual script, not in the whitelist
             keys_info=[
                 f"[76223a6e/48'/1'/0'/2']tpubDE7NQymr4AFtewpAsWtnreyq9ghkzQBXpCZjWLFVRAvnbf7vya2eMTvT2fPapNqL8SuVvLQdbUbMfWLVDCZKnsEBqp6UK93QEzL8Ck23AwF/**",
@@ -111,7 +111,7 @@ def test_register_blinded_wallet_unsupported_policy(client: Client):
         # Not supporting keys without wildcard
         client.register_wallet(BlindedMultisigWallet(
             name="Cold storage",
-            blinding_key="L1XvKmnKWuC4a5sbz3Ez6LCfMCbaXMBCcQk7C62ziN5NjoEgjN5N",
+            blinding_key="slip77(80b796c76c895bda151cd5c40f3a11afcd96d66f99347a760d3f7b8aaa5815b5)",
             address_type=AddressType.WIT,
             threshold=2,
             keys_info=[
@@ -124,7 +124,7 @@ def test_register_blinded_wallet_unsupported_policy(client: Client):
         # Not supporting keys without origin information (even if external)
         client.register_wallet(BlindedMultisigWallet(
             name="Cold storage",
-            blinding_key="L1XvKmnKWuC4a5sbz3Ez6LCfMCbaXMBCcQk7C62ziN5NjoEgjN5N",
+            blinding_key="slip77(80b796c76c895bda151cd5c40f3a11afcd96d66f99347a760d3f7b8aaa5815b5)",
             address_type=AddressType.WIT,
             threshold=2,
             keys_info=[
@@ -137,8 +137,8 @@ def test_register_blinded_wallet_unsupported_policy(client: Client):
 def test_register_blinded_wallet_invalid_blinding_key(client: Client, speculos_globals):
     wallet = BlindedMultisigWallet(
         name="Cold storage",
-        # valid blinding key should be L1XvKmn...
-        blinding_key="L2XvKmnKWuC4a5sbz3Ez6LCfMCbaXMBCcQk7C62ziN5NjoEgjN5N",
+        # Invalid blinding key
+        blinding_key="slip77(Xc11648c2c6df4f9dacdb4c8d35d6166d94cea2b9ad37833a82210bb7c9f5fb4)",
         address_type=AddressType.SH_WIT,
         threshold=2,
         keys_info=[

@@ -385,7 +385,9 @@ void handler_sign_psbt(dispatcher_context_t *dc) {
 
     if (parse_policy_map(&policy_map_buffer,
                          state->wallet_policy_map_bytes,
-                         sizeof(state->wallet_policy_map_bytes)) < 0) {
+                         sizeof(state->wallet_policy_map_bytes),
+                         BIP32_PUBKEY_VERSION,
+                         BIP32_PRIVKEY_VERSION) < 0) {
         SEND_SW(dc, SW_INCORRECT_DATA);
         return;
     }

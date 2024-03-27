@@ -68,7 +68,7 @@ typedef struct {
     /// Key information string
     uint8_t key_info_str[MAX_POLICY_KEY_INFO_LEN];
 #ifdef HAVE_LIQUID
-    /// Flag indicating that the wallet policy has blinded tag
+    /// Flag indicating that the policy has ct() tag and the wallet is blinded
     bool is_blinded;
     /// Type of blinding key derivation
     liquid_blinding_key_type_t blinding_key_type;

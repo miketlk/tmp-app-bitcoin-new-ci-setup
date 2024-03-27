@@ -387,7 +387,7 @@ extern unsigned char G_io_apdu_buffer[IO_APDU_BUFFER_SIZE];
 void app_main(void);
 
 // os initialization function to be called by application entry point
-void os_boot();
+void os_boot(void);
 
 /* ----------------------------------------------------------------------- */
 /* -                            OS FUNCTIONS                             - */
@@ -1489,7 +1489,7 @@ os_customca_verify(unsigned char *hash PLENGTH(32),
 #define BOLOS_SECURITY_ATTESTATION_DELAY_S 5
 #endif // BOLOS_SECURITY_ATTESTATION_DELAY_S
 
-void safe_desynch();
+void safe_desynch(void);
 #define SAFE_DESYNCH() safe_desynch()
 
 typedef enum {

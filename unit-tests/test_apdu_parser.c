@@ -33,7 +33,7 @@ static void test_apdu_parser(void **state) {
     assert_memory_equal(cmd.data, ((uint8_t[]){0x00, 0x01, 0x02, 0x03, 0x04}), cmd.lc);
 }
 
-int main() {
+int main(void) {
     const struct CMUnitTest tests[] = {cmocka_unit_test(test_apdu_parser)};
 
     return cmocka_run_group_tests(tests, NULL, NULL);

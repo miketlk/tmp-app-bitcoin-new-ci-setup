@@ -129,30 +129,26 @@ WARN_UNUSED_RESULT int liquid_get_script_confidential_address(const uint8_t *scr
                                                               size_t out_len);
 
 /**
- * Unwraps blinded tag and extracts master blinding key from wallet policy.
+ * Unwraps ct() tag and extracts master blinding key from wallet policy.
  *
  * @param[in,out] p_policy
  *   Pointer to a modifiable variable holding pointer to root policy node.
  * @param[out] p_is_blinded
- *   Pointer to a boolean variable which is set to true if the wallet policy has blinded tag.
+ *   Pointer to a boolean variable which is set to true if the wallet policy has ct() tag.
  * @param[out] blinding_key
  *   Pointer to buffer receiving extracted blinding key.
  * @param[in] blinding_key_len
  *   The length of the ``blinding_key`` buffer.
- * @param[out] p_wif_flags
- *   Pointer to variable receiving flags related to extracted blinding key, a combination of
- *   WIF_FLAG_* constants. Can be NULL if not needed.
  * @param[out] p_key_type
  *   Pointer to variable receiving type of extracted blinding key.
  *
  * @return true on success, false in case of error.
  */
-WARN_UNUSED_RESULT bool liquid_policy_unwrap_blinded(const policy_node_t **p_policy,
-                                                     bool *p_is_blinded,
-                                                     uint8_t *blinding_key,
-                                                     size_t blinding_key_len,
-                                                     uint32_t *p_wif_flags,
-                                                     liquid_blinding_key_type_t *p_key_type);
+WARN_UNUSED_RESULT bool liquid_policy_unwrap_ct(const policy_node_t **p_policy,
+                                                bool *p_is_blinded,
+                                                uint8_t *blinding_key,
+                                                size_t blinding_key_len,
+                                                liquid_blinding_key_type_t *p_key_type);
 
 
 /**

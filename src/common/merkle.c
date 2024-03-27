@@ -26,6 +26,8 @@
 
 #include "cx_ram.h"
 
+#include "ledger_assert.h"
+
 void merkle_compute_element_hash(const uint8_t *in, size_t in_len, uint8_t out[static 32]) {
     cx_sha256_t hash;
     cx_sha256_init(&hash);

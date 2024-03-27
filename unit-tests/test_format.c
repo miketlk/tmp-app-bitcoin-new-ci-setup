@@ -95,7 +95,7 @@ static void test_format_hex(void **state) {
     assert_int_equal(-1, format_hex(address, sizeof(address), output, sizeof(address)));
 }
 
-int main() {
+int main(void) {
     const struct CMUnitTest tests[] = {cmocka_unit_test(test_format_i64),
                                        cmocka_unit_test(test_format_u64),
                                        cmocka_unit_test(test_format_fpu64),

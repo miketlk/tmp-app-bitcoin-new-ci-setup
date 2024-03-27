@@ -218,7 +218,7 @@ void test_liquid_compute_asset_tag(void **state) {
     }
 }
 
-int main() {
+int main(void) {
     const struct CMUnitTest tests[] = {
         cmocka_unit_test(test_liquid_get_asset_info),
         cmocka_unit_test(test_sha256_midstate_reversed),

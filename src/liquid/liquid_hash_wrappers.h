@@ -5,6 +5,7 @@
 #include <stdbool.h>  // bool
 #include "cx.h"
 #include "write.h"
+#include "decorators.h"
 
 /**
  * Convenience wrapper for cx_sha256_init_no_throw.

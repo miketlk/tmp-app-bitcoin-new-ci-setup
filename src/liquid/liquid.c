@@ -152,12 +152,11 @@ int liquid_get_script_confidential_address(const uint8_t *script,
     return addr_len;
 }
 
-bool liquid_policy_unwrap_blinded(const policy_node_t **p_policy,
-                                  bool *p_is_blinded,
-                                  uint8_t *blinding_key,
-                                  size_t blinding_key_len,
-                                  uint32_t *p_wif_flags,
-                                  liquid_blinding_key_type_t *p_key_type) {
+bool liquid_policy_unwrap_ct(const policy_node_t **p_policy,
+                             bool *p_is_blinded,
+                             uint8_t *blinding_key,
+                             size_t blinding_key_len,
+                             liquid_blinding_key_type_t *p_key_type) {
     if(!p_policy || !(*p_policy) || !p_is_blinded || !blinding_key || !p_key_type) {
         return false;
     }
@@ -165,21 +164,20 @@ bool liquid_policy_unwrap_blinded(const policy_node_t **p_policy,
     *p_is_blinded = false;
     *p_key_type = BLINDING_KEY_UNKNOWN;
 
-    if((*p_policy)->type == TOKEN_BLINDED) {
+    if((*p_policy)->type == TOKEN_CT) {
         *p_is_blinded = true;
-        const policy_node_blinded_t *root = (const policy_node_blinded_t*)*p_policy;
-        if(root->mbk_script && root->script && root->mbk_script->type == TOKEN_SLIP77) {
-            *p_key_type = BLINDING_KEY_SLIP77;
-            const policy_node_blinding_key_t *slip77 =
-                (const policy_node_blinding_key_t*)root->mbk_script;
-            int key_len = wif_decode_private_key(slip77->key_str,
-                                                 slip77->key_str_len,
-                                                 blinding_key,
-                                                 blinding_key_len,
-                                                 p_wif_flags);
-            if((size_t)key_len == blinding_key_len) {
-                *p_policy = root->script;
-                return true;
+        const policy_node_ct_t *root = (const policy_node_ct_t*)*p_policy;
+        if(root->mbk_script && root->script) {
+            if (root->mbk_script->type == TOKEN_SLIP77) {
+                *p_key_type = BLINDING_KEY_SLIP77;
+                const policy_node_blinding_privkey_t *slip77 =
+                    (const policy_node_blinding_privkey_t*)root->mbk_script;
+
+                if (sizeof(slip77->privkey) <= blinding_key_len) {
+                    memcpy(blinding_key, slip77->privkey, sizeof(slip77->privkey));
+                    *p_policy = root->script;
+                    return true;
+                }
             }
         }
         return false;

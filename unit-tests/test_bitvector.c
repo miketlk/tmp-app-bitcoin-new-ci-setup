@@ -95,7 +95,7 @@ static void test_bitvector_set(void **state) {
     }
 }
 
-int main() {
+int main(void) {
     const struct CMUnitTest tests[] = {cmocka_unit_test(test_bitvector_size),
                                        cmocka_unit_test(test_bitvector_get),
                                        cmocka_unit_test(test_bitvector_set)};

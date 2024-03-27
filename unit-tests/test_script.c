@@ -250,7 +250,7 @@ static void test_format_opscript_script_invalid(void **state) {
     CHECK_INVALID_TESTCASE(input_extra_push2);
 }
 
-int main() {
+int main(void) {
     const struct CMUnitTest tests[] = {
         cmocka_unit_test(test_get_script_type_valid),
         cmocka_unit_test(test_get_script_type_invalid),

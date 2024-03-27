@@ -76,7 +76,7 @@ static void test_wif_verify_private_key(void **state) {
     assert_false(wif_verify_private_key(ref_key, sizeof(ref_key) - 2, NULL));
 }
 
-int main() {
+int main(void) {
     const struct CMUnitTest tests[] = {
         cmocka_unit_test(test_wif_decode_private_key_mainnet),
         cmocka_unit_test(test_wif_decode_private_key_testnet),

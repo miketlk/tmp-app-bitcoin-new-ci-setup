@@ -13,7 +13,7 @@ Each key information is an expression similar to the `KEY` expressions of output
 A wallet descriptor template is a `SCRIPT` expression, described as follows:
 
 `SCRIPT` expressions:
--   `blinded(MBK_SCRIPT,SCRIPT)` (top level only): wallet with blinding key derivation defined by `MBK_SCRIPT`.
+-   `ct(BLINDING_KEY,SCRIPT)` (top level only): wallet with blinding key derivation defined by `BLINDING_KEY`.
 -   `sh(SCRIPT)` (top level or inside `blinded`): P2SH embed the argument.
 -   `wsh(SCRIPT)` (top level, inside `blinded` or `sh`): P2WSH embed the argument.
 -   `pkh(KP)` (not inside `tr`): P2PKH output for the given public key (use `addr` if you only know the pubkey hash).
@@ -21,8 +21,8 @@ A wallet descriptor template is a `SCRIPT` expression, described as follows:
 -   `multi(k,KP_1,KP_2,...,KP_n)`: k-of-n multisig script.
 -   `sortedmulti(k,KP_1,KP_2,...,KP_n)`: k-of-n multisig script with keys sorted lexicographically in the resulting script.
 
-Currently supported `MBK_SCRIPT` expressions, used to specify master blinding key derivation:
--   `slip77(mbk)` use SLIP-0077 with a master blinding key `mbk` encoded in [WIF format](https://en.bitcoin.it/wiki/Wallet_import_format).
+Currently supported `BLINDING_KEY` expressions, used to specify master blinding key derivation according to ELIP 150 and ELIP 151:
+-   `slip77(<64-character hex>)` indicates that blinding keys for this wallet's addresses are derived via SLIP-0077 with a master blinding key provided as 64 hexadecimal characters.
 
 Key placeholder `KP` expressions consist of
 - a single character `@`

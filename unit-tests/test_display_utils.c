@@ -139,7 +139,7 @@ static void test_format_amount(void **state) {
     }
 }
 
-int main() {
+int main(void) {
     const struct CMUnitTest tests[] = {cmocka_unit_test(test_format_amount)};
 
     return cmocka_run_group_tests(tests, NULL, NULL);

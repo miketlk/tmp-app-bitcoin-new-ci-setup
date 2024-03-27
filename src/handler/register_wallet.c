@@ -65,7 +65,7 @@ static void next_cosigner(dispatcher_context_t *dc);
 static void finalize_response(dispatcher_context_t *dc);
 
 /**
- * Unwraps top-level blinded tag and checks whether enclosed wallet policy is acceptable.
+ * Unwraps top-level ct() tag and checks whether enclosed wallet policy is acceptable.
  *
  * @param[in] policy
  *   Pointer to root policy node.
@@ -74,7 +74,7 @@ static void finalize_response(dispatcher_context_t *dc);
  *
  * @return true on success, false on error.
  */
-static bool is_policy_acceptable_blinded(const policy_node_t *policy, policy_node_t **p_internal_script);
+static bool is_policy_acceptable_ct(const policy_node_t *policy, policy_node_t **p_internal_script);
 
 /**
  * Checks whether wallet policy is acceptable.
@@ -134,7 +134,9 @@ void handler_register_wallet(dispatcher_context_t *dc) {
         buffer_create(&state->wallet_header.policy_map, state->wallet_header.policy_map_len);
     if (parse_policy_map(&policy_map_buffer,
                          state->policy_map_bytes,
-                         sizeof(state->policy_map_bytes)) < 0) {
+                         sizeof(state->policy_map_bytes),
+                         BIP32_PUBKEY_VERSION,
+                         BIP32_PRIVKEY_VERSION) < 0) {
         PRINTF("Failed parsing policy map\n");
         SEND_SW(dc, SW_INCORRECT_DATA);
         return;
@@ -319,18 +321,18 @@ static void finalize_response(dispatcher_context_t *dc) {
 }
 
 #ifdef HAVE_LIQUID
-static bool is_policy_acceptable_blinded(const policy_node_t *policy, policy_node_t **p_internal_script) {
-    if(!policy || !p_internal_script || policy->type != TOKEN_BLINDED) {
+static bool is_policy_acceptable_ct(const policy_node_t *policy, policy_node_t **p_internal_script) {
+    if(!policy || !p_internal_script || policy->type != TOKEN_CT) {
         return false;
     }
     *p_internal_script = NULL;
 
-    policy_node_blinded_t *blinded = (policy_node_blinded_t *)policy;
-    if(!blinded->mbk_script || !blinded->script || blinded->mbk_script->type != TOKEN_SLIP77) {
+    policy_node_ct_t *ct = (policy_node_ct_t *)policy;
+    if(!ct->mbk_script || !ct->script || ct->mbk_script->type != TOKEN_SLIP77) {
         return false;
     }
 
-    *p_internal_script = blinded->script;
+    *p_internal_script = ct->script;
     return true;
 }
 #endif // HAVE_LIQUID
@@ -350,9 +352,9 @@ static bool is_policy_acceptable(const policy_node_t *policy) {
     } else if (policy->type == TOKEN_WSH) {
         // wsh({sorted}multi(@0))
         internal_script = ((policy_node_with_script_t *) policy)->script;
-    } else if (policy->type == TOKEN_BLINDED) {
+    } else if (policy->type == TOKEN_CT) {
 #ifdef HAVE_LIQUID
-        if(is_policy_acceptable_blinded(policy, &internal_script)) {
+        if(is_policy_acceptable_ct(policy, &internal_script)) {
             return is_policy_acceptable(internal_script);
         }
 #endif // HAVE_LIQUID

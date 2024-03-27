@@ -313,7 +313,7 @@ uint32_t crypto_get_key_fingerprint(const uint8_t pub_key[static 33]) {
     return read_u32_be(key_rip, 0);
 }
 
- uint32_t crypto_get_master_key_fingerprint() {
+ uint32_t crypto_get_master_key_fingerprint(void) {
     uint8_t master_pub_key[33];
     uint32_t bip32_path[] = {};
     LEDGER_ASSERT(crypto_get_compressed_pubkey_at_path(bip32_path, 0, master_pub_key, NULL), "It never fails");

@@ -118,7 +118,9 @@ void handler_get_wallet_address(dispatcher_context_t *dc) {
 
     if (parse_policy_map(&policy_map_buffer,
                          state->wallet_policy_map_bytes,
-                         sizeof(state->wallet_policy_map_bytes)) < 0) {
+                         sizeof(state->wallet_policy_map_bytes),
+                         BIP32_PUBKEY_VERSION,
+                         BIP32_PRIVKEY_VERSION) < 0) {
         SEND_SW(dc, SW_INCORRECT_DATA);
         return;
     }
@@ -242,7 +244,7 @@ void handler_get_wallet_address(dispatcher_context_t *dc) {
 }
 
 /**
- * Returns script address with support of blinded tag in wallet policy.
+ * Returns script address with support of ct() tag in wallet policy.
  *
  * @param[in,out] state
  *   Handler state.
@@ -291,12 +293,11 @@ static void compute_address(dispatcher_context_t *dc) {
     const policy_node_t *p_policy_map = &state->wallet_policy_map;
 
 #ifdef HAVE_LIQUID
-    if(!liquid_policy_unwrap_blinded(&p_policy_map,
-                                     &state->is_blinded,
-                                     state->master_blinding_key,
-                                     sizeof(state->master_blinding_key),
-                                     NULL,
-                                     &state->blinding_key_type)) {
+    if(!liquid_policy_unwrap_ct(&p_policy_map,
+                                &state->is_blinded,
+                                state->master_blinding_key,
+                                sizeof(state->master_blinding_key),
+                                &state->blinding_key_type)) {
         SEND_SW(dc, SW_BAD_STATE);  // unexpected
         return;
     }
