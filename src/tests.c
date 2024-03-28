@@ -20,6 +20,7 @@ typedef struct {
 } test_suite_t;
 
 #ifdef HAVE_LIQUID
+extern void test_suite_liquid(test_ctx_t *test_ctx);
 extern void test_suite_liquid_proofs(test_ctx_t *test_ctx);
 extern void test_suite_liquid_assets(test_ctx_t *test_ctx);
 #endif
@@ -27,6 +28,7 @@ extern void test_suite_liquid_assets(test_ctx_t *test_ctx);
 /// Table listing all test suites
 static const test_suite_t test_suites[] = {
 #ifdef HAVE_LIQUID
+    TEST_SUITE(test_suite_liquid),
     TEST_SUITE(test_suite_liquid_assets),
     TEST_SUITE(test_suite_liquid_proofs),
 #endif

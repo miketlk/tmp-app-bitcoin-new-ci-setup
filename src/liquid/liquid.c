@@ -5,6 +5,7 @@
 #include "liquid_addr.h"
 #include "../common/wif.h"
 #include "../common/script.h"
+#include "tests.h"
 
 #ifdef HAVE_LIQUID
 
@@ -23,6 +24,10 @@ const liquid_network_config_t G_liquid_network_config =  {
 };
 
 #endif // SKIP_FOR_CMOCKA
+
+// ELIP 150 tag for computing the hashed tag function used for tweaking public keys
+static const uint8_t ELIP150_hash_tag[] =
+    {'C', 'T', '-', 'B', 'l', 'i', 'n', 'd', 'i', 'n', 'g', '-', 'K', 'e', 'y', '/', '1', '.', '0'};
 
 #ifndef SKIP_FOR_CMOCKA
 
@@ -90,6 +95,71 @@ bool liquid_get_blinding_public_key(const uint8_t mbk[static 32],
     explicit_bzero(&raw_privkey, sizeof(raw_privkey));
     explicit_bzero(&privkey_inst, sizeof(privkey_inst));
     explicit_bzero(&pubkey_inst, sizeof(pubkey_inst));
+
+    return ok;
+}
+
+bool liquid_derive_blinding_public_key_elip150(const uint8_t bare_pubkey[static 33],
+                                               const uint8_t *script,
+                                               size_t script_length,
+                                               uint8_t out_pubkey[static 33]) {
+    if(!bare_pubkey || !script || !out_pubkey ||
+       !(0x02 == bare_pubkey[0] || 0x03 == bare_pubkey[0])) {
+        return false;
+    }
+
+    bool ok = true;
+    uint8_t hash_bytes[SHA256_LEN];
+    {
+        // Calculate tagget hash
+        cx_sha256_t hash_context;
+        crypto_tr_tagged_hash_init(&hash_context, ELIP150_hash_tag, sizeof(ELIP150_hash_tag));
+        crypto_hash_update(&hash_context.header, bare_pubkey, 33);
+        crypto_hash_update_varint(&hash_context.header, script_length);
+        crypto_hash_update(&hash_context.header, script, script_length);
+        crypto_hash_digest(&hash_context.header, hash_bytes, sizeof(hash_bytes));
+        explicit_bzero(&hash_context, sizeof(hash_context));
+    }
+
+    cx_ecfp_public_key_t tweak_pubkey_inst;
+    {
+        cx_ecfp_private_key_t tweak_privkey_inst;
+
+        // New private key instance from 256-bit hash scalar
+        ok = ok && CX_OK == cx_ecfp_init_private_key_no_throw(CX_CURVE_256K1,
+                                                              hash_bytes,
+                                                              sizeof(hash_bytes),
+                                                              &tweak_privkey_inst);
+
+        // Generate corresponding public key (tweak point)
+        ok = ok && CX_OK == cx_ecfp_generate_pair_no_throw(CX_CURVE_256K1,
+                                                           &tweak_pubkey_inst,
+                                                           &tweak_privkey_inst,
+                                                           1);
+
+        explicit_bzero(&tweak_privkey_inst, sizeof(tweak_privkey_inst));
+    }
+
+    {
+        uint8_t point[65];
+
+        // Uncompress bare public key
+        ok = ok && 0 == crypto_get_uncompressed_pubkey(bare_pubkey, point);
+        // Add tweak point
+        ok = ok && CX_OK == cx_ecfp_add_point_no_throw(CX_CURVE_SECP256K1,
+                                                       point,
+                                                       point,
+                                                       tweak_pubkey_inst.W);
+        // Compress and output resulting public key
+        if (ok) {
+            out_pubkey[0] = ((point[64] & 1) ? 0x03 : 0x02);
+            memcpy(out_pubkey + 1, point + 1, 32);
+        }
+        explicit_bzero(point, sizeof(point));
+    }
+
+    explicit_bzero(hash_bytes, sizeof(hash_bytes));
+    explicit_bzero(&tweak_pubkey_inst, sizeof(tweak_pubkey_inst));
 
     return ok;
 }
@@ -184,5 +254,9 @@ bool liquid_policy_unwrap_ct(const policy_node_t **p_policy,
     }
     return true;
 }
+
+#ifdef IMPLEMENT_ON_DEVICE_TESTS
+#include "liquid_tests.h"
+#endif
 
 #endif // HAVE_LIQUID

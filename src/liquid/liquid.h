@@ -175,3 +175,23 @@ WARN_UNUSED_RESULT bool liquid_get_blinding_public_key(const uint8_t mbk[static 
                                                        uint8_t *pubkey,
                                                        size_t *p_pubkey_len,
                                                        liquid_pubkey_compression_t pubkey_compression);
+
+
+/**
+ * Derives blinding public key from given bare public key according to ELIP 150.
+ *
+ * @param[in] bare_pubkey
+ *   Bare compressed public blinding key, 33 bytes.
+ * @param[in] script
+ *   Script `scriptPubKey` used to derive the key.
+ * @param[in] script_length
+ *   Length of the script.
+ * @param[out] out_pubkey
+ *   Buffer receiving derived public blinding key, must be at least 33 bytes long.
+ *
+ * @return true on success, false in case of error.
+ */
+WARN_UNUSED_RESULT bool liquid_derive_blinding_public_key_elip150(const uint8_t bare_pubkey[static 33],
+                                                                  const uint8_t *script,
+                                                                  size_t script_length,
+                                                                  uint8_t out_pubkey[static 33]);
