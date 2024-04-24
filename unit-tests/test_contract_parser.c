@@ -303,7 +303,7 @@ static void test_contract_parser_corrupted(void **state) {
     }
 }
 
-int main() {
+int main(void) {
     const struct CMUnitTest tests[] = {
         cmocka_unit_test(test_contract_parser_valid),
         cmocka_unit_test(test_contract_parser_basic_info_only),

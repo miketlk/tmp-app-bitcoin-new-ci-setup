@@ -10,6 +10,8 @@
 #include "../../common/wif.h"
 #include "../../liquid/liquid.h"
 
+#include "ledger_assert.h"
+
 #ifdef HAVE_LIQUID
 #define MAX_POLICY_DEPTH 4
 #else
@@ -223,7 +225,7 @@ static int __attribute__((noinline)) process_pkh_wpkh_node(policy_parser_state_t
         return -1;
     }
 
-    uint8_t compressed_pubkey[33];
+        uint8_t compressed_pubkey[33];
 
     if (node->mode == MODE_OUT_HASH) {
         cx_sha256_init(&state->hash_context);
@@ -468,28 +470,6 @@ int call_get_wallet_script(dispatcher_context_t *dispatcher_context,
     return ret;
 }
 
-#ifdef HAVE_LIQUID
-bool is_master_blinding_key_ours(const policy_node_t *mbk_node) {
-    if(mbk_node->type == TOKEN_SLIP77) {
-        const policy_node_blinding_key_t *slip77 =
-            (const policy_node_blinding_key_t *)mbk_node;
-        uint8_t in_mbk[32];
-        uint8_t ours_mbk[32];
-
-        int key_len =
-            wif_decode_private_key(slip77->key_str,
-                                   slip77->key_str_len,
-                                   in_mbk,
-                                   sizeof(in_mbk),
-                                   NULL);
-        bool ok = key_len > 0 && liquid_get_master_blinding_key(ours_mbk);
-        ok = ok && os_secure_memcmp((void *) in_mbk, (void *) ours_mbk, 32) == 0;
-        return ok;
-    }
-    return false;
-}
-#endif // HAVE_LIQUID
-
 int get_policy_address_type(const policy_node_t *policy) {
     // legacy, native segwit, wrapped segwit, or taproot
     switch (policy->type) {
@@ -506,10 +486,9 @@ int get_policy_address_type(const policy_node_t *policy) {
         case TOKEN_TR:
             return ADDRESS_TYPE_TR;
 #ifdef HAVE_LIQUID
-        case TOKEN_BLINDED: {
-            const policy_node_blinded_t *blinded = (const policy_node_blinded_t *)policy;
-            if(is_master_blinding_key_ours(blinded->mbk_script)) {
-                return get_policy_address_type(blinded->script);
+        case TOKEN_CT: {
+            if(liquid_is_blinding_key_acceptable(policy)) {
+                return get_policy_address_type(((const policy_node_ct_t *)policy)->script);
             }
             return -1;
         }

@@ -12,10 +12,10 @@ pip install -r requirements.txt
 
 ## Launch with Speculos
 
-Build the app as normal from the root folder. For convenience, you probably want to enable DEBUG:
+Build the app as normal for Liquid main network (liquidv1) from the root folder:
 
 ```
-COIN=liquid_regtest DEBUG=0 make
+COIN=liquid DEBUG=0 make
 ```
 
 Then run all the tests from this folder with:

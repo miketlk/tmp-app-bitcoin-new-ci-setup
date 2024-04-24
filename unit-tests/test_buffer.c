@@ -239,7 +239,7 @@ static void test_buffer_write(void **state) {
     assert_false(buffer_write_u16(&buf, 0x4242, BE));                     // not enough space
     assert_int_equal(data[sizeof(data) - 1], template[sizeof(data) - 1]); // shouldn't change data if not enough space
     buffer_seek_end(&buf, 2);
-    assert_true(buffer_write_u16(&buf, 0x4242, BE));                      // enough space this time 
+    assert_true(buffer_write_u16(&buf, 0x4242, BE));                      // enough space this time
 
     // reset data
     memcpy(data, template, sizeof(template));
@@ -270,7 +270,7 @@ static void test_buffer_write(void **state) {
     assert_false(buffer_write_u32(&buf, 0x42424242, BE));                 // not enough space
     assert_int_equal(data[sizeof(data) - 1], template[sizeof(data) - 1]); // shouldn't change data if not enough space
     buffer_seek_end(&buf, 4);
-    assert_true(buffer_write_u32(&buf, 0x42424242, BE));                  // enough space this time 
+    assert_true(buffer_write_u32(&buf, 0x42424242, BE));                  // enough space this time
 
     // reset data
     memcpy(data, template, sizeof(template));
@@ -309,7 +309,7 @@ static void test_buffer_write(void **state) {
     assert_false(buffer_write_u64(&buf, 0x4242424242424242ULL, BE));         // not enough space
     assert_int_equal(data[sizeof(data) - 1], template[sizeof(data) - 1]); // shouldn't change data if not enough space
     buffer_seek_end(&buf, 8);
-    assert_true(buffer_write_u64(&buf, 0x4242424242424242ULL, BE));          // enough space this time 
+    assert_true(buffer_write_u64(&buf, 0x4242424242424242ULL, BE));          // enough space this time
 
 }
 
@@ -361,8 +361,8 @@ static void test_buffer_alloc(void **state) {
             buf = buffer_create(data + offset, 32 * sizeof(uint32_t) - offset);
             // aligned = true doesn't make a difference, since the buffer is aligned
             result = buffer_alloc(&buf, size, true);
-            assert_ptr_equal(result, data + 4);
-            assert_int_equal(buf.offset, (4 - offset) + size);
+            assert_ptr_equal(result, data + sizeof(void*));
+            assert_int_equal(buf.offset, size + sizeof(void*) - offset);
         }
     }
 
@@ -379,16 +379,16 @@ static void test_buffer_alloc(void **state) {
     assert_int_equal(buf.offset, 0);
 
     // test with buffer too small (can only allocate 3 bytes because 3 are lost because of the memory alignment)
-    buf = buffer_create(data + 1, 6);
-    result = buffer_alloc(&buf, 4, true);
+    buf = buffer_create(data + 1, (2 * sizeof(void*)) - 2);
+    result = buffer_alloc(&buf, sizeof(void*), true);
     assert_ptr_equal(result, NULL);
     assert_int_equal(buf.offset, 0);
 
     // allocate maximum size, accounting for memory alignment
-    buf = buffer_create(data + 1, 7);
-    result = buffer_alloc(&buf, 3, true);
-    assert_ptr_equal(result, data+4);
-    assert_int_equal(buf.offset, 3+3);
+    buf = buffer_create(data + 1, (2 * sizeof(void*)) - 1);
+    result = buffer_alloc(&buf, sizeof(void*) - 1, true);
+    assert_ptr_equal(result, data + sizeof(void*));
+    assert_int_equal(buf.offset, (2 * sizeof(void*)) - 2);
 }
 
 // tests the buffer_snapshot/buffer_restore functions
@@ -414,7 +414,7 @@ static void test_buffer_snapshot_restore(void **state) {
 }
 
 
-int main() {
+int main(void) {
     const struct CMUnitTest tests[] = {cmocka_unit_test(test_buffer_can_read),
                                        cmocka_unit_test(test_buffer_seek),
                                        cmocka_unit_test(test_buffer_get_cur),

@@ -8,8 +8,8 @@
  * Enumeration for endianness.
  */
 typedef enum {
-    BE,  /// Big Endian
-    LE   /// Little Endian
+    BE,  ///< Big Endian
+    LE   ///< Little Endian
 } endianness_t;
 
 typedef size_t buffer_snapshot_t;
@@ -18,9 +18,9 @@ typedef size_t buffer_snapshot_t;
  * Struct for buffer with size and offset.
  */
 typedef struct {
-    uint8_t *ptr;   /// Pointer to byte buffer
-    size_t size;    /// Size of byte buffer
-    size_t offset;  /// Offset in byte buffer
+    uint8_t *ptr;   ///< Pointer to byte buffer
+    size_t size;    ///< Size of byte buffer
+    size_t offset;  ///< Offset in byte buffer
 } buffer_t;
 
 /**
@@ -87,6 +87,21 @@ bool buffer_seek_end(buffer_t *buffer, size_t offset);
 static inline uint8_t *buffer_get_cur(const buffer_t *buffer) {
     return buffer->ptr + buffer->offset;
 }
+
+/**
+ * Returns the pointer to byte in the current position of the buffer
+ * byte-aligned to pointer size.
+ *
+ * This function fails and returns NULL if the current offset is unaligned and
+ * there is no space available to assign the next aligned address.
+ *
+ * @param[in] buffer
+ *   Pointer to input buffer struct.
+ *
+ * @return the pointer to the current position or NULL in case of failure.
+ *
+ */
+uint8_t *buffer_get_cur_aligned(const buffer_t *buffer);
 
 /**
  * Read 1 byte from buffer into uint8_t.
@@ -280,6 +295,21 @@ bool buffer_write_u64(buffer_t *buffer, uint64_t value, endianness_t endianness)
 bool buffer_write_bytes(buffer_t *buffer, const uint8_t *data, size_t n);
 
 /**
+ * Seek the buffer to the length of the data block, verifying that the data actually exists.
+ *
+ * @param[in,out] buffer
+ *   Pointer to input buffer struct.
+ * @param[in]      data
+ *   Pointer to bytes to be verified.
+ * @param[in]      n
+ *   Size of bytes to be verified and skipped.
+ *
+ * @return true if success, false if data not found in buffer or not enough space left to skip.
+ *
+ */
+bool buffer_skip_data(buffer_t *buffer, const uint8_t *data, size_t n);
+
+/**
  * Creates a buffer pointing at ptr and with the given size; the initial offset is 0.
  *
  * @param[in,out]  ptr
@@ -298,7 +328,7 @@ static inline buffer_t buffer_create(void *ptr, size_t size) {
  * Returns a pointer to the current position in the buffer if at least `size` bytes are available in
  * the buffer (possibly after skipping some bytes to guarantee alignment), or NULL otherwise. On
  * success, the buffer is advanced by `size` bytes. If `aligned == true`, the returned pointer is
- * 32-bit aligned (adding up to three padding bytes if necessary). The buffer is not advanced in
+ * aligned to pointer size (adding up to padding bytes if necessary). The buffer is not advanced in
  * case of failure.
  *
  * @param[in,out]  buffer The buffer in which the memory is to be allocated.

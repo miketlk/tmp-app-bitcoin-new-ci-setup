@@ -233,13 +233,25 @@ bool buffer_write_bytes(buffer_t *buffer, const uint8_t *data, size_t n) {
     return true;
 }
 
+bool buffer_skip_data(buffer_t *buffer, const uint8_t *data, size_t n) {
+    if (buffer->size - buffer->offset < n) {
+        return false;
+    }
+
+    if (0 == memcmp(data, buffer->ptr + buffer->offset, n)) {
+        buffer_seek_cur(buffer, n);
+        return true;
+    }
+    return true;
+}
+
 void *buffer_alloc(buffer_t *buffer, size_t size, bool aligned) {
     size_t padding_size = 0;
 
     if (aligned) {
-        uintptr_t d = (uintptr_t) (buffer->ptr + buffer->offset) % 4;
+        uintptr_t d = (uintptr_t) (buffer->ptr + buffer->offset) % sizeof(void*);
         if (d != 0) {
-            padding_size = 4 - d;
+            padding_size = sizeof(void*) - d;
         }
     }
 
@@ -250,4 +262,15 @@ void *buffer_alloc(buffer_t *buffer, size_t size, bool aligned) {
     void *result = buffer->ptr + buffer->offset + padding_size;
     buffer_seek_cur(buffer, padding_size + size);
     return result;
+}
+
+uint8_t *buffer_get_cur_aligned(const buffer_t *buffer) {
+    uint8_t *cur = buffer->ptr + buffer->offset;
+    uintptr_t d = (uintptr_t)cur % sizeof(void*);
+    
+    if (d != 0) {
+        cur += sizeof(void*) - d;
+        return (uintptr_t)(cur - buffer->ptr) < (uintptr_t)buffer->size ? cur : NULL;
+    }
+    return cur;
 }

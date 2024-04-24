@@ -1,18 +1,19 @@
 # Liquid application : Integration Guide
 
-* [Applications and Roles](#applications-and-roles)
-* [Interaction Protocol](#interaction-protocol)
-* [Typical Usage Scenarios](#typical-usage-scenarios)
-  * [Wallet creation](#wallet-creation)
-  * [Receiving crypto assets](#receiving-crypto-assets)
-  * [Sending crypto assets](#sending-crypto-assets)
-  * [Signing an arbitrary message](#signing-an-arbitrary-message)
-* [Wallet Descriptors](#wallet-descriptors)
-* [PSET as a Merkle Tree](#pset-as-a-merkle-tree)
-* [Important PSET Fields](#important-pset-fields)
-  * [Standard fields](#standard-fields)
-  * [Hardware wallet extensions](#hardware-wallet-extensions)
-* [Tests and Reference Implementation](#tests-and-reference-implementation)
+- [Liquid application : Integration Guide](#liquid-application--integration-guide)
+  - [Applications and Roles](#applications-and-roles)
+  - [Interaction Protocol](#interaction-protocol)
+  - [Typical Usage Scenarios](#typical-usage-scenarios)
+    - [Wallet creation](#wallet-creation)
+    - [Receiving crypto assets](#receiving-crypto-assets)
+    - [Sending crypto assets](#sending-crypto-assets)
+    - [Signing an arbitrary message](#signing-an-arbitrary-message)
+  - [Wallet Descriptors](#wallet-descriptors)
+  - [PSET as a Merkle Tree](#pset-as-a-merkle-tree)
+  - [Important PSET Fields](#important-pset-fields)
+    - [Standard fields](#standard-fields)
+    - [Hardware wallet extensions](#hardware-wallet-extensions)
+  - [Tests and Reference Implementation](#tests-and-reference-implementation)
 
 ## Applications and Roles
 
@@ -73,7 +74,7 @@ The algorithm used to compute the digital signature for the user-provided hash c
 HWW app uses wallet descriptors based on the specification of Bitcoin wallet descriptors, available [here](https://github.com/bitcoin/bitcoin/blob/master/doc/descriptors.md). However, there are some important differences:
 
 * limited support of script expressions
-* `blinded()` top-level function used for wallets with blinding key derivation
+* `ct()` top-level function used for wallets with blinding key derivation
 * `slip77(mbk)` expression indicating that master blinding key is derived according to SLIP-0077
 * keys are moved outside of wallet descriptor and replaced with references @0, @1, @2 ...
 * only serialized extended public keys ("xpubs") are supported

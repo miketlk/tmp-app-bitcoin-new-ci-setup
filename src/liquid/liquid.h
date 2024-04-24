@@ -31,14 +31,6 @@
 #define LIQUID_COMMITMENT_LEN 33
 
 /**
- * Type of blinding key derivation
- */
-typedef enum {
-    BLINDING_KEY_UNKNOWN = 0, // Unknown derivation type
-    BLINDING_KEY_SLIP77       // SLIP-0077
-} liquid_blinding_key_type_t;
-
-/**
  * Compression trait of a public key
  */
 typedef enum {
@@ -129,53 +121,75 @@ WARN_UNUSED_RESULT int liquid_get_script_confidential_address(const uint8_t *scr
                                                               size_t out_len);
 
 /**
- * Unwraps blinded tag and extracts master blinding key from wallet policy.
+ * Unwraps ct() tag from wallet policy.
  *
  * @param[in,out] p_policy
  *   Pointer to a modifiable variable holding pointer to root policy node.
  * @param[out] p_is_blinded
- *   Pointer to a boolean variable which is set to true if the wallet policy has blinded tag.
- * @param[out] blinding_key
- *   Pointer to buffer receiving extracted blinding key.
- * @param[in] blinding_key_len
- *   The length of the ``blinding_key`` buffer.
- * @param[out] p_wif_flags
- *   Pointer to variable receiving flags related to extracted blinding key, a combination of
- *   WIF_FLAG_* constants. Can be NULL if not needed.
- * @param[out] p_key_type
- *   Pointer to variable receiving type of extracted blinding key.
+ *   Pointer to a boolean variable which is set to true if the wallet policy has ct() tag.
  *
  * @return true on success, false in case of error.
  */
-WARN_UNUSED_RESULT bool liquid_policy_unwrap_blinded(const policy_node_t **p_policy,
-                                                     bool *p_is_blinded,
-                                                     uint8_t *blinding_key,
-                                                     size_t blinding_key_len,
-                                                     uint32_t *p_wif_flags,
-                                                     liquid_blinding_key_type_t *p_key_type);
+WARN_UNUSED_RESULT bool liquid_policy_unwrap_ct(const policy_node_t **p_policy, bool *p_is_blinded);
 
 
 /**
- * Derives blinding public key from given master blinding key and script.
+ * Derives blinding public key from the given policy with `ct` descriptor.
  *
- * @param[in] mbk
- *   Master blinding key, 32 bytes.
+ * @param[in] policy
+ *   Pointer to a root policy node whose outer descriptor must be `ct` and contain blinding key.
  * @param[in] script
  *   Script used to derive the key.
  * @param[in] script_length
  *   Length of the script.
  * @param[out] pubkey
- *   Buffer receiving derived public key.
- * @param[out] p_pubkey_len
- *   Pointer to variable receiving length of the produced public key in bytes: 33 or 65.
- * @param[in] pubkey_compression
- *   If true outputs public key in compressed format.
+ *   Buffer receiving derived public key, must be not smaller than 33 bytes.
  *
  * @return true on success, false in case of error.
  */
-WARN_UNUSED_RESULT bool liquid_get_blinding_public_key(const uint8_t mbk[static 32],
+WARN_UNUSED_RESULT bool liquid_get_blinding_public_key(const policy_node_t *policy,
                                                        const uint8_t *script,
                                                        size_t script_length,
-                                                       uint8_t *pubkey,
-                                                       size_t *p_pubkey_len,
-                                                       liquid_pubkey_compression_t pubkey_compression);
+                                                       uint8_t pubkey[static 33]);
+
+
+/**
+ * Derives blinding public key from given bare public key according to ELIP 150.
+ *
+ * @param[in] bare_pubkey
+ *   Bare compressed public blinding key, 33 bytes.
+ * @param[in] script
+ *   Script `scriptPubKey` used to derive the key.
+ * @param[in] script_length
+ *   Length of the script.
+ * @param[out] out_pubkey
+ *   Buffer receiving derived public blinding key, must be at least 33 bytes long.
+ *
+ * @return true on success, false in case of error.
+ */
+WARN_UNUSED_RESULT bool liquid_derive_blinding_public_key_elip150(const uint8_t bare_pubkey[static 33],
+                                                                  const uint8_t *script,
+                                                                  size_t script_length,
+                                                                  uint8_t out_pubkey[static 33]);
+
+/**
+ * Validates the blinding key in the policy ensuring that it can be accepted.
+ *
+ * For SLIP-0077 derivation, this function also checks if the master blinding key is ours.
+ *
+ * @param[in] policy
+ *   Pointer to a root policy node whose outer descriptor must be `ct` and contain blinding key.
+ *
+ * @return true if the policy having this specific blinding key is acceptable, false otherwise.
+ */
+bool liquid_is_blinding_key_acceptable(const policy_node_t *policy);
+
+/**
+ * Verifies if the given master blinding key is ours.
+ *
+ * @param[in] mbk
+ *   Master blinding key to test, exactly 32 bytes.
+ *
+ * @return true if the given master blinding key is ours, false otherwise
+ */
+bool liquid_is_master_blinding_key_ours(const uint8_t mbk[static 32]);

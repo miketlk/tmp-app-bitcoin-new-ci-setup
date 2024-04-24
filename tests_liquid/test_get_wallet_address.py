@@ -25,7 +25,7 @@ def test_get_wallet_confidential_address_singlesig_wit(client: Client):
     # bech32 address (P2WPKH)
     wallet = BlindedWallet(
         name="",
-        blinding_key="KwdAn3qzU2nLSn9mdYjwfHDcLsSmYRF3zT7Bk5DMxts6Si3NZUXp",
+        blinding_key="slip77(0c11648c2c6df4f9dacdb4c8d35d6166d94cea2b9ad37833a82210bb7c9f5fb4)",
         policy_map="wpkh(@0)",
         keys_info=[
             f"[f5acc2fd/84'/1'/0']tpubDCtKfsNyRhULjZ9XMS4VKKtVcPdVDi8MKUbcSD9MJDyjRu1A2ND5MiipozyyspBT9bg8upEp7a8EAgFxNxXn1d7QkdbL52Ty5jiSLcxPt1P/**",
@@ -60,7 +60,7 @@ def test_get_wallet_confidential_address_singlesig_sh_wit(client: Client):
     # wrapped segwit addresses (P2SH-P2WPKH)
     wallet = BlindedWallet(
         name="",
-        blinding_key="KwdAn3qzU2nLSn9mdYjwfHDcLsSmYRF3zT7Bk5DMxts6Si3NZUXp",
+        blinding_key="slip77(0c11648c2c6df4f9dacdb4c8d35d6166d94cea2b9ad37833a82210bb7c9f5fb4)",
         policy_map="sh(wpkh(@0))",
         keys_info=[
             f"[f5acc2fd/49'/1'/0']tpubDC871vGLAiKPcwAw22EjhKVLk5L98UGXBEcGR8gpcigLQVDDfgcYW24QBEyTHTSFEjgJgbaHU8CdRi9vmG4cPm1kPLmZhJEP17FMBdNheh3/**",
@@ -86,16 +86,16 @@ def test_get_wallet_address_singlesig_taproot(client: Client):
     )
 
     res = client.get_wallet_address(wallet, None, 0, 0, False)
-    assert res == "ert1pws8wvnj99ca6acf8kq7pjk7vyxknah0d9mexckh5s0vu2ccy68jsehezqq"
+    assert res == "ert1pvqrp5jpwxsg7uh808md6ax28a9u97w7vss3w22zuakkncgup3haqyp0p9v"
 
     res = client.get_wallet_address(wallet, None, 0, 9, False)
-    assert res == "ert1psl7eyk2jyjzq6evqvan854fts7a5j65rth25yqahkd2a765yvj0q5zjv08"
+    assert res == "ert1pvhmw0tzfyaj8r83plwlmh277vdxflnfszhsqhd4rq9jsy89229ksla9znj"
 
     res = client.get_wallet_address(wallet, None, 1, 0, False)
-    assert res == "ert1pmr60r5vfjmdkrwcu4a2z8h39mzs7a6wf2rfhuml6qgcp940x9cxszp8e36"
+    assert res == "ert1p26d4l6tj94kncqjtc30uyxcq7202a7496h0j9ev5kq96w5dpgpss2nmh5n"
 
     res = client.get_wallet_address(wallet, None, 1, 9, False)
-    assert res == "ert1p98d6s9jkf0la8ras4nnm72zme5r03fexn29e3pgz4qksdy84ndpq5clwz5"
+    assert res == "ert1pdnk6rl49gdwt2twvkrmqsv4d9k62fc6crte2cm9qc94fnnwexxhqfksrk7"
 
 
 def test_get_wallet_confidential_address_singlesig_taproot(client: Client):
@@ -103,7 +103,7 @@ def test_get_wallet_confidential_address_singlesig_taproot(client: Client):
 
     wallet = BlindedWallet(
         name="",
-        blinding_key="KwdAn3qzU2nLSn9mdYjwfHDcLsSmYRF3zT7Bk5DMxts6Si3NZUXp",
+        blinding_key="slip77(0c11648c2c6df4f9dacdb4c8d35d6166d94cea2b9ad37833a82210bb7c9f5fb4)",
         policy_map="tr(@0)",
         keys_info=[
             f"[f5acc2fd/86'/1'/0']tpubDDKYE6BREvDsSWMazgHoyQWiJwYaDDYPbCFjYxN3HFXJP5fokeiK4hwK5tTLBNEDBwrDXn8cQ4v9b2xdW62Xr5yxoQdMu1v6c7UDXYVH27U/**",
@@ -111,20 +111,20 @@ def test_get_wallet_confidential_address_singlesig_taproot(client: Client):
     )
 
     res = client.get_wallet_address(wallet, None, 0, 0, False)
-    assert res == "el1pqg07ysw3s0n8xvq0q0e8xx2as0d5g88ufegmum5hqlmwcmu7t25hqaqwue8y2t3m4msj0vpur9ducgdd8mw76thjd3d0fq7ec43sf509vzd04meg4245"
+    assert res == "el1pqdpcdl0hc7hm06nm8hu62twyyg4uktspl69vswqkjqmzl52ncm67ccqxrfyzudq3aeww70km46v506tctuaueppzu559emdd8s3crr06tc6f043v5jk2"
 
     res = client.get_wallet_address(wallet, None, 0, 9, False)
-    assert res == "el1pqff2fah8mwpcj9g63jf4w5er6qppmrvf0pstw0ywnlyjhllvr84p4plajfv4yfyyp4jcqemx0f2jhpamf94gxhw4ggpm0v64ma4ggey7dh62hwaz3zpx"
+    assert res == "el1pqdj37x80k0d8wh945s7s894x3f65g9lzantnchpqp02w6j9e5qwfje0ku7kyjfmywx0zr7alhw4auc6vnlxnq90qpwm2xqt9qgw255td0mxzvya8hhvs"
 
     res = client.get_wallet_address(wallet, None, 1, 0, False)
-    assert res == "el1pqgc4kq04mthvlzztfdypdc7nsn82xj9almax9edvacp5xnpdkaw78k8578gcn9kmvxa3et65y00ztk9pam5uj5xn0ehl5q3szt27vtsdr3awklkfsw9d"
+    assert res == "el1pqwuvnksvmpncppf8n9cm4panrlkece8rr074mehrwt085dazeuqzu45mtl5hyttd8spyh3zlcgdspu574ma2t4wlytjefvqt5ag6zsrphzvg58g2r8jm"
 
     res = client.get_wallet_address(wallet, None, 1, 9, False)
-    assert res == "el1pqwzfwa3n70fkcj3gc8uljg70as6tn3aae2s6wnunyfstfw40ve5s52wm4qt9vjll6w8mpt88hu59hngxlznjdx5tnzzs92pdq6g0tx6zjqp5vw2dnc93"
+    assert res == "el1pqd8hp70l67ulukcesx7dtsv3u2c3uqhzsmaylf2ltqjvlh8k7jagjm8d58l22s6uk5kuev8kpqe26td55n34sxhj43k2pst2n8xajvdw6cngcs5hm26h"
 
 # Multisig
 
-def test_get_wallet_address_multisig_sh_wit(client: Client):
+def test_get_wallet_address_multisig_sh_wit(client: Client, speculos_globals):
     # test for a wrapped segwit multisig wallet
 
     wallet = MultisigWallet(
@@ -136,18 +136,15 @@ def test_get_wallet_address_multisig_sh_wit(client: Client):
             f"[42b01983/48'/1'/0'/1']tpubDFjEjEPeyFun4mXBDxjLLx7hSM8jpMYNoSckRMtYygsAh4ZUtXKJtczddeHRKQ1Mzq8B6MWy3iUJyeKmJwiEKDd4rXxazBSjAEHzibDEhVK/**"
         ],
     )
-    wallet_hmac = bytes.fromhex(
-        "22125dd3bdec5a3c095aed3f1a03ce9337f8422dd33e8235e37f0ffc49d4b5e0"
-    )
 
-    res = client.get_wallet_address(wallet, wallet_hmac, 0, 0, False)
+    res = client.get_wallet_address(wallet, wallet.hmac(speculos_globals.wallet_registration_key), 0, 0, False)
     assert res == "XYMYxdKp2nXqk6TVWFRxGMUJrEovELhDvc"
 
 
-def test_get_wallet_confidential_address_multisig_sh_wit(client: Client):
+def test_get_wallet_confidential_address_multisig_sh_wit(client: Client, speculos_globals):
     # test for a blinded wrapped segwit multisig wallet
 
-    # blinded(slip77(L1XvKmnKWuC4a5sbz3Ez6LCfMCbaXMBCcQk7C62ziN5NjoEgjN5N),sh(wsh(sortedmulti(2,
+    # ct(slip77(80b796c76c895bda151cd5c40f3a11afcd96d66f99347a760d3f7b8aaa5815b5),sh(wsh(sortedmulti(2,
     #   [f5acc2fd/48h/1h/0h/2h]tpubDFAqEGNyad35aBCKUAXbQGDjdVhNueno5ZZVEn3sQbW5ci457gLR7HyTmHBg93oourBssgUxuWz1jX5uhc1qaqFo9VsybY1J5FuedLfm4dK/{0,1}/*,
     #   [42b01983/48h/1h/0h/2h]tpubDFjEjEPeyFun6FHqS248kK51SwLVx3hVzWdAFwsDXza1Lfjy1KASoBhMiiJMqtJTUAPdM7zbrx3BNgYMQNyGNVwkyNS1Wi82bb2Hwij7K9L/{0,1}/*,
     #   [9860e1eb/48h/1h/0h/2h]tpubDESXi1fi17YeJJA7xAn5sqHPvEBFpPscRv9QEzJpJQw4D7QfAWw8xfXuGdW1wMQvdj9vz8SxCSTVdhcS4Sro5GYdMojR2JYE3GuHBWipnxy/{0,1}/*
@@ -155,7 +152,7 @@ def test_get_wallet_confidential_address_multisig_sh_wit(client: Client):
 
     wallet = BlindedMultisigWallet(
         name="Cold storage",
-        blinding_key="L1XvKmnKWuC4a5sbz3Ez6LCfMCbaXMBCcQk7C62ziN5NjoEgjN5N",
+        blinding_key="slip77(80b796c76c895bda151cd5c40f3a11afcd96d66f99347a760d3f7b8aaa5815b5)",
         address_type=AddressType.SH_WIT,
         threshold=2,
         keys_info=[
@@ -164,15 +161,12 @@ def test_get_wallet_confidential_address_multisig_sh_wit(client: Client):
             f"[9860e1eb/48'/1'/0'/2']tpubDESXi1fi17YeJJA7xAn5sqHPvEBFpPscRv9QEzJpJQw4D7QfAWw8xfXuGdW1wMQvdj9vz8SxCSTVdhcS4Sro5GYdMojR2JYE3GuHBWipnxy/**"
         ],
     )
-    wallet_hmac = bytes.fromhex(
-        "c20ef8b63ce8cdd84bf75bb1c63a041610669c6e3622d84efaa41f631c914858"
-    )
 
-    res = client.get_wallet_address(wallet, wallet_hmac, 0, 0, False)
+    res = client.get_wallet_address(wallet, wallet.hmac(speculos_globals.wallet_registration_key), 0, 0, False)
     assert res == "AzppatN1RMEjDYu1dosnD4vB37f8xEcFv5gJiWiUSLKpAvX4XKRrvctNJqQoJUUYJ74MGtyccSNcvJPS"
 
 
-def test_get_wallet_address_multisig_wit(client: Client):
+def test_get_wallet_address_multisig_wit(client: Client, speculos_globals):
     # test for a native segwit multisig wallet (bech32 address)
 
     wallet = MultisigWallet(
@@ -185,18 +179,15 @@ def test_get_wallet_address_multisig_wit(client: Client):
             "[9860e1eb/48'/1'/0'/2']tpubDESXi1fi17YeJJA7xAn5sqHPvEBFpPscRv9QEzJpJQw4D7QfAWw8xfXuGdW1wMQvdj9vz8SxCSTVdhcS4Sro5GYdMojR2JYE3GuHBWipnxy/**"
         ],
     )
-    wallet_hmac = bytes.fromhex(
-        "83c29134508da25622a65c66f3a9c45f9d0db81b965c40ab1d255e4e41320c05"
-    )
 
-    res = client.get_wallet_address(wallet, wallet_hmac, 0, 0, False)
+    res = client.get_wallet_address(wallet, wallet.hmac(speculos_globals.wallet_registration_key), 0, 0, False)
     assert res == "ert1qm00c95pvkjp97fvswsl09j7pgt75m54srzsu2y87wau7v423q2kqthjx8a"
 
 
-def test_get_wallet_confidential_address_multisig_wit(client: Client):
+def test_get_wallet_confidential_address_multisig_wit(client: Client, speculos_globals):
     # test for a native segwit multisig wallet (bech32 address)
 
-    # blinded(slip77(L1XvKmnKWuC4a5sbz3Ez6LCfMCbaXMBCcQk7C62ziN5NjoEgjN5N),wsh(sortedmulti(2,
+    # ct(slip77(80b796c76c895bda151cd5c40f3a11afcd96d66f99347a760d3f7b8aaa5815b5),wsh(sortedmulti(2,
     #   [f5acc2fd/48h/1h/0h/2h]tpubDFAqEGNyad35aBCKUAXbQGDjdVhNueno5ZZVEn3sQbW5ci457gLR7HyTmHBg93oourBssgUxuWz1jX5uhc1qaqFo9VsybY1J5FuedLfm4dK/{0,1}/*,
     #   [42b01983/48h/1h/0h/2h]tpubDFjEjEPeyFun6FHqS248kK51SwLVx3hVzWdAFwsDXza1Lfjy1KASoBhMiiJMqtJTUAPdM7zbrx3BNgYMQNyGNVwkyNS1Wi82bb2Hwij7K9L/{0,1}/*,
     #   [9860e1eb/48h/1h/0h/2h]tpubDESXi1fi17YeJJA7xAn5sqHPvEBFpPscRv9QEzJpJQw4D7QfAWw8xfXuGdW1wMQvdj9vz8SxCSTVdhcS4Sro5GYdMojR2JYE3GuHBWipnxy/{0,1}/*
@@ -204,7 +195,7 @@ def test_get_wallet_confidential_address_multisig_wit(client: Client):
 
     wallet = BlindedMultisigWallet(
         name="Cold storage",
-        blinding_key="L1XvKmnKWuC4a5sbz3Ez6LCfMCbaXMBCcQk7C62ziN5NjoEgjN5N",
+        blinding_key="slip77(80b796c76c895bda151cd5c40f3a11afcd96d66f99347a760d3f7b8aaa5815b5)",
         address_type=AddressType.WIT,
         threshold=2,
         keys_info=[
@@ -213,11 +204,8 @@ def test_get_wallet_confidential_address_multisig_wit(client: Client):
             "[9860e1eb/48'/1'/0'/2']tpubDESXi1fi17YeJJA7xAn5sqHPvEBFpPscRv9QEzJpJQw4D7QfAWw8xfXuGdW1wMQvdj9vz8SxCSTVdhcS4Sro5GYdMojR2JYE3GuHBWipnxy/**"
         ],
     )
-    wallet_hmac = bytes.fromhex(
-        "42feebc1aac60c4e6a6030bef8444a631e759d0f10de85ef939a46d7010f0d64"
-    )
 
-    res = client.get_wallet_address(wallet, wallet_hmac, 0, 0, False)
+    res = client.get_wallet_address(wallet, wallet.hmac(speculos_globals.wallet_registration_key), 0, 0, False)
     assert res == "el1qqwuytsp6xrqhuku4cqqftdasvf6d6rkxjlrf90ptm3670tx2pkwlfk7lstgzedyztujeqap77t9uzshafhftqx9pc5g0uameue24zq4vcu0n02rjs05c"
 
 

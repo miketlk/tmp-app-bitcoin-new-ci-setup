@@ -57,7 +57,7 @@ static void test_write(void **state) {
     assert_memory_equal(tmp8, expected8, sizeof(expected8));
 }
 
-int main() {
+int main(void) {
     const struct CMUnitTest tests[] = {cmocka_unit_test(test_write)};
 
     return cmocka_run_group_tests(tests, NULL, NULL);

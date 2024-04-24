@@ -258,7 +258,7 @@ static void test_validate_serialized_extended_pubkey_invalid(void **state) {
     assert_int_equal(ret, EXTENDED_PUBKEY_INVALID_PARENT_FINGERPRINT);
 }
 
-int main() {
+int main(void) {
     const struct CMUnitTest tests[] = {
         cmocka_unit_test(test_get_compressed_pubkey_02),
         cmocka_unit_test(test_get_compressed_pubkey_03),

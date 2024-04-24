@@ -11,6 +11,7 @@
 #include "common/buffer.h"
 #include "common/varint.h"
 #include "liquid/liquid_asset_metadata.h"
+#include "util.h"
 
 typedef struct {
     uint8_t asset_tag[LIQUID_ASSET_TAG_LEN];
@@ -403,7 +404,7 @@ static void test_metadata_parser_invalid_prevout_index(void **state) {
     }
 }
 
-int main() {
+int main(void) {
     const struct CMUnitTest tests[] = {
         cmocka_unit_test(test_metadata_parser_valid),
         cmocka_unit_test(test_metadata_parser_invalid_truncated),

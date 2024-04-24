@@ -141,7 +141,7 @@ static void test_liquid_encode_address_taproot(void **state) {
     assert_string_equal(addr, ref_addr);
 }
 
-int main() {
+int main(void) {
     const struct CMUnitTest tests[] = {
         cmocka_unit_test(test_liquid_encode_address_base58),
         cmocka_unit_test(test_liquid_encode_address_segwit_v0),

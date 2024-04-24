@@ -32,7 +32,7 @@ static void test_parse_policy_map_singlesig_1(void **state) {
     char *policy = "pkh(@0)";
     buffer_t policy_buf = buffer_create((void *) policy, strlen(policy));
 
-    res = parse_policy_map(&policy_buf, out, sizeof(out));
+    res = parse_policy_map(&policy_buf, out, sizeof(out), 0, 0);
     assert_int_equal(res, 0);
     policy_node_with_key_t *node_1 = (policy_node_with_key_t *) out;
 
@@ -50,7 +50,7 @@ static void test_parse_policy_map_singlesig_2(void **state) {
     char *policy = "sh(wpkh(@0))";
     buffer_t policy_buf = buffer_create((void *) policy, strlen(policy));
 
-    res = parse_policy_map(&policy_buf, out, sizeof(out));
+    res = parse_policy_map(&policy_buf, out, sizeof(out), 0, 0);
     assert_int_equal(res, 0);
     policy_node_with_script_t *root = (policy_node_with_script_t *) out;
 
@@ -72,7 +72,7 @@ static void test_parse_policy_map_singlesig_3(void **state) {
     char *policy = "sh(wsh(pkh(@0)))";
     buffer_t policy_buf = buffer_create((void *) policy, strlen(policy));
 
-    res = parse_policy_map(&policy_buf, out, sizeof(out));
+    res = parse_policy_map(&policy_buf, out, sizeof(out), 0, 0);
     assert_int_equal(res, 0);
     policy_node_with_script_t *root = (policy_node_with_script_t *) out;
 
@@ -98,7 +98,7 @@ static void test_parse_policy_map_multisig_1(void **state) {
     char *policy = "sortedmulti(2,@0,@1,@2)";
     buffer_t policy_buf = buffer_create((void *) policy, strlen(policy));
 
-    res = parse_policy_map(&policy_buf, out, sizeof(out));
+    res = parse_policy_map(&policy_buf, out, sizeof(out), 0, 0);
     assert_int_equal(res, 0);
     policy_node_multisig_t *node_1 = (policy_node_multisig_t *) out;
 
@@ -120,7 +120,7 @@ static void test_parse_policy_map_multisig_2(void **state) {
     char *policy = "wsh(multi(3,@0,@1,@2,@3,@4))";
     buffer_t policy_buf = buffer_create((void *) policy, strlen(policy));
 
-    res = parse_policy_map(&policy_buf, out, sizeof(out));
+    res = parse_policy_map(&policy_buf, out, sizeof(out), 0, 0);
     assert_int_equal(res, 0);
     policy_node_with_script_t *root = (policy_node_with_script_t *) out;
 
@@ -144,7 +144,7 @@ static void test_parse_policy_map_multisig_3(void **state) {
     char *policy = "sh(wsh(sortedmulti(3,@0,@1,@2,@3,@4)))";
     buffer_t policy_buf = buffer_create((void *) policy, strlen(policy));
 
-    res = parse_policy_map(&policy_buf, out, sizeof(out));
+    res = parse_policy_map(&policy_buf, out, sizeof(out), 0, 0);
     assert_int_equal(res, 0);
     policy_node_with_script_t *root = (policy_node_with_script_t *) out;
 
@@ -161,88 +161,11 @@ static void test_parse_policy_map_multisig_3(void **state) {
     for (int i = 0; i < 5; i++) assert_int_equal(inner->key_indexes[i], i);
 }
 
-#ifdef HAVE_LIQUID
-
-static void test_parse_policy_map_blinded_singlesig(void **state) {
-    (void) state;
-
-    uint8_t out[MAX_POLICY_MAP_MEMORY_SIZE];
-
-    int res;
-
-    char *policy = "blinded(slip77(L24LLSbccJ52ESXkRvnKxYik3iBJvH2uQHf6X3xnsKZ3sw8RHMmA),wpkh(@0))";
-    buffer_t policy_buf = buffer_create((void *) policy, strlen(policy));
-
-    res = parse_policy_map(&policy_buf, out, sizeof(out));
-    assert_int_equal(res, 0);
-
-    policy_node_blinded_t *root = (policy_node_blinded_t *)out;
-    assert_non_null(root);
-    assert_int_equal(root->type, TOKEN_BLINDED);
-    assert_non_null(root->mbk_script);
-    assert_non_null(root->script);
-
-    policy_node_blinding_key_t *mbk = (policy_node_blinding_key_t*) root->mbk_script;
-    assert_int_equal(mbk->type, TOKEN_SLIP77);
-    static const char ref_mbk[] = "L24LLSbccJ52ESXkRvnKxYik3iBJvH2uQHf6X3xnsKZ3sw8RHMmA";
-    assert_int_equal(mbk->key_str_len, sizeof(ref_mbk) - 1);
-    assert_memory_equal(mbk->key_str, ref_mbk, mbk->key_str_len);
-
-    policy_node_with_key_t *inner = (policy_node_with_key_t *) root->script;
-    assert_int_equal(inner->type, TOKEN_WPKH);
-    assert_int_equal(inner->key_index, 0);
-}
-
-static void test_parse_policy_map_blinded_multisig(void **state) {
-    (void) state;
-
-    uint8_t out[MAX_POLICY_MAP_MEMORY_SIZE];
-
-    int res;
-
-    char *policy = "blinded(slip77(L1XvKmnKWuC4a5sbz3Ez6LCfMCbaXMBCcQk7C62ziN5NjoEgjN5N),"\
-        "sh(wsh(sortedmulti(5,@0,@1,@2,@3,@4,@5,@6))))";
-    buffer_t policy_buf = buffer_create((void *) policy, strlen(policy));
-
-    res = parse_policy_map(&policy_buf, out, sizeof(out));
-    assert_int_equal(res, 0);
-
-    policy_node_blinded_t *root = (policy_node_blinded_t *)out;
-    assert_non_null(root);
-    assert_int_equal(root->type, TOKEN_BLINDED);
-    assert_non_null(root->mbk_script);
-    assert_non_null(root->script);
-
-    policy_node_blinding_key_t *mbk = (policy_node_blinding_key_t*) root->mbk_script;
-    assert_int_equal(mbk->type, TOKEN_SLIP77);
-    static const char ref_mbk[] = "L1XvKmnKWuC4a5sbz3Ez6LCfMCbaXMBCcQk7C62ziN5NjoEgjN5N";
-    assert_int_equal(mbk->key_str_len, sizeof(ref_mbk) - 1);
-    assert_memory_equal(mbk->key_str, ref_mbk, mbk->key_str_len);
-
-    policy_node_with_script_t *inner1 = (policy_node_with_script_t *) root->script;
-    assert_int_equal(inner1->type, TOKEN_SH);
-    assert_non_null(inner1->script);
-
-    policy_node_with_script_t *inner2 = (policy_node_with_script_t *) inner1->script;
-    assert_int_equal(inner2->type, TOKEN_WSH);
-    assert_non_null(inner2->script);
-
-    policy_node_multisig_t *inner3 = (policy_node_multisig_t *) inner2->script;
-    assert_int_equal(inner3->type, TOKEN_SORTEDMULTI);
-    assert_int_equal(inner3->k, 5);
-    assert_int_equal(inner3->n, 7);
-    for (int i = 0; i < 7; i++) {
-        assert_int_equal(inner3->key_indexes[i], i);
-    }
-}
-
-#endif // HAVE_LIQUID
-
 // convenience function to parse as one liners
 
 static int parse_policy(const char *policy, size_t policy_len, uint8_t *out, size_t out_len) {
     buffer_t in_buf = buffer_create((void *) policy, policy_len);
-    return parse_policy_map(&in_buf, out, out_len);
+    return parse_policy_map(&in_buf, out, out_len, 0, 0);
 }
 
 #define PARSE_POLICY(policy, out, out_len) parse_policy(policy, sizeof(policy) - 1, out, out_len)
@@ -286,54 +209,32 @@ static void test_failures(void **state) {
     assert_true(0 > PARSE_POLICY("multi(1,)", out, sizeof(out)));
 }
 
-#ifdef HAVE_LIQUID
-
-static void test_failures_blinded(void **state) {
+static void test_policy_is_multisig(void **state) {
     (void) state;
 
     uint8_t out[MAX_POLICY_MAP_MEMORY_SIZE];
+    policy_node_t *policy = (policy_node_t *) out;
 
-    // blinded() must be top-level
-    assert_true(0 > PARSE_POLICY("sh(blinded(slip77(L24LLSbccJ52ESXkRvnKxYik3iBJvH2uQHf6X3xnsKZ3sw8RHMmA),wpkh(@0)))",
-                                 out, sizeof(out)));
+    assert_int_equal(0, PARSE_POLICY("pkh(@0)", out, sizeof(out)));
+    assert_false(policy_is_multisig(policy));
 
-    // Broken format
-    assert_true(0 > PARSE_POLICY("blinded(slip77(L24LLSbccJ52ESXkRvnKxYik3iBJvH2uQHf6X3xnsKZ3sw8RHMmA)wpkh(@0))",
-                                 out, sizeof(out)));
-    assert_true(0 > PARSE_POLICY("blinded(slip77(L24LLSbccJ52ESXkRvnKxYik3iBJvH2uQHf6X3xnsKZ3sw8RHMmA) wpkh(@0))",
-                                 out, sizeof(out)));
-    assert_true(0 > PARSE_POLICY("blinded(slip77(L24LLSbccJ52ESXkRvnKxYik3iBJvH2uQHf6X3xnsKZ3sw8RHMmA,wpkh(@0))",
-                                 out, sizeof(out)));
-    assert_true(0 > PARSE_POLICY("blinded(slip77(L24LLSbccJ52ESXkRvnKxYik3iBJvH2uQHf6X3xnsKZ3sw8RHMmA),wpkh(@0)",
-                                 out, sizeof(out)));
-    assert_true(0 > PARSE_POLICY("blinded(slip77(L-4LLSbccJ52ESXkRvnKxYik3iBJvH2uQHf6X3xnsKZ3sw8RHMmA),wpkh(@0))",
-                                 out, sizeof(out)));
+    assert_int_equal(0, PARSE_POLICY("sh(wpkh(@0))", out, sizeof(out)));
+    assert_false(policy_is_multisig(policy));
 
-    // Master blinding key script is required for blinded() tag
-    assert_true(0 > PARSE_POLICY("blinded(wpkh(@0))", out, sizeof(out)));
-    assert_true(0 > PARSE_POLICY("blinded(,wpkh(@0))", out, sizeof(out)));
-    assert_true(0 > PARSE_POLICY("blinded(wpkh(@0),wpkh(@1))", out, sizeof(out)));
-    assert_true(0 > PARSE_POLICY("blinded(slip77(),wpkh(@0))", out, sizeof(out)));
+    assert_int_equal(0, PARSE_POLICY("sh(wsh(pkh(@0)))", out, sizeof(out)));
+    assert_false(policy_is_multisig(policy));
 
-    // slip77() should not be used outside of blinded() tag
-    assert_true(0 > PARSE_POLICY("slip77(L24LLSbccJ52ESXkRvnKxYik3iBJvH2uQHf6X3xnsKZ3sw8RHMmA)", out, sizeof(out)));
-    assert_true(0 > PARSE_POLICY("slip77(@0)", out, sizeof(out)));
-    assert_true(0 > PARSE_POLICY("slip77(wpkh(@0))", out, sizeof(out)));
+    assert_int_equal(0, PARSE_POLICY("sortedmulti(2,@0,@1,@2)", out, sizeof(out)));
+    assert_true(policy_is_multisig(policy));
 
-    // Master blinding key in WIF format must be 51-52 characters
-    const char mbk_0char[] = "blinded(slip77(),wpkh(@0))";
-    const char mbk_1char[] = "blinded(slip77(L),wpkh(@0))";
-    const char mbk_50char[] = "blinded(slip77(L24LLSbccJ52ESXkRvnKxYik3iBJvH2uQHf6X3xnsKZ3sw8RHM),wpkh(@0))";
-    const char mbk_53char[] = "blinded(slip77(L24LLSbccJ52ESXkRvnKxYik3iBJvH2uQHf6X3xnsKZ3sw8RHMmAA),wpkh(@0))";
-    assert_true(0 > PARSE_POLICY(mbk_0char, out, sizeof(out)));
-    assert_true(0 > PARSE_POLICY(mbk_1char, out, sizeof(out)));
-    assert_true(0 > PARSE_POLICY(mbk_50char, out, sizeof(out)));
-    assert_true(0 > PARSE_POLICY(mbk_53char, out, sizeof(out)));
+    assert_int_equal(0, PARSE_POLICY("wsh(multi(3,@0,@1,@2,@3,@4))", out, sizeof(out)));
+    assert_true(policy_is_multisig(policy));
+
+    assert_int_equal(0, PARSE_POLICY("sh(wsh(sortedmulti(3,@0,@1,@2,@3,@4)))", out, sizeof(out)));
+    assert_true(policy_is_multisig(policy));
 }
 
-#endif // HAVE_LIQUID
-
-int main() {
+int main(void) {
     const struct CMUnitTest tests[] = {
         cmocka_unit_test(test_parse_policy_map_singlesig_1),
         cmocka_unit_test(test_parse_policy_map_singlesig_2),
@@ -342,11 +243,7 @@ int main() {
         cmocka_unit_test(test_parse_policy_map_multisig_2),
         cmocka_unit_test(test_parse_policy_map_multisig_3),
         cmocka_unit_test(test_failures),
-#ifdef HAVE_LIQUID
-        cmocka_unit_test(test_parse_policy_map_blinded_singlesig),
-        cmocka_unit_test(test_parse_policy_map_blinded_multisig),
-        cmocka_unit_test(test_failures_blinded)
-#endif
+        cmocka_unit_test(test_policy_is_multisig)
     };
 
     return cmocka_run_group_tests(tests, NULL, NULL);

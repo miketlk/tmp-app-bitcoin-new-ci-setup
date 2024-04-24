@@ -80,8 +80,13 @@ const uint8_t secp256k1_sqr_exponent[] = {
     0x3f, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
     0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xbf, 0xff, 0xff, 0x0c};
 
-/* BIP0341 tags for computing the tagged hashes when tweaking public keys */
-static const uint8_t BIP0341_taptweak_tag[] = {'T', 'a', 'p', 'T', 'w', 'e', 'a', 'k'};
+#ifdef HAVE_LIQUID
+    /* BIP0341 tags for computing the tagged hashes when tweaking public keys */
+    static const uint8_t BIP0341_taptweak_tag[] = {'T', 'a', 'p', 'T', 'w', 'e', 'a', 'k', '/','e','l','e','m','e','n','t','s'};
+#else
+    /* BIP0341 tags for computing the tagged hashes when tweaking public keys */
+    static const uint8_t BIP0341_taptweak_tag[] = {'T', 'a', 'p', 'T', 'w', 'e', 'a', 'k'};
+#endif
 
 static int secp256k1_point(const uint8_t scalar[static 32], uint8_t out[static 65]);
 
@@ -313,7 +318,7 @@ uint32_t crypto_get_key_fingerprint(const uint8_t pub_key[static 33]) {
     return read_u32_be(key_rip, 0);
 }
 
- uint32_t crypto_get_master_key_fingerprint() {
+ uint32_t crypto_get_master_key_fingerprint(void) {
     uint8_t master_pub_key[33];
     uint32_t bip32_path[] = {};
     LEDGER_ASSERT(crypto_get_compressed_pubkey_at_path(bip32_path, 0, master_pub_key, NULL), "It never fails");
@@ -590,6 +595,36 @@ int crypto_tr_tweak_seckey(uint8_t seckey[static 32]) {
     explicit_bzero(&P, sizeof(P));
 
     return ok ? 0 : -1;
+}
+
+bool crypto_generate_compressed_pubkey_pair(const uint8_t privkey[static 32],
+                                            uint8_t pubkey[static 33]) {
+    cx_ecfp_private_key_t privkey_inst;
+    cx_ecfp_public_key_t pubkey_inst;
+
+    // New private key instance from private key
+    bool ok = CX_OK == cx_ecfp_init_private_key_no_throw(CX_CURVE_256K1,
+                                                         privkey,
+                                                         32,
+                                                         &privkey_inst);
+
+    // Generate corresponding public key
+    ok = ok && CX_OK == cx_ecfp_generate_pair_no_throw(CX_CURVE_256K1,
+                                                       &pubkey_inst,
+                                                       &privkey_inst,
+                                                       1);
+
+    // Save produced public key in compressed format
+    if (ok) {
+        pubkey[0] = ((pubkey_inst.W[64] & 1) ? 0x03 : 0x02);
+        memcpy(pubkey + 1, pubkey_inst.W + 1, 32);
+    }
+
+    // Zeroize sensitive data
+    explicit_bzero(&privkey_inst, sizeof(privkey_inst));
+    explicit_bzero(&pubkey_inst, sizeof(pubkey_inst));
+
+    return ok;
 }
 
 #endif // SKIP_FOR_CMOCKA

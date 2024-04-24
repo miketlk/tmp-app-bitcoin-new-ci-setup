@@ -307,7 +307,7 @@ static void test_parser_error(void **state) {
     assert_int_equal(parser_state.a, 0xa0a1a2a3);  // a should have been parsed correctly
 }
 
-int main() {
+int main(void) {
     const struct CMUnitTest tests[] = {
         cmocka_unit_test(test_parser_init_context),
         cmocka_unit_test(test_parser_oneshot_from_store),

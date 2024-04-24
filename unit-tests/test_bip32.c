@@ -205,12 +205,12 @@ static void test_is_address_path_standard_false(void **state) {
     assert_false(is_address_path_standard((const uint32_t[]){44^H, 0^H, 0^H, 1, 0}, 44, 5, coin_types, 2, 0));
     // didn't get change despite is_change = 1
     assert_false(is_address_path_standard((const uint32_t[]){44^H, 0^H, 0^H, 0, 0}, 44, 5, coin_types, 2, 1));
- 
+
     // invalid change value, even if expected_change == -1
     assert_false(is_address_path_standard((const uint32_t[]){44^H, 0^H, 0^H, 2, 0}, 44, 5, coin_types, 2, -1));
     assert_false(is_address_path_standard((const uint32_t[]){44^H, 0^H, 0^H, 0^H, 0}, 44, 5, coin_types, 2, -1));
     assert_false(is_address_path_standard((const uint32_t[]){44^H, 0^H, 0^H, 1^H, 0}, 44, 5, coin_types, 2, -1));
- 
+
     // change is hardened, but it shouldn't be
     assert_false(is_address_path_standard((const uint32_t[]){44^H, 0^H, 0^H, 0^H, 0}, 44, 5, coin_types, 2, 0));
     assert_false(is_address_path_standard((const uint32_t[]){44^H, 0^H, 0^H, 1^H, 0}, 44, 5, coin_types, 2, 1));
@@ -222,7 +222,7 @@ static void test_is_address_path_standard_false(void **state) {
 }
 
 
-int main() {
+int main(void) {
     const struct CMUnitTest tests[] = {
         cmocka_unit_test(test_bip32_format),
         cmocka_unit_test(test_bad_bip32_format),
