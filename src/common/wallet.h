@@ -206,7 +206,7 @@ typedef struct {
  * Checks if the policy node has a private (blinding) key.
  *
  * @param[in] node
- *   Pinter to policy node.
+ *   Pointer to policy node.
  *
  * @return true if given policy node has a private blinding key, false otherwise.
  */
@@ -220,7 +220,7 @@ static inline bool policy_node_has_private_key(const policy_node_t *node) {
  * Checks if the policy node has a compressed public (blinding) key.
  *
  * @param[in] node
- *   Pinter to policy node.
+ *   Pointer to policy node.
  *
  * @return true if given policy node has a private blinding key, false otherwise.
  */
@@ -284,6 +284,16 @@ int parse_policy_map(buffer_t *in_buf,
                      size_t out_len,
                      uint32_t bip32_pubkey_version,
                      uint32_t bip32_privkey_version);
+
+/**
+ * Checks if the policy specifies a multisignature wallet.
+ *
+ * @param[in] policy
+ *   Pointer to wallet's top-level policy node.
+ *
+ * @return true if the wallet is multisig, false otherwise.
+ */
+bool policy_is_multisig(const policy_node_t *policy);
 
 #ifndef SKIP_FOR_CMOCKA
 

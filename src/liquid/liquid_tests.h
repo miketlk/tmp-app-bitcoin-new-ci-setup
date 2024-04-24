@@ -5,7 +5,7 @@
  * Not to be included in normal way as a header!
  */
 
-static void test_liquid_derive_blinding_public_key_elip150(test_ctx_t *test_ctx) {
+static void test_elip150_derive(test_ctx_t *test_ctx) {
     static const uint8_t bare_pubkey[33] = {
         0x02,
         0x86, 0xfc, 0x9a, 0x38, 0xe7, 0x65, 0xd9, 0x55,
@@ -26,11 +26,10 @@ static void test_liquid_derive_blinding_public_key_elip150(test_ctx_t *test_ctx)
     };
     uint8_t out_pubkey[33];
 
-    TEST_ASSERT(liquid_derive_blinding_public_key_elip150(bare_pubkey, script, sizeof(script), out_pubkey));
+    TEST_ASSERT(elip150_derive(bare_pubkey, script, sizeof(script), out_pubkey));
     TEST_ASSERT_EQUAL_MEMORY(out_pubkey, ref_pubkey, sizeof(ref_pubkey));
-    // !!!! TODO: add failure tests
 }
 
 void test_suite_liquid(test_ctx_t *test_ctx) {
-    RUN_TEST(test_liquid_derive_blinding_public_key_elip150);
+    RUN_TEST(test_elip150_derive);
 }

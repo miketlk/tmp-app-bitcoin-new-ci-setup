@@ -86,16 +86,16 @@ def test_get_wallet_address_singlesig_taproot(client: Client):
     )
 
     res = client.get_wallet_address(wallet, None, 0, 0, False)
-    assert res == "ert1pws8wvnj99ca6acf8kq7pjk7vyxknah0d9mexckh5s0vu2ccy68jsehezqq"
+    assert res == "ert1pvqrp5jpwxsg7uh808md6ax28a9u97w7vss3w22zuakkncgup3haqyp0p9v"
 
     res = client.get_wallet_address(wallet, None, 0, 9, False)
-    assert res == "ert1psl7eyk2jyjzq6evqvan854fts7a5j65rth25yqahkd2a765yvj0q5zjv08"
+    assert res == "ert1pvhmw0tzfyaj8r83plwlmh277vdxflnfszhsqhd4rq9jsy89229ksla9znj"
 
     res = client.get_wallet_address(wallet, None, 1, 0, False)
-    assert res == "ert1pmr60r5vfjmdkrwcu4a2z8h39mzs7a6wf2rfhuml6qgcp940x9cxszp8e36"
+    assert res == "ert1p26d4l6tj94kncqjtc30uyxcq7202a7496h0j9ev5kq96w5dpgpss2nmh5n"
 
     res = client.get_wallet_address(wallet, None, 1, 9, False)
-    assert res == "ert1p98d6s9jkf0la8ras4nnm72zme5r03fexn29e3pgz4qksdy84ndpq5clwz5"
+    assert res == "ert1pdnk6rl49gdwt2twvkrmqsv4d9k62fc6crte2cm9qc94fnnwexxhqfksrk7"
 
 
 def test_get_wallet_confidential_address_singlesig_taproot(client: Client):
@@ -111,16 +111,16 @@ def test_get_wallet_confidential_address_singlesig_taproot(client: Client):
     )
 
     res = client.get_wallet_address(wallet, None, 0, 0, False)
-    assert res == "el1pqg07ysw3s0n8xvq0q0e8xx2as0d5g88ufegmum5hqlmwcmu7t25hqaqwue8y2t3m4msj0vpur9ducgdd8mw76thjd3d0fq7ec43sf509vzd04meg4245"
+    assert res == "el1pqdpcdl0hc7hm06nm8hu62twyyg4uktspl69vswqkjqmzl52ncm67ccqxrfyzudq3aeww70km46v506tctuaueppzu559emdd8s3crr06tc6f043v5jk2"
 
     res = client.get_wallet_address(wallet, None, 0, 9, False)
-    assert res == "el1pqff2fah8mwpcj9g63jf4w5er6qppmrvf0pstw0ywnlyjhllvr84p4plajfv4yfyyp4jcqemx0f2jhpamf94gxhw4ggpm0v64ma4ggey7dh62hwaz3zpx"
+    assert res == "el1pqdj37x80k0d8wh945s7s894x3f65g9lzantnchpqp02w6j9e5qwfje0ku7kyjfmywx0zr7alhw4auc6vnlxnq90qpwm2xqt9qgw255td0mxzvya8hhvs"
 
     res = client.get_wallet_address(wallet, None, 1, 0, False)
-    assert res == "el1pqgc4kq04mthvlzztfdypdc7nsn82xj9almax9edvacp5xnpdkaw78k8578gcn9kmvxa3et65y00ztk9pam5uj5xn0ehl5q3szt27vtsdr3awklkfsw9d"
+    assert res == "el1pqwuvnksvmpncppf8n9cm4panrlkece8rr074mehrwt085dazeuqzu45mtl5hyttd8spyh3zlcgdspu574ma2t4wlytjefvqt5ag6zsrphzvg58g2r8jm"
 
     res = client.get_wallet_address(wallet, None, 1, 9, False)
-    assert res == "el1pqwzfwa3n70fkcj3gc8uljg70as6tn3aae2s6wnunyfstfw40ve5s52wm4qt9vjll6w8mpt88hu59hngxlznjdx5tnzzs92pdq6g0tx6zjqp5vw2dnc93"
+    assert res == "el1pqd8hp70l67ulukcesx7dtsv3u2c3uqhzsmaylf2ltqjvlh8k7jagjm8d58l22s6uk5kuev8kpqe26td55n34sxhj43k2pst2n8xajvdw6cngcs5hm26h"
 
 # Multisig
 

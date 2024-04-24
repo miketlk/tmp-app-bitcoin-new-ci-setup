@@ -951,7 +951,7 @@ blinding_key_parser_t find_blinding_key_parser(const token_scan_result_t *scan_r
  * @return 0 if successful, a negative number on error.
  */
 static int parse_blinding_key_script(script_parser_ctx_t *ctx) {
-   token_scan_result_t scan_result;
+    token_scan_result_t scan_result;
     if (!scan_token(ctx->in_buf, ',', &scan_result)) {
         return -1;
     }
@@ -1190,6 +1190,35 @@ int parse_policy_map(buffer_t *in_buf,
     };
 
     return parse_script(&parser_ctx, 0, 0);
+}
+
+bool policy_is_multisig(const policy_node_t *policy) {
+    const policy_node_t *node = policy;
+
+    while(node != NULL) {
+        switch(node->type)
+        {
+        case TOKEN_CT:
+            node = ((policy_node_ct_t *)node)->script;
+            break;
+
+        case TOKEN_SH:
+        case TOKEN_WSH:
+            node = ((policy_node_with_script_t *)node)->script;
+            break;
+
+        case TOKEN_MULTI:
+        case TOKEN_SORTEDMULTI:
+            return true;
+
+        // TOKEN_PKH, TOKEN_WPKH, TOKEN_TR
+        // TODO: add Taproot multisig when it will be supported project-wise
+        default:
+            return false;
+        }
+    }
+
+    return false;
 }
 
 #ifndef SKIP_FOR_CMOCKA

@@ -1462,14 +1462,8 @@ void handler_liquid_sign_pset(dispatcher_context_t *dc) {
 
     // Unwrap policy map removing ct() tag and extracting master blinding key
     state->wallet_policy_map_unwrapped = &state->wallet_policy.map;
-    uint8_t master_blinding_key[32]; // Currently unused
-    liquid_blinding_key_type_t blinding_key_type; // Currently unused
     bool wallet_is_blinded; // Currently unused
-    if(!liquid_policy_unwrap_ct(&state->wallet_policy_map_unwrapped,
-                                &wallet_is_blinded,
-                                master_blinding_key,
-                                sizeof(master_blinding_key),
-                                &blinding_key_type)) {
+    if(!liquid_policy_unwrap_ct(&state->wallet_policy_map_unwrapped, &wallet_is_blinded)) {
         SEND_SW(dc, SW_INCORRECT_DATA);  // unexpected
         return;
     }

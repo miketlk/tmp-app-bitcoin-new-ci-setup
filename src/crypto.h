@@ -276,6 +276,19 @@ WARN_UNUSED_RESULT int crypto_get_compressed_pubkey(const uint8_t uncompressed_k
 WARN_UNUSED_RESULT int crypto_get_uncompressed_pubkey(const uint8_t compressed_key[static 33], uint8_t out[static 65]);
 
 /**
+ * Generates compressed public key from the given private key.
+ *
+ * @param[in]  privkey
+ *   Pointer to the 32-byte private key.
+ * @param[out]  pubkey
+ *   Pointer to a 33-bytes buffer that will receive the compressed public key.
+ *
+ * @return true on success, false in case of error.
+ */
+WARN_UNUSED_RESULT bool crypto_generate_compressed_pubkey_pair(const uint8_t privkey[static 32],
+                                                               uint8_t pubkey[static 33]);
+
+/**
  * Computes the checksum as the first 4 bytes of the double sha256 hash of the input data.
  *
  * @param[in] in

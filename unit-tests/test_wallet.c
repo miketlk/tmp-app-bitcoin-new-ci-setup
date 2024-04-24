@@ -209,6 +209,31 @@ static void test_failures(void **state) {
     assert_true(0 > PARSE_POLICY("multi(1,)", out, sizeof(out)));
 }
 
+static void test_policy_is_multisig(void **state) {
+    (void) state;
+
+    uint8_t out[MAX_POLICY_MAP_MEMORY_SIZE];
+    policy_node_t *policy = (policy_node_t *) out;
+
+    assert_int_equal(0, PARSE_POLICY("pkh(@0)", out, sizeof(out)));
+    assert_false(policy_is_multisig(policy));
+
+    assert_int_equal(0, PARSE_POLICY("sh(wpkh(@0))", out, sizeof(out)));
+    assert_false(policy_is_multisig(policy));
+
+    assert_int_equal(0, PARSE_POLICY("sh(wsh(pkh(@0)))", out, sizeof(out)));
+    assert_false(policy_is_multisig(policy));
+
+    assert_int_equal(0, PARSE_POLICY("sortedmulti(2,@0,@1,@2)", out, sizeof(out)));
+    assert_true(policy_is_multisig(policy));
+
+    assert_int_equal(0, PARSE_POLICY("wsh(multi(3,@0,@1,@2,@3,@4))", out, sizeof(out)));
+    assert_true(policy_is_multisig(policy));
+
+    assert_int_equal(0, PARSE_POLICY("sh(wsh(sortedmulti(3,@0,@1,@2,@3,@4)))", out, sizeof(out)));
+    assert_true(policy_is_multisig(policy));
+}
+
 int main(void) {
     const struct CMUnitTest tests[] = {
         cmocka_unit_test(test_parse_policy_map_singlesig_1),
@@ -218,6 +243,7 @@ int main(void) {
         cmocka_unit_test(test_parse_policy_map_multisig_2),
         cmocka_unit_test(test_parse_policy_map_multisig_3),
         cmocka_unit_test(test_failures),
+        cmocka_unit_test(test_policy_is_multisig)
     };
 
     return cmocka_run_group_tests(tests, NULL, NULL);

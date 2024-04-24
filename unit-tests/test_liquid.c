@@ -113,24 +113,15 @@ static void test_policy_unwrap_ct(void **state) {
         sizeof(policy_bytes)
     ));
 
-    const uint8_t ref_mbk[] = {
-        0x90, 0x5C, 0xFE, 0x33, 0xA3, 0xDF, 0xB3, 0x7D, 0xB5, 0x13, 0xD1, 0x07, 0x8C, 0x16, 0xBC,
-        0xFD, 0xF9, 0x06, 0xEC, 0xD9, 0x44, 0xC5, 0xDD, 0xD3, 0x7F, 0xDF, 0xBC, 0xC5, 0xE6, 0x19,
-        0xC1, 0x41
-    };
     const policy_node_t *policy = (const policy_node_t *)policy_bytes;
     bool is_blinded = false;
-    uint8_t mbk[sizeof(ref_mbk)] = {0};
-    liquid_blinding_key_type_t key_type = BLINDING_KEY_UNKNOWN;
-    bool ret = liquid_policy_unwrap_ct(&policy, &is_blinded, mbk, sizeof(mbk), &key_type);
+    bool ret = liquid_policy_unwrap_ct(&policy, &is_blinded);
 
     assert_true(ret);
     assert_non_null(policy);
     assert_true(policy != (policy_node_t *)policy_bytes);
     assert_int_equal(policy->type, TOKEN_WPKH); // inside ct()
     assert_true(is_blinded);
-    assert_memory_equal(mbk, ref_mbk, sizeof(mbk));
-    assert_int_equal(key_type, BLINDING_KEY_SLIP77);
 }
 
 static void test_policy_unwrap_blinded_ct(void **state) {
@@ -141,9 +132,7 @@ static void test_policy_unwrap_blinded_ct(void **state) {
 
     const policy_node_t *policy = (const policy_node_t *)policy_bytes;
     bool is_blinded = false;
-    uint8_t mbk[32] = {0};
-    liquid_blinding_key_type_t key_type = BLINDING_KEY_UNKNOWN;
-    bool ret = liquid_policy_unwrap_ct(&policy, &is_blinded, mbk, sizeof(mbk), &key_type);
+    bool ret = liquid_policy_unwrap_ct(&policy, &is_blinded);
 
     assert_true(ret);
     assert_non_null(policy);

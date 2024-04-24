@@ -225,7 +225,7 @@ static int __attribute__((noinline)) process_pkh_wpkh_node(policy_parser_state_t
         return -1;
     }
 
-    uint8_t compressed_pubkey[33];
+        uint8_t compressed_pubkey[33];
 
     if (node->mode == MODE_OUT_HASH) {
         cx_sha256_init(&state->hash_context);
@@ -470,24 +470,6 @@ int call_get_wallet_script(dispatcher_context_t *dispatcher_context,
     return ret;
 }
 
-#ifdef HAVE_LIQUID
-bool is_master_blinding_key_ours(const policy_node_t *mbk_node) {
-    if(mbk_node->type == TOKEN_SLIP77) {
-        const policy_node_blinding_privkey_t *slip77 =
-            (const policy_node_blinding_privkey_t *)mbk_node;
-        uint8_t ours_mbk[32];
-
-        bool ok = liquid_get_master_blinding_key(ours_mbk);
-        ok = ok && 0 == os_secure_memcmp((void *) slip77->privkey,
-                                         (void *) ours_mbk,
-                                         sizeof(slip77->privkey));
-        explicit_bzero(ours_mbk, sizeof(ours_mbk));
-        return ok;
-    }
-    return false;
-}
-#endif // HAVE_LIQUID
-
 int get_policy_address_type(const policy_node_t *policy) {
     // legacy, native segwit, wrapped segwit, or taproot
     switch (policy->type) {
@@ -505,9 +487,8 @@ int get_policy_address_type(const policy_node_t *policy) {
             return ADDRESS_TYPE_TR;
 #ifdef HAVE_LIQUID
         case TOKEN_CT: {
-            const policy_node_ct_t *ct = (const policy_node_ct_t *)policy;
-            if(is_master_blinding_key_ours(ct->mbk_script)) {
-                return get_policy_address_type(ct->script);
+            if(liquid_is_blinding_key_acceptable(policy)) {
+                return get_policy_address_type(((const policy_node_ct_t *)policy)->script);
             }
             return -1;
         }
