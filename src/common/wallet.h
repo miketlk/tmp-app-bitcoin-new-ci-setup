@@ -80,6 +80,23 @@
 /// Maximum length of wallet policy
 #define MAX_POLICY_MAP_LEN MAX_MULTISIG_POLICY_MAP_LENGTH
 
+/// Maximum length of public key wildcard in characters
+#define MAX_POLICY_MAP_KEY_WILDCARD_LEN (sizeof("/<0;1>/*") - 1)
+
+/// Public key wildcards defining the rules for child key derivation.
+typedef enum {
+    /// No wildcard.
+    KEY_WILDCARD_NONE = 0,
+    /// Any derivation is allowed: `/**`.
+    KEY_WILDCARD_ANY = 1,
+    /// Internal or external chain with an arbitrary address index: `/<0;1>/*`.
+    KEY_WILDCARD_STANDARD_CHAINS,
+    /// External chain with an arbitrary address index: `/0/*`.
+    KEY_WILDCARD_EXTERNAL_CHAIN,
+    /// Internal chain (change) with an arbitrary address index: `/1/*`.
+    KEY_WILDCARD_INTERNAL_CHAIN,
+} policy_map_key_wildcard_id_t;
+
 /// Public key information
 typedef struct {
     /// Derivation path from master key
@@ -90,8 +107,9 @@ typedef struct {
     uint8_t master_key_derivation_len;
     /// Set to 1 if key has origin data: master key fingerprint and derivation path
     uint8_t has_key_origin;
-    /// Set to 1 if key terminates with wildcard suffix: "/**"
-    uint8_t has_wildcard;  // true iff the keys ends with the /** wildcard
+    /// Wildcard terminating the key string, one of policy_map_key_wildcard_id_t constants.
+    /// Nonzero if the key ends with a wildcard.
+    uint8_t wildcard_id;
     /// Serialized extended public key
     char ext_pubkey[MAX_SERIALIZED_PUBKEY_LENGTH + 1];
 } policy_map_key_info_t;

@@ -122,7 +122,7 @@ static int __attribute__((noinline)) get_extended_pubkey(policy_parser_state_t *
            &decoded_pubkey_check.serialized_extended_pubkey,
            sizeof(decoded_pubkey_check.serialized_extended_pubkey));
 
-    return key_info.has_wildcard ? 1 : 0;
+    return key_info.wildcard_id;
 }
 
 static int get_derived_pubkey(policy_parser_state_t *state, int key_index, uint8_t out[static 33]) {
@@ -135,15 +135,32 @@ static int get_derived_pubkey(policy_parser_state_t *state, int key_index, uint8
         return -1;
     }
 
-    if (ret == 1) {
-        // we derive the /0/i child of this pubkey
-        // we reuse the same memory of ext_pubkey
-        if (0 != bip32_CKDpub(&ext_pubkey, state->change, &ext_pubkey)) {
+    switch(ret) {
+        case KEY_WILDCARD_NONE:
+            // No wildcard, returning pubkey "as is"
+            break;
+
+        case KEY_WILDCARD_ANY:
+        case KEY_WILDCARD_STANDARD_CHAINS:
+        case KEY_WILDCARD_EXTERNAL_CHAIN:
+        case KEY_WILDCARD_INTERNAL_CHAIN:
+            // Check if requested derivation is allowed by pubkey wildcard
+            if ( (KEY_WILDCARD_EXTERNAL_CHAIN == ret && 0 != state->change) ||
+                 (KEY_WILDCARD_INTERNAL_CHAIN == ret && 1 != state->change) ) {
+                    return -1;
+            }
+            // Derive the /chain/i child of this pubkey reusing the same memory of ext_pubkey
+            if (0 != bip32_CKDpub(&ext_pubkey, state->change, &ext_pubkey)) {
+                return -1;
+            }
+            if (0 != bip32_CKDpub(&ext_pubkey, state->address_index, &ext_pubkey)) {
+                return -1;
+            }
+            break;
+
+        default:
+            // Unsupported wildcard
             return -1;
-        }
-        if (0 != bip32_CKDpub(&ext_pubkey, state->address_index, &ext_pubkey)) {
-            return -1;
-        }
     }
 
     memcpy(out, ext_pubkey.compressed_pubkey, 33);

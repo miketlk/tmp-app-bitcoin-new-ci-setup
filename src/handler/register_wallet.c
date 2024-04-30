@@ -201,7 +201,7 @@ static void process_cosigner_info(dispatcher_context_t *dc) {
         return;
     }
 
-    if (!key_info.has_wildcard) {
+    if (KEY_WILDCARD_NONE == key_info.wildcard_id) {
         PRINTF("Key info without wildcard unsupported.\n");
         SEND_SW(dc, SW_NOT_SUPPORTED);
         return;
