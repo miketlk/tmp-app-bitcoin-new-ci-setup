@@ -234,6 +234,66 @@ static void test_policy_is_multisig(void **state) {
     assert_true(policy_is_multisig(policy));
 }
 
+#define PARSE_POLICY_MAP_KEY_INFO(str) \
+    do { \
+        memset(&map, 0, sizeof(map)); \
+        buffer_t buffer = buffer_create((void *) (str), strlen(str)); \
+        assert_int_equal(0, parse_policy_map_key_info(&buffer, &map)); \
+        assert_false(buffer_can_read(&buffer, 1)); \
+    } while(0)
+
+static void test_parse_policy_map_key_info(void **state) {
+    policy_map_key_info_t map;
+
+    PARSE_POLICY_MAP_KEY_INFO("[d34db33f/44'/0'/0']xpub6ERApfZwUNrhLCkDtcHTcxd75RbzS1ed54G1LkBUHQVHQKqhMkhgbmJbZRkrgZw4koxb5JaHWkY4ALHY2grBGRjaDMzQLcgJvLJuZZvRcEL");
+    assert_memory_equal(
+        map.master_key_derivation,
+        &((uint32_t[MAX_BIP32_PATH_STEPS]) { BIP32_FIRST_HARDENED_CHILD | 44, BIP32_FIRST_HARDENED_CHILD | 0, BIP32_FIRST_HARDENED_CHILD | 0, 0, 0, 0 }),
+        sizeof(map.master_key_derivation)
+    );
+    assert_memory_equal(map.master_key_fingerprint, &((uint8_t[4]) { 0xd3, 0x4d, 0xb3, 0x3f }), sizeof(map.master_key_fingerprint));
+    assert_int_equal(map.master_key_derivation_len, 3);
+    assert_int_equal(map.has_key_origin, 1);
+    assert_int_equal(map.wildcard_id, KEY_WILDCARD_NONE);
+    assert_string_equal(map.ext_pubkey, "xpub6ERApfZwUNrhLCkDtcHTcxd75RbzS1ed54G1LkBUHQVHQKqhMkhgbmJbZRkrgZw4koxb5JaHWkY4ALHY2grBGRjaDMzQLcgJvLJuZZvRcEL");
+
+    PARSE_POLICY_MAP_KEY_INFO("[f5acc2fd/84'/1'/0']tpubDCtKfsNyRhULjZ9XMS4VKKtVcPdVDi8MKUbcSD9MJDyjRu1A2ND5MiipozyyspBT9bg8upEp7a8EAgFxNxXn1d7QkdbL52Ty5jiSLcxPt1P/**");
+    assert_memory_equal(
+        map.master_key_derivation,
+        &((uint32_t[MAX_BIP32_PATH_STEPS]) { BIP32_FIRST_HARDENED_CHILD | 84, BIP32_FIRST_HARDENED_CHILD | 1, BIP32_FIRST_HARDENED_CHILD | 0, 0, 0, 0 }),
+        sizeof(map.master_key_derivation)
+    );
+    assert_memory_equal(map.master_key_fingerprint, &((uint8_t[4]) { 0xf5, 0xac, 0xc2, 0xfd }), sizeof(map.master_key_fingerprint));
+    assert_int_equal(map.master_key_derivation_len, 3);
+    assert_int_equal(map.has_key_origin, 1);
+    assert_int_equal(map.wildcard_id, KEY_WILDCARD_ANY);
+    assert_string_equal(map.ext_pubkey, "tpubDCtKfsNyRhULjZ9XMS4VKKtVcPdVDi8MKUbcSD9MJDyjRu1A2ND5MiipozyyspBT9bg8upEp7a8EAgFxNxXn1d7QkdbL52Ty5jiSLcxPt1P");
+
+    PARSE_POLICY_MAP_KEY_INFO("xpub69H7F5d8KSRgmmdJg2KhpAK8SR3DjMwAdkxj3ZuxV27CprR9LgpeyGmXUbC6wb7ERfvrnKZjXoUmmDznezpbZb7ap6r1D3tgFxHmwMkQTPH");
+    assert_int_equal(map.master_key_derivation_len, 0);
+    assert_int_equal(map.has_key_origin, 0);
+    assert_int_equal(map.wildcard_id, KEY_WILDCARD_NONE);
+    assert_string_equal(map.ext_pubkey, "xpub69H7F5d8KSRgmmdJg2KhpAK8SR3DjMwAdkxj3ZuxV27CprR9LgpeyGmXUbC6wb7ERfvrnKZjXoUmmDznezpbZb7ap6r1D3tgFxHmwMkQTPH");
+
+    PARSE_POLICY_MAP_KEY_INFO("xpub661MyMwAqRbcFkPHucMnrGNzDwb6teAX1RbKQmqtEF8kK3Z7LZ59qafCjB9eCRLiTVG3uxBxgKvRgbubRhqSKXnGGb1aoaqLrpMBDrVxga8/<0;1>/*");
+    assert_int_equal(map.master_key_derivation_len, 0);
+    assert_int_equal(map.has_key_origin, 0);
+    assert_int_equal(map.wildcard_id, KEY_WILDCARD_STANDARD_CHAINS);
+    assert_string_equal(map.ext_pubkey, "xpub661MyMwAqRbcFkPHucMnrGNzDwb6teAX1RbKQmqtEF8kK3Z7LZ59qafCjB9eCRLiTVG3uxBxgKvRgbubRhqSKXnGGb1aoaqLrpMBDrVxga8");
+
+    PARSE_POLICY_MAP_KEY_INFO("xpub661MyMwAqRbcFkPHucMnrGNzDwb6teAX1RbKQmqtEF8kK3Z7LZ59qafCjB9eCRLiTVG3uxBxgKvRgbubRhqSKXnGGb1aoaqLrpMBDrVxga8/0/*");
+    assert_int_equal(map.master_key_derivation_len, 0);
+    assert_int_equal(map.has_key_origin, 0);
+    assert_int_equal(map.wildcard_id, KEY_WILDCARD_EXTERNAL_CHAIN);
+    assert_string_equal(map.ext_pubkey, "xpub661MyMwAqRbcFkPHucMnrGNzDwb6teAX1RbKQmqtEF8kK3Z7LZ59qafCjB9eCRLiTVG3uxBxgKvRgbubRhqSKXnGGb1aoaqLrpMBDrVxga8");
+
+    PARSE_POLICY_MAP_KEY_INFO("xpub661MyMwAqRbcFkPHucMnrGNzDwb6teAX1RbKQmqtEF8kK3Z7LZ59qafCjB9eCRLiTVG3uxBxgKvRgbubRhqSKXnGGb1aoaqLrpMBDrVxga8/1/*");
+    assert_int_equal(map.master_key_derivation_len, 0);
+    assert_int_equal(map.has_key_origin, 0);
+    assert_int_equal(map.wildcard_id, KEY_WILDCARD_INTERNAL_CHAIN);
+    assert_string_equal(map.ext_pubkey, "xpub661MyMwAqRbcFkPHucMnrGNzDwb6teAX1RbKQmqtEF8kK3Z7LZ59qafCjB9eCRLiTVG3uxBxgKvRgbubRhqSKXnGGb1aoaqLrpMBDrVxga8");
+}
+
 int main(void) {
     const struct CMUnitTest tests[] = {
         cmocka_unit_test(test_parse_policy_map_singlesig_1),
@@ -243,7 +303,8 @@ int main(void) {
         cmocka_unit_test(test_parse_policy_map_multisig_2),
         cmocka_unit_test(test_parse_policy_map_multisig_3),
         cmocka_unit_test(test_failures),
-        cmocka_unit_test(test_policy_is_multisig)
+        cmocka_unit_test(test_policy_is_multisig),
+        cmocka_unit_test(test_parse_policy_map_key_info)
     };
 
     return cmocka_run_group_tests(tests, NULL, NULL);
