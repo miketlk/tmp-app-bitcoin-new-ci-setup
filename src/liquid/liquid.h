@@ -31,6 +31,16 @@
 #define LIQUID_COMMITMENT_LEN 33
 
 /**
+ * Reserved address index used in ELIP 151 for blinding key derivation
+ */
+#define LIQUID_ELIP151_RESERVED_INDEX ((1UL << 31) - 1)
+
+/**
+ * Last valid address index to avoid conflict with ELIP 151 blinding key derivation
+ */
+#define LIQUID_LAST_ADDRESS_INDEX (LIQUID_ELIP151_RESERVED_INDEX - 1)
+
+/**
  * Compression trait of a public key
  */
 typedef enum {
@@ -52,6 +62,35 @@ extern const liquid_network_config_t G_liquid_network_config;
 #endif
 
 /**
+ * Callback function obtaining `scriptPubKey` of the processed descriptor.
+ *
+ * If `p_key_wildcard_to_verify` is not NULL, the function assumes it points to a constant which
+ * must be compared with each of the wallet's public key's wildcard identifier. This parameter is
+ * optional. If wildcard verification is not required it should be set to NULL.
+ *
+ * @param[in,out] state
+ *   Callback state, stores necessary properties of the processed descriptor.
+ * @param[in] bip44_change
+ *   Change element of the derivation path, defined according to BIP 44.
+ * @param[in] bip44_address_index
+ *   Address index element of the derivation path, defined according to BIP 44.
+ * @param[out] out_buffer
+ *   Buffer receiving `scriptPubKey`.
+ * @param[in] p_key_wildcard_to_verify
+ *   If not NULL, requests to verify all wallet's public key wildcard IDs to be equal to value, pointed
+ *   by this parameter.
+ *
+ * @return true if successful, false if error.
+ */
+typedef bool (*liquid_get_script_callback_t)(
+    void *state,
+    uint32_t bip44_change,
+    uint32_t bip44_address_index,
+    buffer_t *out_buffer,
+    const policy_map_key_wildcard_id_t *p_key_wildcard_to_verify
+);
+
+/**
  * Derives master blinding key from seed according to SLIP-0077.
  *
  * @param[out] mbk
@@ -60,7 +99,6 @@ extern const liquid_network_config_t G_liquid_network_config;
  * @return true - OK, false - error
  */
 WARN_UNUSED_RESULT bool liquid_get_master_blinding_key(uint8_t mbk[static 32]);
-
 
 /**
  * Derives blinding key from given script.
@@ -80,7 +118,6 @@ WARN_UNUSED_RESULT bool liquid_get_blinding_key(const uint8_t mbk[static 32],
                                                 const uint8_t *script,
                                                 size_t script_length,
                                                 uint8_t blinding_key[static 32]);
-
 
 /**
  * Returns a prefix for confidential SegWit address from a given SegWit address prefix.
@@ -123,15 +160,14 @@ WARN_UNUSED_RESULT int liquid_get_script_confidential_address(const uint8_t *scr
 /**
  * Unwraps ct() tag from wallet policy.
  *
- * @param[in,out] p_policy
- *   Pointer to a modifiable variable holding pointer to root policy node.
- * @param[out] p_is_blinded
- *   Pointer to a boolean variable which is set to true if the wallet policy has ct() tag.
+ * @param[in] policy
+ *   Pointer to root policy node.
  *
- * @return true on success, false in case of error.
+ * @return pointer to policy node inside ct() tag, or to the root node if the policy is not blinded.
  */
-WARN_UNUSED_RESULT bool liquid_policy_unwrap_ct(const policy_node_t **p_policy, bool *p_is_blinded);
-
+static inline const policy_node_t* liquid_policy_unwrap_ct(const policy_node_t *policy) {
+    return policy && (TOKEN_CT == policy->type) ? ((const policy_node_ct_t*)policy)->script : policy;
+}
 
 /**
  * Derives blinding public key from the given policy with `ct` descriptor.
@@ -142,6 +178,15 @@ WARN_UNUSED_RESULT bool liquid_policy_unwrap_ct(const policy_node_t **p_policy, 
  *   Script used to derive the key.
  * @param[in] script_length
  *   Length of the script.
+ * @param[in] pubkey_wildcard_id
+ *   Identifier of public key wildcard, one of `policy_map_key_wildcard_id_t` values. Needed only
+ *   for ELIP 151.
+ * @param[in] get_script_callback
+ *   Callback function obtaining `scriptPubKey` of the processed descriptor. Needed only for
+ *   ELIP 151.
+ * @param[in,out] get_script_callback_state
+ *   State of `get_script_callback`, a user-defined value passed to callback function. Needed only
+ *   for ELIP 151.
  * @param[out] pubkey
  *   Buffer receiving derived public key, must be not smaller than 33 bytes.
  *
@@ -150,8 +195,10 @@ WARN_UNUSED_RESULT bool liquid_policy_unwrap_ct(const policy_node_t **p_policy, 
 WARN_UNUSED_RESULT bool liquid_get_blinding_public_key(const policy_node_t *policy,
                                                        const uint8_t *script,
                                                        size_t script_length,
+                                                       policy_map_key_wildcard_id_t pubkey_wildcard_id,
+                                                       liquid_get_script_callback_t get_script_callback,
+                                                       void *get_script_callback_state,
                                                        uint8_t pubkey[static 33]);
-
 
 /**
  * Derives blinding public key from given bare public key according to ELIP 150.
@@ -193,3 +240,15 @@ bool liquid_is_blinding_key_acceptable(const policy_node_t *policy);
  * @return true if the given master blinding key is ours, false otherwise
  */
 bool liquid_is_master_blinding_key_ours(const uint8_t mbk[static 32]);
+
+/**
+ * Checks if policy corresponds to a blinded wallet.
+ *
+ * @param[in] policy
+ *   Pointer to a root policy node.
+ *
+ * @return true if wallet is blinded, false otherwise.
+ */
+static inline bool liquid_policy_is_blinded(const policy_node_t *policy) {
+    return policy && (TOKEN_CT == policy->type);
+}

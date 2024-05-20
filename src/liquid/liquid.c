@@ -33,6 +33,11 @@ const liquid_network_config_t G_liquid_network_config =  {
 static const uint8_t ELIP150_hash_tag[] =
     {'C', 'T', '-', 'B', 'l', 'i', 'n', 'd', 'i', 'n', 'g', '-', 'K', 'e', 'y', '/', '1', '.', '0'};
 
+// ELIP 151 tag for computing the hashed tag function used for private blinding key derivation
+static const uint8_t ELIP151_hash_tag[] =
+    {'D', 'e', 't', 'e', 'r', 'm', 'i', 'n', 'i', 's', 't', 'i', 'c', '-', 'V', 'i', 'e', 'w', '-',
+     'K', 'e', 'y', '/', '1', '.', '0'};
+
 bool liquid_get_master_blinding_key(uint8_t mbk[static 32]) {
     return crypto_derive_symmetric_key(SLIP77_LABEL, SLIP77_LABEL_LEN, mbk);
 }
@@ -73,14 +78,16 @@ bool liquid_get_blinding_key(const uint8_t mbk[static 32],
  * @param[in] script_length
  *   Length of the script.
  * @param[out] out_pubkey
- *   Buffer receiving derived public blinding key, must be at least 33 bytes long.
+ *   Buffer receiving derived public blinding key, must be at least 33 bytes long. Can be the same
+ *   as `bare_pubkey` for in-place processing.
  *
  * @return true on success, false in case of error.
  */
-static bool elip150_derive(const uint8_t bare_pubkey[static 33],
-                           const uint8_t *script,
-                           size_t script_length,
-                           uint8_t out_pubkey[static 33]) {
+static bool __attribute__((noinline)) elip150_derive_public_key(
+    const uint8_t bare_pubkey[static 33],
+    const uint8_t *script,
+    size_t script_length,
+    uint8_t out_pubkey[static 33]) {
     if(!bare_pubkey || !script || !out_pubkey ||
        !(0x02 == bare_pubkey[0] || 0x03 == bare_pubkey[0])) {
         return false;
@@ -140,6 +147,90 @@ static bool elip150_derive(const uint8_t bare_pubkey[static 33],
     explicit_bzero(&tweak_pubkey_inst, sizeof(tweak_pubkey_inst));
 
     return ok;
+}
+
+/**
+ * Derives blinding private key according to ELIP 151.
+ *
+ * @param[in] wildcard_id
+ *   Identifier of public key wildcard, one of `policy_map_key_wildcard_id_t` values.
+ * @param[in] get_script_callback
+ *   Callback function obtaining `scriptPubKey` of the processed descriptor.
+ * @param[in,out] get_script_callback_state
+ *   State of `get_script_callback`, a user-defined value passed to callback function.
+ * @param[out] out_privkey
+ *   Buffer receiving derived private blinding key, must be at least 32 bytes long.
+ *
+ * @return true on success, false in case of error.
+ */
+static bool __attribute__((noinline)) elip151_derive_private_key(
+    policy_map_key_wildcard_id_t wildcard_id,
+    liquid_get_script_callback_t get_script_callback,
+    void *get_script_callback_state,
+    uint8_t out_privkey[static 32]) {
+    if(!get_script_callback || !out_privkey) {
+        return false;
+    }
+
+    // Range of 'change' element of the derivation path in the multi-path
+    // descriptor. Only sequential values are supported currently.
+    struct change_range_s {
+        uint8_t first;
+        uint8_t last;
+    } change_range;
+
+    // Check if we have a proper wildcard and initialize range of 'change'.
+    switch(wildcard_id) {
+        case KEY_WILDCARD_STANDARD_CHAINS:
+            change_range = (struct change_range_s) { .first = 0, .last = 1 };
+            break;
+
+        case KEY_WILDCARD_EXTERNAL_CHAIN:
+            change_range = (struct change_range_s) { .first = 0, .last = 0 };
+            break;
+
+        case KEY_WILDCARD_INTERNAL_CHAIN:
+            change_range = (struct change_range_s) { .first = 1, .last = 1 };
+            break;
+
+        default:
+            return false;
+    }
+
+    // Prepare tagged hash context with tag `Deterministic-View-Key/1.0`
+    cx_sha256_t hash_context;
+    crypto_tr_tagged_hash_init(&hash_context, ELIP151_hash_tag, sizeof(ELIP151_hash_tag));
+
+    // Expand multi-path to every single descriptor and process each
+    // `scriptPubKey` at index 2^31-1.
+    uint8_t script[MAX_PREVOUT_SCRIPTPUBKEY_LEN];
+    for(uint32_t change = change_range.first; change <= change_range.last; ++change) {
+        // Obtain scriptPubKey at index 2^31-1
+        buffer_t script_buffer = buffer_create(script, sizeof(script));
+        bool res = ((liquid_get_script_callback_t) PIC(get_script_callback))(
+            get_script_callback_state,
+            change,
+            LIQUID_ELIP151_RESERVED_INDEX,
+            &script_buffer,
+            &wildcard_id
+        );
+        if (!res) {
+            return false;
+        }
+
+        // Hash scriptPubKey prepended with OP_INVALIDOPCODE
+        crypto_hash_update_u8(&hash_context.header, 1); // Length of OP_INVALIDOPCODE
+        crypto_hash_update_u8(&hash_context.header, OP_INVALIDOPCODE);
+        crypto_hash_update_varint(&hash_context.header, buffer_stored(&script_buffer));
+        crypto_hash_update(&hash_context.header, script, buffer_stored(&script_buffer));
+    }
+
+    crypto_hash_digest(&hash_context.header, out_privkey, 32);
+
+    explicit_bzero(&hash_context, sizeof(&hash_context));
+    explicit_bzero(script, sizeof(script));
+
+    return true;
 }
 
 /**
@@ -232,7 +323,7 @@ static bool derive_pubkey_elip150_from_bare_pubkey(const policy_node_t *blinding
     const policy_node_blinding_pubkey_t *node_pubkey =
         (const policy_node_blinding_pubkey_t*) blinding_key_node;
 
-    return elip150_derive(node_pubkey->pubkey, script, script_length, pubkey);
+    return elip150_derive_public_key(node_pubkey->pubkey, script, script_length, pubkey);
 }
 
 /**
@@ -260,12 +351,9 @@ static bool derive_pubkey_elip150_from_bare_privkey(const policy_node_t *blindin
     const policy_node_blinding_privkey_t *node_privkey =
         (const policy_node_blinding_privkey_t*) blinding_key_node;
 
-    uint8_t bare_pubkey[33];
+    bool ok = crypto_generate_compressed_pubkey_pair(node_privkey->privkey, pubkey);
+    ok = ok && elip150_derive_public_key(pubkey, script, script_length, pubkey);
 
-    bool ok = crypto_generate_compressed_pubkey_pair(node_privkey->privkey, bare_pubkey);
-    ok = ok && elip150_derive(bare_pubkey, script, script_length, pubkey);
-
-    explicit_bzero(&bare_pubkey, sizeof(bare_pubkey));
     return ok;
 }
 
@@ -301,9 +389,45 @@ static pubkey_derivator_proto_t find_pubkey_derivator(PolicyNodeType node_type) 
     return NULL;
 }
 
+/**
+ * Derives public blinding key according to ELIP 151.
+ *
+ * @param[in] pubkey_wildcard_id
+ *   Identifier of public key wildcard, one of `policy_map_key_wildcard_id_t` values.
+ * @param[in] get_script_callback
+ *   Callback function obtaining `scriptPubKey` of the processed descriptor.
+ * @param[in,out] get_script_callback_state
+ *   State of `get_script_callback`, a user-defined value passed to callback function.
+ * @param[out] pubkey
+ *   Buffer receiving derived public key, must be not smaller than 33 bytes.
+ *
+ * @return true if successful, false if error.
+ */
+static bool get_blinding_public_key_elip151(const uint8_t *script,
+                                            size_t script_length,
+                                            policy_map_key_wildcard_id_t pubkey_wildcard_id,
+                                            liquid_get_script_callback_t get_script_callback,
+                                            void *get_script_callback_state,
+                                            uint8_t pubkey[static 33]) {
+    uint8_t privkey[32];
+
+    bool ok = elip151_derive_private_key(pubkey_wildcard_id,
+                                         get_script_callback,
+                                         get_script_callback_state,
+                                         privkey);
+    ok = ok && crypto_generate_compressed_pubkey_pair(privkey, pubkey);
+    ok = ok && elip150_derive_public_key(pubkey, script, script_length, pubkey);
+
+    explicit_bzero(privkey, sizeof(privkey));
+    return ok;
+}
+
 bool liquid_get_blinding_public_key(const policy_node_t *policy,
                                     const uint8_t *script,
                                     size_t script_length,
+                                    policy_map_key_wildcard_id_t pubkey_wildcard_id,
+                                    liquid_get_script_callback_t get_script_callback,
+                                    void *get_script_callback_state,
                                     uint8_t pubkey[static 33]) {
     if(!policy || TOKEN_CT != policy->type || !script || !pubkey) {
         return false;
@@ -314,8 +438,18 @@ bool liquid_get_blinding_public_key(const policy_node_t *policy,
         return false;
     }
 
-    pubkey_derivator_proto_t derivator = find_pubkey_derivator(ct->mbk_script->type);
-    return NULL == derivator ? false : (*derivator)(ct->mbk_script, script, script_length, pubkey);
+    if (TOKEN_ELIP151 == ct->mbk_script->type) {
+        return get_blinding_public_key_elip151(script,
+                                               script_length,
+                                               pubkey_wildcard_id,
+                                               get_script_callback,
+                                               get_script_callback_state,
+                                               pubkey);
+    } else {
+        pubkey_derivator_proto_t derivator = find_pubkey_derivator(ct->mbk_script->type);
+        return NULL == derivator ?
+            false : (*derivator)(ct->mbk_script, script, script_length, pubkey);
+    }
 }
 
 bool liquid_is_blinding_key_acceptable(const policy_node_t *policy) {
@@ -404,25 +538,6 @@ int liquid_get_script_confidential_address(const uint8_t *script,
         }
     }
     return addr_len;
-}
-
-bool liquid_policy_unwrap_ct(const policy_node_t **p_policy, bool *p_is_blinded) {
-    if(!p_policy || !(*p_policy) || !p_is_blinded) {
-        return false;
-    }
-
-    *p_is_blinded = false;
-
-    if((*p_policy)->type == TOKEN_CT) {
-        *p_is_blinded = true;
-        const policy_node_ct_t *root = (const policy_node_ct_t*)*p_policy;
-        if(root->mbk_script && root->script) {
-            *p_policy = root->script;
-            return true;
-        }
-        return false;
-    }
-    return true;
 }
 
 #ifdef IMPLEMENT_ON_DEVICE_TESTS

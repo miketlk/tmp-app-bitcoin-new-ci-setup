@@ -13,6 +13,10 @@
 /**
  * Computes the script corresponding to a wallet policy, for a certain change and address index.
  *
+ * If `p_key_wildcard_to_verify` is not NULL, this function assumes it points to a constant which
+ * must be compared with each of the wallet's public key's wildcard identifier. This parameter is
+ * optional. If wildcard verification is not required it should be set to NULL.
+ *
  * @param[in] dispatcher_context
  *   Pointer to the dispatcher context
  * @param[in] policy
@@ -25,9 +29,12 @@
  *   0 for a receive address, 1 for a change address
  * @param[in] address_index
  *   The address index
- * @param[in] out_buf
+ * @param[out] out_buf
  *   A buffer to contain the script. If the available space in the buffer is not enough, the result
- * is truncated, but the correct length is still returned in case of success.
+ *   is truncated, but the correct length is still returned in case of success.
+ * @param[in] p_key_wildcard_to_verify
+ *   If not NULL, requests to verify all wallet's public key wildcard IDs to be equal to value,
+ *   pointed by this parameter.
  *
  * @return The length of the output on success; -1 in case of error.
  *
@@ -38,7 +45,8 @@ int call_get_wallet_script(dispatcher_context_t *dispatcher_context,
                            uint32_t n_keys,
                            bool change,
                            size_t address_index,
-                           buffer_t *out_buf);
+                           buffer_t *out_buf,
+                           const policy_map_key_wildcard_id_t *p_key_wildcard_to_verify);
 
 /**
  * Returns the address type constant corresponding to a standard policy type.

@@ -489,6 +489,44 @@ static int buffer_read_derivation_step(buffer_t *buffer, uint32_t *out) {
     return 0;
 }
 
+/// Wildcard signature
+typedef struct {
+    /// Wildcard numeric identifier.
+    policy_map_key_wildcard_id_t id;
+    /// Wildcard represented as a text string.
+    const char *str;
+} wildcard_signature_t;
+
+/// Table of wildcard signatures
+const wildcard_signature_t WILDCARD_SIGNATURES[] = {
+    { .id = KEY_WILDCARD_NONE, .str = "" },
+    { .id = KEY_WILDCARD_ANY, .str = "/**" },
+    { .id = KEY_WILDCARD_STANDARD_CHAINS, .str = "/<0;1>/*" },
+    { .id = KEY_WILDCARD_EXTERNAL_CHAIN, .str = "/0/*" },
+    { .id = KEY_WILDCARD_INTERNAL_CHAIN, .str = "/1/*" }
+};
+/// Number of records in the table of wildcard signatures
+static const size_t N_WILDCARD_SIGNATURES =
+    sizeof(WILDCARD_SIGNATURES) / sizeof(WILDCARD_SIGNATURES[0]);
+
+/**
+ * Finds the numeric wildcard identifier corresponding to a given wildcard string.
+ *
+ * @param[in] wildcard_str
+ *   Wildcard represented as a text string.
+ *
+ * @return a non-negative wildcard identifier or -1 if not found
+ */
+static int find_wildcard(const char *wildcard_str) {
+    for (size_t i = 0; i < N_WILDCARD_SIGNATURES; ++i) {
+        const char *curr_str = (const char *) PIC(WILDCARD_SIGNATURES[i].str);
+        if (0 == strncmp(curr_str, wildcard_str, MAX_POLICY_MAP_KEY_WILDCARD_LEN)) {
+            return (int) PIC(WILDCARD_SIGNATURES[i].id);
+        }
+    }
+    return -1;
+}
+
 // TODO: we are currently enforcing that the master key fingerprint (if present) is in lowercase
 // hexadecimal digits,
 //       and that the symbol for "hardened derivation" is "'".
@@ -551,24 +589,24 @@ int parse_policy_map_key_info(buffer_t *buffer, policy_map_key_info_t *out) {
     }
     out->ext_pubkey[ext_pubkey_len] = '\0';
 
-    // either the string terminates now, or it has a final "/**" suffix for the wildcard.
-    if (!buffer_can_read(buffer, 1)) {
-        // no wildcard
-        return 0;
+    // Read the final wildcard part of the public key. There should be no more characters remaining.
+    char wildcard_str[MAX_POLICY_MAP_KEY_WILDCARD_LEN + 1];
+    size_t wildcard_len = buffer_remaining(buffer);
+    if (wildcard_len >= sizeof(wildcard_str)) {
+        return -1;
     }
+    if (wildcard_len && !buffer_read_bytes(buffer, (uint8_t*)wildcard_str, wildcard_len) ) {
+        return -1;
+    }
+    wildcard_str[wildcard_len] = '\0';
 
-    out->has_wildcard = 1;
-
-    // Only the final "/**" suffix should be left
-    uint8_t wildcard[3];
-    // Make sure that the buffer is indeed exhausted
-    if (!buffer_read_bytes(buffer, wildcard, 3)  // should be able to read 3 characters
-        || buffer_can_read(buffer, 1)            // but nothing more
-        || wildcard[0] != '/'                    // suffix should be exactly "/**"
-        || wildcard[1] != '*' || wildcard[2] != '*') {
+    // Find the numeric wildcard identifier in the table
+    int wildcard_id = find_wildcard(wildcard_str);
+    if (wildcard_id < 0 || wildcard_id > UINT8_MAX) {
         return -1;
     }
 
+    out->wildcard_id = (uint8_t)wildcard_id;
     return 0;
 }
 

@@ -68,8 +68,8 @@ typedef struct {
     /// Key information string
     uint8_t key_info_str[MAX_POLICY_KEY_INFO_LEN];
 #ifdef HAVE_LIQUID
-    /// Flag indicating that the policy has ct() tag and the wallet is blinded
-    bool is_blinded;
+    /// Public key wildcard defining the rules for child key derivation.
+    uint8_t pubkey_wildcard_id;
 #endif
 } get_wallet_address_state_t;
 
