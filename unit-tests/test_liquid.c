@@ -113,15 +113,11 @@ static void test_policy_unwrap_ct(void **state) {
         sizeof(policy_bytes)
     ));
 
-    const policy_node_t *policy = (const policy_node_t *)policy_bytes;
-    bool is_blinded = false;
-    bool ret = liquid_policy_unwrap_ct(&policy, &is_blinded);
+    const policy_node_t *policy = liquid_policy_unwrap_ct((const policy_node_t *)policy_bytes);
 
-    assert_true(ret);
     assert_non_null(policy);
     assert_true(policy != (policy_node_t *)policy_bytes);
     assert_int_equal(policy->type, TOKEN_WPKH); // inside ct()
-    assert_true(is_blinded);
 }
 
 static void test_policy_unwrap_blinded_ct(void **state) {
@@ -130,15 +126,11 @@ static void test_policy_unwrap_blinded_ct(void **state) {
     uint8_t policy_bytes[MAX_POLICY_MAP_MEMORY_SIZE];
     assert_int_equal(0, PARSE_POLICY("wpkh(@0)", policy_bytes, sizeof(policy_bytes)));
 
-    const policy_node_t *policy = (const policy_node_t *)policy_bytes;
-    bool is_blinded = false;
-    bool ret = liquid_policy_unwrap_ct(&policy, &is_blinded);
+    const policy_node_t *policy = liquid_policy_unwrap_ct((const policy_node_t *)policy_bytes);
 
-    assert_true(ret);
     assert_non_null(policy);
     assert_true(policy == (policy_node_t *)policy_bytes); // unchanged
     assert_int_equal(policy->type, TOKEN_WPKH);
-    assert_false(is_blinded);
 }
 
 static void test_parse_policy_map_blinded_slip77_singlesig(void **state) {

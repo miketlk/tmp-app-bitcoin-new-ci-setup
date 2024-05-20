@@ -1461,12 +1461,7 @@ void handler_liquid_sign_pset(dispatcher_context_t *dc) {
     }
 
     // Unwrap policy map removing ct() tag and extracting master blinding key
-    state->wallet_policy_map_unwrapped = &state->wallet_policy.map;
-    bool wallet_is_blinded; // Currently unused
-    if(!liquid_policy_unwrap_ct(&state->wallet_policy_map_unwrapped, &wallet_is_blinded)) {
-        SEND_SW(dc, SW_INCORRECT_DATA);  // unexpected
-        return;
-    }
+    state->wallet_policy_map_unwrapped = liquid_policy_unwrap_ct(&state->wallet_policy.map);
     state->wallet_policy_root_type = state->wallet_policy_map_unwrapped->type;
 
     uint8_t hmac_or =
@@ -2923,6 +2918,11 @@ static void sign_process_input_map(dispatcher_context_t *dc) {
 
     state->cur.input.change = bip32_path[bip32_path_len - 2];
     state->cur.input.address_index = bip32_path[bip32_path_len - 1];
+
+    if ((unsigned long)state->cur.input.address_index > LIQUID_LAST_ADDRESS_INDEX) {
+        SEND_SW(dc, SW_INCORRECT_DATA);
+        return;
+    }
 
     // Sign as segwit input iff it has a witness utxo
     if (!(state->cur.key_presence & HAS_WITNESSUTXO)) {

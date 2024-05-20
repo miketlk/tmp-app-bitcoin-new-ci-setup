@@ -52,6 +52,10 @@ typedef struct {
     cx_sha256_t hash_context;  // shared among all the nodes; there are never two concurrent hash
                                // computations in process.
     uint8_t hash[32];  // when a node processed in hash mode is popped, the hash is computed here
+
+    // If not NULL, requests to verify all wallet's public key wildcards to be equal to value,
+    // pointed by this parameter.
+    const policy_map_key_wildcard_id_t *p_key_wildcard_to_verify;
 } policy_parser_state_t;
 
 // comparator for pointers to compressed pubkeys
@@ -71,8 +75,20 @@ static int cmp_compressed_pubkeys(const void *a, const void *b) {
 // p2sh (also nested segwit) ==> legacy script  (start with 3 on mainnet, 2 on testnet)
 // p2wpkh or p2wsh           ==> bech32         (sart with bc1 on mainnet, tb1 on testnet)
 
-// convenience function, split from get_derived_pubkey only to improve stack usage
-// returns -1 on error, 0 if the returned key info has no wildcard (**), 1 if it has the wildcard
+/**
+ * Gets the extended public key at given index.
+ *
+ * This is a convenience function, split from get_derived_pubkey only to improve stack usage.
+ *
+ * @param[in,out] state
+ *   Parser state.
+ * @param[in] key_index
+ *   Public key index.
+ * @param[out] out
+ *   Pointer to structure instance receiving serialized extended public key.
+ *
+ * @return returns -1 on error, or a non-negative public key wildcard identifier.
+ */
 static int __attribute__((noinline)) get_extended_pubkey(policy_parser_state_t *state,
                                                          int key_index,
                                                          serialized_extended_pubkey_t *out) {
@@ -125,17 +141,29 @@ static int __attribute__((noinline)) get_extended_pubkey(policy_parser_state_t *
     return key_info.wildcard_id;
 }
 
+/**
+ * @brief Get the derived public key at given index.
+ *
+ * @param[in,out] state
+ *   Parser state.
+ * @param[in] key_index
+ *   Public key index.
+ * @param[out] out
+ *   Buffer receiving compressed public key, must be not smaller than 33 bytes.
+ *
+ * @return returns -1 on error, or a non-negative public key wildcard identifier.
+ */
 static int get_derived_pubkey(policy_parser_state_t *state, int key_index, uint8_t out[static 33]) {
     PRINT_STACK_POINTER();
 
     serialized_extended_pubkey_t ext_pubkey;
 
-    int ret = get_extended_pubkey(state, key_index, &ext_pubkey);
-    if (ret < 0) {
+    int wildcard_id = get_extended_pubkey(state, key_index, &ext_pubkey);
+    if (wildcard_id < 0) {
         return -1;
     }
 
-    switch(ret) {
+    switch(wildcard_id) {
         case KEY_WILDCARD_NONE:
             // No wildcard, returning pubkey "as is"
             break;
@@ -145,8 +173,8 @@ static int get_derived_pubkey(policy_parser_state_t *state, int key_index, uint8
         case KEY_WILDCARD_EXTERNAL_CHAIN:
         case KEY_WILDCARD_INTERNAL_CHAIN:
             // Check if requested derivation is allowed by pubkey wildcard
-            if ( (KEY_WILDCARD_EXTERNAL_CHAIN == ret && 0 != state->change) ||
-                 (KEY_WILDCARD_INTERNAL_CHAIN == ret && 1 != state->change) ) {
+            if ( (KEY_WILDCARD_EXTERNAL_CHAIN == wildcard_id && 0 != state->change) ||
+                 (KEY_WILDCARD_INTERNAL_CHAIN == wildcard_id && 1 != state->change) ) {
                     return -1;
             }
             // Derive the /chain/i child of this pubkey reusing the same memory of ext_pubkey
@@ -165,7 +193,7 @@ static int get_derived_pubkey(policy_parser_state_t *state, int key_index, uint8
 
     memcpy(out, ext_pubkey.compressed_pubkey, 33);
 
-    return 0;
+    return wildcard_id;
 }
 
 /**
@@ -248,10 +276,18 @@ static int __attribute__((noinline)) process_pkh_wpkh_node(policy_parser_state_t
         cx_sha256_init(&state->hash_context);
     }
 
-    int result;
-    if (-1 == get_derived_pubkey(state, policy->key_index, compressed_pubkey)) {
+    int wildcard_id = get_derived_pubkey(state, policy->key_index, compressed_pubkey);
+    if (-1 == wildcard_id) {
         return -1;
-    } else if (policy->type == TOKEN_PKH) {
+    }
+    // Verify public key wildcard if requested
+    if (NULL != state->p_key_wildcard_to_verify &&
+        wildcard_id != *state->p_key_wildcard_to_verify) {
+        return -1;
+    }
+
+    int result;
+    if (policy->type == TOKEN_PKH) {
         update_output_u8(state, 0x76);
         update_output_u8(state, 0xa9);
         update_output_u8(state, 0x14);
@@ -358,7 +394,13 @@ static int __attribute__((noinline)) process_multi_sortedmulti_node(policy_parse
     // derive each key
     uint8_t compressed_pubkeys[MAX_POLICY_MAP_KEYS][33];
     for (unsigned int i = 0; i < policy->n; i++) {
-        if (-1 == get_derived_pubkey(state, policy->key_indexes[i], compressed_pubkeys[i])) {
+        int wildcard_id = get_derived_pubkey(state, policy->key_indexes[i], compressed_pubkeys[i]);
+        if (-1 == wildcard_id) {
+            return -1;
+        }
+        // Verify public key wildcard if requested
+        if (NULL != state->p_key_wildcard_to_verify &&
+            wildcard_id != *state->p_key_wildcard_to_verify) {
             return -1;
         }
     }
@@ -421,21 +463,27 @@ static int __attribute__((noinline)) process_tr_node(policy_parser_state_t *stat
     uint8_t compressed_pubkey[33];
     uint8_t tweaked_key[32];
 
-    if (-1 == get_derived_pubkey(state, policy->key_index, compressed_pubkey)) {
+    int wildcard_id = get_derived_pubkey(state, policy->key_index, compressed_pubkey);
+    if (-1 == wildcard_id) {
         return -1;
-    } else {
-        update_output_u8(state, 0x51);
-        update_output_u8(state, 0x20);
-
-        uint8_t parity;
-        if (0 != crypto_tr_tweak_pubkey(compressed_pubkey + 1, &parity, tweaked_key)) {
-            return -1;
-        }
-
-        update_output(state, tweaked_key, 32);
-
-        result = 2 + 32;
     }
+    // Verify public key wildcard if requested
+    if (NULL != state->p_key_wildcard_to_verify &&
+        wildcard_id != *state->p_key_wildcard_to_verify) {
+        return -1;
+    }
+
+    update_output_u8(state, 0x51);
+    update_output_u8(state, 0x20);
+
+    uint8_t parity;
+    if (0 != crypto_tr_tweak_pubkey(compressed_pubkey + 1, &parity, tweaked_key)) {
+        return -1;
+    }
+
+    update_output(state, tweaked_key, 32);
+
+    result = 2 + 32;
 
     if (-1 == state_stack_pop(state)) {
         return -1;
@@ -449,13 +497,15 @@ int call_get_wallet_script(dispatcher_context_t *dispatcher_context,
                            uint32_t n_keys,
                            bool change,
                            size_t address_index,
-                           buffer_t *out_buf) {
+                           buffer_t *out_buf,
+                           const policy_map_key_wildcard_id_t *p_key_wildcard_to_verify) {
     policy_parser_state_t state = {.dispatcher_context = dispatcher_context,
                                    .keys_merkle_root = keys_merkle_root,
                                    .n_keys = n_keys,
                                    .change = change,
                                    .address_index = address_index,
-                                   .node_stack_eos = 0};
+                                   .node_stack_eos = 0,
+                                   .p_key_wildcard_to_verify = p_key_wildcard_to_verify};
 
     state.nodes[0] = (policy_parser_node_state_t){.mode = MODE_OUT_BYTES,
                                                   .step = 0,

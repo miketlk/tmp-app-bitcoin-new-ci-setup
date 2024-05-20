@@ -31,13 +31,17 @@
 /// Maximum supported number of keys for a policy map.
 #define MAX_POLICY_MAP_KEYS MAX_POLICY_MAP_COSIGNERS
 
+/// Maximum length of public key wildcard in characters
+#define MAX_POLICY_MAP_KEY_WILDCARD_LEN (sizeof("/<0;1>/*") - 1)
+
 // The string describing a pubkey can contain:
 // - (optional) the key origin info, which we limit to 46 bytes (2 + 8 + 3*12 = 46 bytes)
 // - the xpub itself (up to 113 characters)
-// - optional, the "/**" suffix.
+// - optional, the wildcard suffix.
 // Therefore, the total length of the key info string is at most 162 bytes.
 /// Maximum length of key information string
-#define MAX_POLICY_KEY_INFO_LEN (46 + MAX_SERIALIZED_PUBKEY_LENGTH + 3)
+#define MAX_POLICY_KEY_INFO_LEN (46 + MAX_SERIALIZED_PUBKEY_LENGTH + \
+                                 MAX_POLICY_MAP_KEY_WILDCARD_LEN)
 
 #ifdef HAVE_LIQUID
 /// Maximum length of blinding key descriptor (length of Base58-encoded xpub)
@@ -79,9 +83,6 @@
 // Currently only multisig is supported
 /// Maximum length of wallet policy
 #define MAX_POLICY_MAP_LEN MAX_MULTISIG_POLICY_MAP_LENGTH
-
-/// Maximum length of public key wildcard in characters
-#define MAX_POLICY_MAP_KEY_WILDCARD_LEN (sizeof("/<0;1>/*") - 1)
 
 /// Public key wildcards defining the rules for child key derivation.
 typedef enum {

@@ -372,3 +372,15 @@ static inline void buffer_restore(buffer_t *buffer, buffer_snapshot_t snapshot) 
 static inline size_t buffer_remaining(const buffer_t *buffer) {
     return buffer->size - buffer->offset;
 }
+
+/**
+ * Returns the number of stored bytes in the buffer according to its current position.
+ *
+ * @param[in] buffer
+ *   Pointer to buffer struct.
+ *
+ * @return the number of stored bytes in the buffer.
+ */
+static inline size_t buffer_stored(const buffer_t *buffer) {
+    return buffer->offset;
+}
