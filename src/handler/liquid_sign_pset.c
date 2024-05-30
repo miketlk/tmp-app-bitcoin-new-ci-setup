@@ -1088,18 +1088,21 @@ static int parse_utxo_nonwitness(
 /**
  * Convenience function to get the amount, asset and scriptpubkey from the witness-utxo.
  *
+ * For this function to output `scriptPubKey`, both `scriptPubKey` and `scriptPubKey_len` must be
+ * non-NULL.
+ *
  * @param[in,out] dc
  *   Dispatcher context.
  * @param[in] input_map
  *   Commitment to a merkleized key-value map of this input.
  * @param[out] asset
- *   Pointer to structure instance receiving parsed asset.
+ *   Pointer to structure instance receiving parsed asset, NULL if not needed.
  * @param[out] amount
- *   Pointer to structure instance receiving parsed amount.
+ *   Pointer to structure instance receiving parsed amount, NULL if not needed.
  * @param[out] scriptPubKey
- *   Buffer receiving parsed scriptPubKey.
+ *   Buffer receiving parsed scriptPubKey, NULL if not needed.
  * @param[out] scriptPubKey_len
- *   Pointer to variable receiving length of parsed scriptPubKey.
+ *   Pointer to variable receiving length of parsed scriptPubKey, NULL if not needed.
  *
  * @return 0 on success, -1 on failure.
  */
@@ -1978,10 +1981,10 @@ static void check_input_owned(dispatcher_context_t *dc) {
         int segwit_version =
             get_segwit_version(state->cur.in_out.scriptPubKey, state->cur.in_out.scriptPubKey_len);
 
-        // For legacy or segwit-v0 inputs, the non-witness utxo must be present
-        if ((segwit_version == -1 || segwit_version == 0) &&
+        // For legacy inputs, the non-witness utxo must be present
+        if ((segwit_version == -1) &&
              !(state->cur.key_presence & HAS_NONWITNESSUTXO)) {
-            PRINTF("Non-witness utxo missing for legacy or segwitv0 input\n");
+            PRINTF("Non-witness utxo missing for legacy input\n");
             SEND_SW(dc, SW_INCORRECT_DATA);
             return;
         }
@@ -2738,14 +2741,12 @@ static void compute_segwit_hashes(dispatcher_context_t *dc) {
             uint8_t in_scriptPubKey[MAX_PREVOUT_SCRIPTPUBKEY_LEN];
             size_t in_scriptPubKey_len;
 
-            if (0 > parse_utxo_nonwitness(dc,
-                                          &ith_map,
-                                          NULL, /* asset */
-                                          &in_amount,
-                                          in_scriptPubKey,
-                                          &in_scriptPubKey_len,
-                                          NULL, /* expected_prevout_hash */
-                                          NULL /* issuance_hash_context */)) {
+            if (0 > parse_utxo_witness(dc,
+                                       &ith_map,
+                                       NULL, /* asset */
+                                       &in_amount,
+                                       in_scriptPubKey,
+                                       &in_scriptPubKey_len)) {
                 SEND_SW(dc, SW_INCORRECT_DATA);
                 return;
             }
