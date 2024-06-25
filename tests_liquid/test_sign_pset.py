@@ -297,3 +297,36 @@ def test_unknown_asset_display(client: Client, comm: SpeculosClient, is_speculos
             assert len(result_sig) >= 100 and len(result_sig) <= 144
             assert result_sig.startswith("304")
             assert result_sig in sigs["final_scriptwitness"]
+
+@has_automation(f"{tests_root}/automations/sign_with_any_wallet_accept.json")
+def test_asset_operations(client: Client, is_speculos: bool):
+    # Test correct signing of asset reissuance transaction.
+
+    client.debug = False
+    random.seed(1)
+
+    with open(f"{tests_root}/pset/asset_operations.json", "r") as read_file:
+        test_data = json.load(read_file)
+
+    # Loop through all test suites
+    for _, suite in test_data["valid"].items():
+        wallet = BlindedWallet(
+            name=random_wallet_name(),
+            blinding_key=suite["mbk"],
+            policy_map=suite["policy_map"],
+            keys_info=suite["keys_info"]
+        )
+
+        # Loop through all tests within a suite
+        for test in suite["tests"]:
+            print("TEST:", suite["description"], test["description"])
+
+            pset = PSET()
+            pset.deserialize(test["pset"])
+            result = client.sign_psbt(pset, wallet, None)
+
+            for n_input, sigs in test["signatures"].items():
+                result_sig = result[int(n_input)].hex()
+                assert len(result_sig) >= 100 and len(result_sig) <= 144
+                assert result_sig.startswith("304")
+                assert result_sig in sigs["final_scriptwitness"]

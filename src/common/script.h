@@ -164,6 +164,10 @@ static inline bool is_opreturn(const uint8_t script[], size_t script_len) {
     return script_len > 0 && script_len <= 83 && script[0] == OP_RETURN;
 }
 
+static inline bool is_opreturn_burn(const uint8_t script[], size_t script_len) {
+    return script_len == 1 && script[0] == OP_RETURN;
+}
+
 /**
  * Returns a constant of type `script_type_e` indicating the type of known script type with an
  * address, or -1 for any invalid script, or valid script without an address.

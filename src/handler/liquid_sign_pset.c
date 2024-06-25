@@ -85,11 +85,11 @@ typedef enum {
     /// Not used
     HAS_ASSET_BLINDING_FACTOR = (1 << 4),
     /// PSBT_IN_WITNESS_UTXO
-    HAS_WITNESSUTXO = (1 << 5),
+    HAS_WITNESS_UTXO = (1 << 5),
     /// PSBT_IN_NON_WITNESS_UTXO
-    HAS_NONWITNESSUTXO = (1 << 6),
+    HAS_NONWITNESS_UTXO = (1 << 6),
     /// PSBT_IN_REDEEM_SCRIPT
-    HAS_REDEEMSCRIPT = (1 << 7),
+    HAS_REDEEM_SCRIPT = (1 << 7),
     /// PSBT_IN_SIGHASH_TYPE
     HAS_SIGHASH_TYPE = (1 << 8),
     /// Input or output has amount
@@ -103,21 +103,21 @@ typedef enum {
     /// PSBT_ELEMENTS_OUT_BLINDER_INDEX
     HAS_BLINDER_INDEX = (1 << 13),
     /// PSBT_ELEMENTS_IN_ISSUANCE_VALUE
-    HAS_ISSUE_VALUE = (1 << 14),
+    HAS_ISSUANCE_VALUE = (1 << 14),
     /// PSBT_ELEMENTS_IN_ISSUANCE_VALUE_COMMITMENT
-    HAS_ISSUE_COMMITMENT = (1 << 15),
+    HAS_ISSUANCE_VALUE_COMMITMENT = (1 << 15),
     /// PSBT_ELEMENTS_IN_ISSUANCE_BLINDING_NONCE
-    HAS_ISSUE_NONCE = (1 << 16),
+    HAS_ISSUANCE_BLINDING_NONCE = (1 << 16),
     /// PSBT_ELEMENTS_IN_ISSUANCE_ASSET_ENTROPY
-    HAS_ISSUE_ENTROPY = (1 << 17),
+    HAS_ISSUANCE_ASSET_ENTROPY = (1 << 17),
     /// PSBT_ELEMENTS_IN_ISSUANCE_INFLATION_KEYS_COMMITMENT
-    HAS_TOKEN_COMMITMENT = (1 << 18),
+    HAS_ISSUANCE_INFLATION_KEYS_COMMITMENT = (1 << 18),
     /// PSBT_ELEMENTS_IN_ISSUANCE_INFLATION_KEYS_AMOUNT
-    HAS_TOKEN_VALUE = (1 << 19),
+    HAS_ISSUANCE_INFLATION_KEYS_AMOUNT = (1 << 19),
     /// PSBT_ELEMENTS_IN_ISSUANCE_BLIND_VALUE_PROOF
-    HAS_ISSUE_PROOF = (1 << 20),
+    HAS_ISSUANCE_BLIND_VALUE_PROOF = (1 << 20),
     /// PSBT_ELEMENTS_IN_ISSUANCE_BLIND_INFLATION_KEYS_PROOF
-    HAS_TOKEN_PROOF = (1 << 21),
+    HAS_ISSUANCE_BLIND_INFLATION_KEYS_PROOF = (1 << 21),
     /// PSBT_ELEMENTS_IN_EXPLICIT_VALUE or PSBT_OUT_AMOUNT
     HAS_VALUE = (1 << 22),
     /// PSBT_ELEMENTS_IN_VALUE_PROOF or PSBT_ELEMENTS_OUT_BLIND_VALUE_PROOF
@@ -499,11 +499,11 @@ static void input_keys_callback(input_keys_callback_state_t *state, buffer_t *da
         uint8_t keytype;
         buffer_read_u8(data, &keytype);
         if (keytype == PSBT_IN_WITNESS_UTXO) {
-            state->key_presence |= HAS_WITNESSUTXO;
+            state->key_presence |= HAS_WITNESS_UTXO;
         } else if (keytype == PSBT_IN_NON_WITNESS_UTXO) {
-            state->key_presence |= HAS_NONWITNESSUTXO;
+            state->key_presence |= HAS_NONWITNESS_UTXO;
         } else if (keytype == PSBT_IN_REDEEM_SCRIPT) {
-            state->key_presence |= HAS_REDEEMSCRIPT;
+            state->key_presence |= HAS_REDEEM_SCRIPT;
         } else if (keytype == PSBT_IN_SIGHASH_TYPE) {
             state->key_presence |= HAS_SIGHASH_TYPE;
         } else if ((keytype == PSBT_IN_BIP32_DERIVATION ||
@@ -540,24 +540,24 @@ static void input_keys_callback(input_keys_callback_state_t *state, buffer_t *da
             } else if (test_proprietary_key(data, PSBT_ELEMENTS_IN_EXPLICIT_ASSET)) {
                 state->key_presence |= HAS_ASSET;
             } else if (test_proprietary_key(data, PSBT_ELEMENTS_IN_ISSUANCE_VALUE)) {
-                state->key_presence |= HAS_ISSUE_VALUE;
+                state->key_presence |= HAS_ISSUANCE_VALUE;
             } else if (test_proprietary_key(data, PSBT_ELEMENTS_IN_ISSUANCE_VALUE_COMMITMENT)) {
-                state->key_presence |= HAS_ISSUE_COMMITMENT;
+                state->key_presence |= HAS_ISSUANCE_VALUE_COMMITMENT;
             } else if (test_proprietary_key(data, PSBT_ELEMENTS_IN_ISSUANCE_BLIND_VALUE_PROOF)) {
-                state->key_presence |= HAS_ISSUE_PROOF;
+                state->key_presence |= HAS_ISSUANCE_BLIND_VALUE_PROOF;
             } else if (test_proprietary_key(data,
                                             PSBT_ELEMENTS_IN_ISSUANCE_INFLATION_KEYS_AMOUNT)) {
-                state->key_presence |= HAS_TOKEN_VALUE;
+                state->key_presence |= HAS_ISSUANCE_INFLATION_KEYS_AMOUNT;
             } else if (test_proprietary_key(data,
                                             PSBT_ELEMENTS_IN_ISSUANCE_INFLATION_KEYS_COMMITMENT)) {
-                state->key_presence |= HAS_TOKEN_COMMITMENT;
+                state->key_presence |= HAS_ISSUANCE_INFLATION_KEYS_COMMITMENT;
             } else if (test_proprietary_key(data, PSBT_ELEMENTS_IN_ISSUANCE_BLINDING_NONCE)) {
-                state->key_presence |= HAS_ISSUE_NONCE;
+                state->key_presence |= HAS_ISSUANCE_BLINDING_NONCE;
             } else if (test_proprietary_key(data, PSBT_ELEMENTS_IN_ISSUANCE_ASSET_ENTROPY)) {
-                state->key_presence |= HAS_ISSUE_ENTROPY;
+                state->key_presence |= HAS_ISSUANCE_ASSET_ENTROPY;
             } else if (test_proprietary_key(data,
                                             PSBT_ELEMENTS_IN_ISSUANCE_BLIND_INFLATION_KEYS_PROOF)) {
-                state->key_presence |= HAS_TOKEN_PROOF;
+                state->key_presence |= HAS_ISSUANCE_BLIND_INFLATION_KEYS_PROOF;
             } else if (test_proprietary_key(data, PSBT_ELEMENTS_IN_VALUE_PROOF)) {
                 state->key_presence |= HAS_VALUE_PROOF;
             } else if (test_proprietary_key(data, PSBT_ELEMENTS_IN_ASSET_PROOF)) {
@@ -849,7 +849,7 @@ static int hash_outputs(dispatcher_context_t *dc,
  * @return true if an input has issuance information, otherwise false.
  */
 static inline bool input_has_issuance(uint32_t key_presence) {
-    return !!(key_presence & (HAS_ISSUE_VALUE | HAS_ISSUE_COMMITMENT));
+    return !!(key_presence & (HAS_ISSUANCE_VALUE | HAS_ISSUANCE_VALUE_COMMITMENT));
 }
 
 /**
@@ -871,7 +871,7 @@ static bool hash_input_issuance(dispatcher_context_t *dc,
                                 uint32_t key_presence,
                                 cx_hash_t *hash_context) {
     // Hash nonce
-    if (key_presence & HAS_ISSUE_NONCE) {
+    if (key_presence & HAS_ISSUANCE_BLINDING_NONCE) {
         uint8_t nonce[32];
         if (sizeof(nonce) != call_get_merkleized_map_value(
                 dc,
@@ -881,15 +881,17 @@ static bool hash_input_issuance(dispatcher_context_t *dc,
                 nonce,
                 sizeof(nonce)
             )) {
+            PRINTF("Error fetching issuance blinding nonce\n");
             return false;
         }
         crypto_hash_update(hash_context, nonce, sizeof(nonce));
     } else {
-        return false;
+        // Zero for new asset issuance
+        crypto_hash_update_zeros(hash_context, 32);
     }
 
     // Hash entropy
-    if (key_presence & HAS_ISSUE_ENTROPY) {
+    if (key_presence & HAS_ISSUANCE_ASSET_ENTROPY) {
         uint8_t entropy[32];
         if (sizeof(entropy) != call_get_merkleized_map_value(
                 dc,
@@ -899,15 +901,17 @@ static bool hash_input_issuance(dispatcher_context_t *dc,
                 entropy,
                 sizeof(entropy)
             )) {
+            PRINTF("Error fetching issuance asset entropy\n");
             return false;
         }
         crypto_hash_update(hash_context, entropy, sizeof(entropy));
     } else {
+        PRINTF("No issuance asset entropy provided\n");
         return false;
     }
 
     // Hash amount commitment
-    if (key_presence & HAS_ISSUE_COMMITMENT) {
+    if (key_presence & HAS_ISSUANCE_VALUE_COMMITMENT) {
         uint8_t commitment[33];
         if (sizeof(commitment) != call_get_merkleized_map_value(
                 dc,
@@ -917,10 +921,11 @@ static bool hash_input_issuance(dispatcher_context_t *dc,
                 commitment,
                 sizeof(commitment)
             )) {
+            PRINTF("Error fetching issuance value commitment\n");
             return false;
         }
         crypto_hash_update(hash_context, commitment, sizeof(commitment));
-    } else if (key_presence & HAS_ISSUE_VALUE) {
+    } else if (key_presence & HAS_ISSUANCE_VALUE) {
         uint8_t value[8];
         if (sizeof(value) != call_get_merkleized_map_value(
                 dc,
@@ -930,15 +935,18 @@ static bool hash_input_issuance(dispatcher_context_t *dc,
                 value,
                 sizeof(value)
             )) {
+            PRINTF("Error fetching issuance value\n");
             return false;
         }
+        reverse_inplace(value, sizeof(value));
+        crypto_hash_update_u8(hash_context, 0x01);
         crypto_hash_update(hash_context, value, sizeof(value));
     } else {
-        return false;
+        crypto_hash_update_u8(hash_context, 0x00);
     }
 
     // Hash token commitment
-    if (key_presence & HAS_TOKEN_COMMITMENT) {
+    if (key_presence & HAS_ISSUANCE_INFLATION_KEYS_COMMITMENT) {
         uint8_t commitment[33];
         if (sizeof(commitment) != call_get_merkleized_map_value(
                 dc,
@@ -948,10 +956,11 @@ static bool hash_input_issuance(dispatcher_context_t *dc,
                 commitment,
                 sizeof(commitment)
             )) {
+            PRINTF("Error fetching issuance inflation keys commitment\n");
             return false;
         }
         crypto_hash_update(hash_context, commitment, sizeof(commitment));
-    } else if (key_presence & HAS_TOKEN_VALUE) {
+    } else if (key_presence & HAS_ISSUANCE_INFLATION_KEYS_AMOUNT) {
         uint8_t value[8];
         if (sizeof(value) != call_get_merkleized_map_value(
                 dc,
@@ -961,8 +970,11 @@ static bool hash_input_issuance(dispatcher_context_t *dc,
                 value,
                 sizeof(value)
             )) {
+            PRINTF("Error fetching issuance inflation keys amount\n");
             return false;
         }
+        reverse_inplace(value, sizeof(value));
+        crypto_hash_update_u8(hash_context, 0x01);
         crypto_hash_update(hash_context, value, sizeof(value));
     } else {
         crypto_hash_update_u8(hash_context, 0x00);
@@ -1434,6 +1446,7 @@ void handler_liquid_sign_pset(dispatcher_context_t *dc) {
                                                          serialized_wallet_policy,
                                                          sizeof(serialized_wallet_policy));
     if (serialized_wallet_policy_len < 0) {
+        PRINTF("Error while getting serialized wallet policy\n");
         SEND_SW(dc, SW_INCORRECT_DATA);
         return;
     }
@@ -1442,6 +1455,7 @@ void handler_liquid_sign_pset(dispatcher_context_t *dc) {
     buffer_t serialized_wallet_policy_buf =
         buffer_create(serialized_wallet_policy, serialized_wallet_policy_len);
     if ((read_policy_map_wallet(&serialized_wallet_policy_buf, &wallet_header)) < 0) {
+        PRINTF("Invalid wallet policy\n");
         SEND_SW(dc, SW_INCORRECT_DATA);
         return;
     }
@@ -1459,6 +1473,7 @@ void handler_liquid_sign_pset(dispatcher_context_t *dc) {
                          sizeof(state->wallet_policy.map_bytes),
                          BIP32_PUBKEY_VERSION,
                          BIP32_PRIVKEY_VERSION) < 0) {
+        PRINTF("Invalid wallet policy\n");
         SEND_SW(dc, SW_INCORRECT_DATA);
         return;
     }
@@ -1527,7 +1542,6 @@ void handler_liquid_sign_pset(dispatcher_context_t *dc) {
 #endif
 
     state->inputs_total_value = 0;
-    state->internal_inputs_total_value = 0;
     memset(state->internal_inputs, 0, sizeof(state->internal_inputs));
 
     state->master_key_fingerprint = crypto_get_master_key_fingerprint();
@@ -1542,6 +1556,7 @@ void handler_liquid_sign_pset(dispatcher_context_t *dc) {
             (size_t) state->global_map.size,
             make_callback(&callback_state, (dispatcher_callback_t) global_keys_callback));
         if (res < 0 || callback_state.error) {
+            PRINTF("Invalid Merkle tree structure\n");
             SEND_SW(dc, SW_INCORRECT_DATA);
             return;
         }
@@ -1558,6 +1573,7 @@ void handler_liquid_sign_pset(dispatcher_context_t *dc) {
                                                    raw_result,
                                                    sizeof(raw_result));
         if (result_len != 4) {
+            PRINTF("Invalid transaction version\n");
             SEND_SW(dc, SW_INCORRECT_DATA);
             return;
         }
@@ -1576,6 +1592,7 @@ void handler_liquid_sign_pset(dispatcher_context_t *dc) {
         if (result_len == -1) {
             state->locktime = 0;
         } else if (result_len != 4) {
+            PRINTF("Invalid locktime\n");
             SEND_SW(dc, SW_INCORRECT_DATA);
             return;
         } else {
@@ -1699,7 +1716,7 @@ static void process_input_map(dispatcher_context_t *dc) {
         }
     }
 
-    PRINTF("\nkey_presence=%04x\n", state->cur.key_presence);
+    PRINTF("\nInput[%i] key_presence=%04x\n", state->cur_input_index, state->cur.key_presence);
 
     if(state->cur.key_presence & HAS_VALUE) {
         tx_amount_t prevout_amount;
@@ -1712,7 +1729,7 @@ static void process_input_map(dispatcher_context_t *dc) {
                                                       sizeof(PSBT_ELEMENTS_IN_EXPLICIT_VALUE),
                                                       &prevout_amount.value) ) {
             if (!set_in_out_amount(&state->cur, &prevout_amount)) {
-                PRINTF("Amount is invalid\n");
+                PRINTF("Invalid amount provided for input %u\n", state->cur_input_index);
                 SEND_SW(dc, SW_INCORRECT_DATA);
                 return;
             }
@@ -1724,15 +1741,15 @@ static void process_input_map(dispatcher_context_t *dc) {
     }
 
     // either witness utxo or non-witness utxo (or both) must be present.
-    if (0 == (state->cur.key_presence & (HAS_NONWITNESSUTXO | HAS_WITNESSUTXO))) {
-        PRINTF("No witness utxo nor non-witness utxo present in input.\n");
+    if (0 == (state->cur.key_presence & (HAS_NONWITNESS_UTXO | HAS_WITNESS_UTXO))) {
+        PRINTF("No witness utxo nor non-witness utxo present in input %u\n", state->cur_input_index);
         SEND_SW(dc, SW_INCORRECT_DATA);
         return;
     }
 
     // validate non-witness utxo (if present) and witness utxo (if present)
 
-    if (state->cur.key_presence & HAS_NONWITNESSUTXO) {
+    if (state->cur.key_presence & HAS_NONWITNESS_UTXO) {
         uint8_t prevout_hash[32];
 
         // check if the prevout_hash of the transaction matches the computed one from the
@@ -1743,6 +1760,7 @@ static void process_input_map(dispatcher_context_t *dc) {
                                               1,
                                               prevout_hash,
                                               sizeof(prevout_hash))) {
+            PRINTF("Error getting prevout hash for input %u\n", state->cur_input_index);
             SEND_SW(dc, SW_INCORRECT_DATA);
             return;
         }
@@ -1758,6 +1776,7 @@ static void process_input_map(dispatcher_context_t *dc) {
                                       &state->cur.in_out.scriptPubKey_len,
                                       prevout_hash,
                                       NULL /* issuance_hash_context */)) {
+            PRINTF("Error parsing non-witness utxo for input %u\n", state->cur_input_index);
             SEND_SW(dc, SW_INCORRECT_DATA);
             return;
         }
@@ -1775,7 +1794,7 @@ static void process_input_map(dispatcher_context_t *dc) {
         }
     }
 
-    if (state->cur.key_presence & HAS_WITNESSUTXO) {
+    if (state->cur.key_presence & HAS_WITNESS_UTXO) {
         size_t wit_utxo_scriptPubkey_len;
         uint8_t wit_utxo_scriptPubkey[MAX_PREVOUT_SCRIPTPUBKEY_LEN];
         tx_asset_t asset;
@@ -1787,6 +1806,7 @@ static void process_input_map(dispatcher_context_t *dc) {
                                    &wit_utxo_prevout_amount,
                                    wit_utxo_scriptPubkey,
                                    &wit_utxo_scriptPubkey_len)) {
+            PRINTF("Invalid witness utxo of input %u\n", state->cur_input_index);
             SEND_SW(dc, SW_INCORRECT_DATA);
             return;
         };
@@ -1803,7 +1823,7 @@ static void process_input_map(dispatcher_context_t *dc) {
             return;
         }
 
-        if (state->cur.key_presence & HAS_NONWITNESSUTXO) {
+        if (state->cur.key_presence & HAS_NONWITNESS_UTXO) {
             // we already know the scriptPubKey, but we double check that it matches
             if (state->cur.in_out.scriptPubKey_len != wit_utxo_scriptPubkey_len ||
                 wit_utxo_scriptPubkey_len > sizeof(state->cur.in_out.scriptPubKey) ||
@@ -1822,6 +1842,7 @@ static void process_input_map(dispatcher_context_t *dc) {
                        wit_utxo_scriptPubkey_len);
                 state->cur.in_out.scriptPubKey_len = wit_utxo_scriptPubkey_len;
             } else {
+                PRINTF("scriptPubKey length is higher than supported\n");
                 SEND_SW(dc, SW_INCORRECT_DATA);
                 return;
             }
@@ -1834,6 +1855,37 @@ static void process_input_map(dispatcher_context_t *dc) {
         return;
     }
     state->inputs_total_value += state->cur.in_out.value;
+
+    if (state->cur.key_presence & HAS_ISSUANCE_VALUE) {
+        uint64_t issuance_value = 0;
+        if (8 != call_get_merkleized_map_value_u64_le(dc,
+                                                      &state->cur.in_out.map,
+                                                      PSBT_ELEMENTS_IN_ISSUANCE_VALUE,
+                                                      sizeof(PSBT_ELEMENTS_IN_ISSUANCE_VALUE),
+                                                      &issuance_value) ) {
+            PRINTF("Failed to obtain issuance value for input %u\n", state->cur_input_index);
+            SEND_SW(dc, SW_INCORRECT_DATA);
+            return;
+        }
+        state->inputs_total_value += issuance_value;
+    }
+
+    if (state->cur.key_presence & HAS_ISSUANCE_INFLATION_KEYS_AMOUNT) {
+        uint64_t token_amount = 0;
+        if (8 != call_get_merkleized_map_value_u64_le(
+                    dc,
+                    &state->cur.in_out.map,
+                    PSBT_ELEMENTS_IN_ISSUANCE_INFLATION_KEYS_AMOUNT,
+                    sizeof(PSBT_ELEMENTS_IN_ISSUANCE_INFLATION_KEYS_AMOUNT),
+                    &token_amount
+                )
+            ) {
+            PRINTF("Failed to obtain issuance token amount for input %u\n", state->cur_input_index);
+            SEND_SW(dc, SW_INCORRECT_DATA);
+            return;
+        }
+        state->inputs_total_value += token_amount;
+    }
 
     if ( !(state->cur.key_read_status & HAS_ASSET) ) {
         PRINTF("Asset tag is not provided for input %u\n", state->cur_input_index);
@@ -1964,7 +2016,7 @@ static void check_input_owned(dispatcher_context_t *dc) {
                                          !!(state->cur.key_presence & HAS_BIP32_DERIVATION));
 
     if (is_internal < 0) {
-        PRINTF("Error checking if input %d is internal\n", state->cur_input_index);
+        PRINTF("Error checking if input %u is internal\n", state->cur_input_index);
         SEND_SW(dc, SW_INCORRECT_DATA);
         return;
     } else if (is_internal == 0) {
@@ -1976,21 +2028,20 @@ static void check_input_owned(dispatcher_context_t *dc) {
             SEND_SW(dc, SW_INCORRECT_DATA);
             return;
         }
-        state->internal_inputs_total_value += state->cur.in_out.value;
 
         int segwit_version =
             get_segwit_version(state->cur.in_out.scriptPubKey, state->cur.in_out.scriptPubKey_len);
 
         // For legacy inputs, the non-witness utxo must be present
         if ((segwit_version == -1) &&
-             !(state->cur.key_presence & HAS_NONWITNESSUTXO)) {
+             !(state->cur.key_presence & HAS_NONWITNESS_UTXO)) {
             PRINTF("Non-witness utxo missing for legacy input\n");
             SEND_SW(dc, SW_INCORRECT_DATA);
             return;
         }
 
         // For all segwit transactions, the witness utxo must be present
-        if (segwit_version >= 0 && !(state->cur.key_presence & HAS_WITNESSUTXO)) {
+        if (segwit_version >= 0 && !(state->cur.key_presence & HAS_WITNESS_UTXO)) {
             PRINTF("Witness utxo missing for segwit input\n");
             SEND_SW(dc, SW_INCORRECT_DATA);
             return;
@@ -2050,7 +2101,9 @@ static void verify_outputs_init(dispatcher_context_t *dc) {
     LOG_PROCESSOR(dc, __FILE__, __LINE__, __func__);
 
     state->outputs_total_value = 0;
+#ifdef LIQUID_HAS_SWAP
     state->change_outputs_total_value = 0;
+#endif
     state->change_count = 0;
 
     state->cur_output_index = 0;
@@ -2083,12 +2136,13 @@ static void process_output_map(dispatcher_context_t *dc) {
             make_callback(&callback_state, (dispatcher_callback_t) output_keys_callback),
             &state->cur.in_out.map);
         if (res < 0) {
+            PRINTF("Error while getting output keys\n");
             SEND_SW(dc, SW_INCORRECT_DATA);
             return;
         }
 
         if (callback_state.error) {
-            PRINTF("Error during processing input keys (wrong pubkey format?)\n");
+            PRINTF("Error during processing output keys (wrong pubkey format?)\n");
             SEND_SW(dc, SW_INCORRECT_DATA);
             return;
         }
@@ -2107,6 +2161,7 @@ static void process_output_map(dispatcher_context_t *dc) {
                                                    raw_result,
                                                    sizeof(raw_result));
     if (result_len != 8) {
+        PRINTF("Error while getting amount for output %u\n", state->cur_output_index);
         SEND_SW(dc, SW_INCORRECT_DATA);
         return;
     }
@@ -2156,6 +2211,7 @@ static void process_output_map(dispatcher_context_t *dc) {
 
     if (result_len == -1 || result_len > (int) sizeof(state->cur.in_out.scriptPubKey) ||
         (is_fee_output && result_len != 0)) {
+        PRINTF("Error while getting scriptPubKey for output %u\n", state->cur_output_index);
         SEND_SW(dc, SW_INCORRECT_DATA);
         return;
     }
@@ -2168,7 +2224,7 @@ static void process_output_map(dispatcher_context_t *dc) {
     }
 
     if (is_fee_output && !liquid_is_asset_bitcoin(state->cur.in_out.asset_tag)) {
-        PRINTF("Fee output has non-Bitcoin asset");
+        PRINTF("Fee output has non-Bitcoin asset\n");
         SEND_SW(dc, SW_INCORRECT_DATA);
         return;
     }
@@ -2214,13 +2270,13 @@ static void check_output_commitments(dispatcher_context_t *dc) {
                                             commitment,
                                             sizeof(commitment));
             if (commitment_len != sizeof(commitment)) {
-                PRINTF("Error fetching asset commitment\n");
+                PRINTF("Error fetching asset commitment for output %u\n", state->cur_output_index);
                 SEND_SW(dc, SW_INCORRECT_DATA);
                 return;
             }
 
             if (!liquid_generator_parse(blinded_asset_gen, commitment)) {
-                PRINTF("Error parsing asset commitment\n");
+                PRINTF("Error parsing asset commitment for output %u\n", state->cur_output_index);
                 SEND_SW(dc, SW_INCORRECT_DATA);
                 return;
             }
@@ -2238,14 +2294,14 @@ static void check_output_commitments(dispatcher_context_t *dc) {
                                               proof,
                                               sizeof(proof));
             if (proof_len <= 0) {
-                PRINTF("Error fetching asset proof\n");
+                PRINTF("Error fetching asset proof for output %u\n", state->cur_output_index);
                 SEND_SW(dc, SW_INCORRECT_DATA);
                 return;
             }
 
             uint8_t asset_gen[LIQUID_GENERATOR_LEN];
             if (!liquid_generator_generate(asset_gen, state->cur.in_out.asset_tag)) {
-                PRINTF("Invalid asset tag\n");
+                PRINTF("Invalid asset tag for output %u\n", state->cur_output_index);
                 SEND_SW(dc, SW_INCORRECT_DATA);
                 return;
             }
@@ -2269,7 +2325,8 @@ static void check_output_commitments(dispatcher_context_t *dc) {
     // Verify value commitment
     if (state->cur.key_presence & HAS_VALUE_COMMITMENT) {
         if (!blinded_asset_gen_init) {
-            PRINTF("Asset commitment is required to verify value commitment\n");
+            PRINTF("Asset commitment is required to verify value commitment for output %u\n",
+                   state->cur_output_index);
             SEND_SW(dc, SW_INCORRECT_DATA);
             return;
         }
@@ -2285,7 +2342,7 @@ static void check_output_commitments(dispatcher_context_t *dc) {
                                           commitment,
                                           sizeof(commitment));
         if (commitment_len != sizeof(commitment)) {
-            PRINTF("Error fetching value commitment\n");
+            PRINTF("Error fetching value commitment for output %u\n", state->cur_output_index);
             SEND_SW(dc, SW_INCORRECT_DATA);
             return;
         }
@@ -2298,7 +2355,7 @@ static void check_output_commitments(dispatcher_context_t *dc) {
                                           proof,
                                           sizeof(proof));
         if (proof_len <= 0) {
-            PRINTF("Error fetching value proof\n");
+            PRINTF("Error fetching value proof for output %u\n", state->cur_output_index);
             SEND_SW(dc, SW_INCORRECT_DATA);
             return;
         }
@@ -2331,7 +2388,7 @@ static void check_output_owned(dispatcher_context_t *dc) {
                                          !!(state->cur.key_presence & HAS_BIP32_DERIVATION));
 
     if (is_internal < 0) {
-        PRINTF("Error checking if output %d is internal\n", state->cur_output_index);
+        PRINTF("Error checking if output %u is internal\n", state->cur_output_index);
         SEND_SW(dc, SW_INCORRECT_DATA);
         return;
     } else if (is_internal == 0) {
@@ -2342,8 +2399,9 @@ static void check_output_owned(dispatcher_context_t *dc) {
         return;
     } else {
         // valid change address, nothing to show to the user
-
+#ifdef LIQUID_HAS_SWAP
         state->change_outputs_total_value += state->cur.in_out.value;
+#endif
         ++state->change_count;
 
         dc->next(output_next);
@@ -2364,7 +2422,9 @@ static void output_validate_external(dispatcher_context_t *dc) {
                                          sizeof(output_address));
     if (address_len < 0) {
         // script does not have an address; check if OP_RETURN
-        if (is_opreturn(state->cur.in_out.scriptPubKey, state->cur.in_out.scriptPubKey_len)) {
+        if (is_opreturn_burn(state->cur.in_out.scriptPubKey, state->cur.in_out.scriptPubKey_len)) {
+            strlcpy(output_address, "BURN", sizeof(output_address));
+        } else if (is_opreturn(state->cur.in_out.scriptPubKey, state->cur.in_out.scriptPubKey_len)){
             int res = format_opscript_script(state->cur.in_out.scriptPubKey,
                                              state->cur.in_out.scriptPubKey_len,
                                              output_address);
@@ -2446,6 +2506,9 @@ static void confirm_transaction(dispatcher_context_t *dc) {
     if (state->fee_value > UINT64_MAX - state->outputs_total_value || // to avoid overflow
         state->inputs_total_value != state->outputs_total_value + state->fee_value) {
         PRINTF("Fee is invalid\n");
+        PRINTF("  inputs=%llu\n", state->inputs_total_value);
+        PRINTF("  outputs=%llu\n", state->outputs_total_value);
+        PRINTF("  fee=%llu\n", state->fee_value);
         // Fee must be equal to difference between sum of inputs and sum of outputs
         SEND_SW(dc, SW_INCORRECT_DATA);
         return;
@@ -2542,6 +2605,7 @@ static void sign_init(dispatcher_context_t *dc) {
         }
         if (!validate_policy_map_extended_pubkey(&our_key_info,
                                                  BIP32_PUBKEY_VERSION)) {
+            PRINTF("Invalid extended pubkey\n");
             SEND_SW(dc, SW_INCORRECT_DATA);
             return;
         }
@@ -2602,6 +2666,7 @@ static void compute_segwit_hashes(dispatcher_context_t *dc) {
         cx_sha256_t *sha_prevouts_context = sha_context_alloc(state);
         cx_sha256_t *sha_sequences_context = sha_context_alloc(state);
         if (!sha_prevouts_context || !sha_sequences_context) {
+            PRINTF("Internal error while allocating SHA context\n");
             SEND_SW(dc, SW_BAD_STATE);
             return;
         }
@@ -2617,6 +2682,7 @@ static void compute_segwit_hashes(dispatcher_context_t *dc) {
             int res =
                 call_get_merkleized_map(dc, state->inputs_root, state->n_inputs, i, &ith_map);
             if (res < 0) {
+                PRINTF("Error fetching map for input %u\n", i);
                 SEND_SW(dc, SW_INCORRECT_DATA);
                 return;
             }
@@ -2629,6 +2695,7 @@ static void compute_segwit_hashes(dispatcher_context_t *dc) {
                                                     1,
                                                     ith_prevout_hash,
                                                     32)) {
+                PRINTF("Error fetching transaction ID for input %u\n", i);
                 SEND_SW(dc, SW_INCORRECT_DATA);
                 return;
             }
@@ -2642,6 +2709,7 @@ static void compute_segwit_hashes(dispatcher_context_t *dc) {
                                                     1,
                                                     ith_prevout_n_raw,
                                                     4)) {
+                PRINTF("Error fetching TX output index for input %u\n", i);
                 SEND_SW(dc, SW_INCORRECT_DATA);
                 return;
             }
@@ -2667,6 +2735,7 @@ static void compute_segwit_hashes(dispatcher_context_t *dc) {
 
         if ( !sha_context_free(state, sha_sequences_context) ||
              !sha_context_free(state, sha_prevouts_context) ) {
+            PRINTF("Internal error while deallocating SHA context\n");
             SEND_SW(dc, SW_BAD_STATE);
             return;
         }
@@ -2686,6 +2755,7 @@ static void compute_segwit_hashes(dispatcher_context_t *dc) {
         if (hash_outputs(dc,
                          &sha_outputs_context->header,
                          &sha_rangeproofs_context->header) == -1) {
+            PRINTF("Error while hashing outputs\n");
             SEND_SW(dc, SW_INCORRECT_DATA);
             return;
         }
@@ -2695,6 +2765,7 @@ static void compute_segwit_hashes(dispatcher_context_t *dc) {
 
         if ( !sha_context_free(state, sha_rangeproofs_context) ||
              !sha_context_free(state, sha_outputs_context) ) {
+            PRINTF("Internal error while deallocating SHA context\n");
             SEND_SW(dc, SW_BAD_STATE);
             return;
         }
@@ -2708,6 +2779,7 @@ static void compute_segwit_hashes(dispatcher_context_t *dc) {
         cx_sha256_t *sha_scriptpubkeys_context = sha_context_alloc(state);
         cx_sha256_t *sha_issuances_context = sha_context_alloc(state);
         if (!sha_amounts_context || !sha_scriptpubkeys_context || !sha_issuances_context) {
+            PRINTF("Internal error while allocating SHA context\n");
             SEND_SW(dc, SW_BAD_STATE);
             return;
         }
@@ -2733,6 +2805,7 @@ static void compute_segwit_hashes(dispatcher_context_t *dc) {
                     make_callback(&callback_state, (dispatcher_callback_t) input_keys_callback),
                     &ith_map);
             if (res < 0) {
+                PRINTF("Error while fetching input map\n");
                 SEND_SW(dc, SW_INCORRECT_DATA);
                 return;
             }
@@ -2747,6 +2820,7 @@ static void compute_segwit_hashes(dispatcher_context_t *dc) {
                                        &in_amount,
                                        in_scriptPubKey,
                                        &in_scriptPubKey_len)) {
+                PRINTF("Error parsing witness-utxo for input %u\n", state->cur_input_index);
                 SEND_SW(dc, SW_INCORRECT_DATA);
                 return;
             }
@@ -2770,6 +2844,7 @@ static void compute_segwit_hashes(dispatcher_context_t *dc) {
                                          &ith_map,
                                          callback_state.key_presence,
                                          &sha_issuances_context->header)) {
+                    PRINTF("Error while hashing issuances for input %u\n", i);
                     SEND_SW(dc, SW_INCORRECT_DATA);
                     return;
                 }
@@ -2830,6 +2905,7 @@ static void sign_process_input_map(dispatcher_context_t *dc) {
             make_callback(&callback_state, (dispatcher_callback_t) input_keys_callback),
             &state->cur.in_out.map);
         if (res < 0) {
+            PRINTF("Error fetching input keys\n");
             SEND_SW(dc, SW_INCORRECT_DATA);
             return;
         }
@@ -2873,8 +2949,7 @@ static void sign_process_input_map(dispatcher_context_t *dc) {
                                                       (uint8_t[]){PSBT_IN_SIGHASH_TYPE},
                                                       1,
                                                       &state->cur.input.sighash_type)) {
-            PRINTF("Malformed PSBT_IN_SIGHASH_TYPE for input %d\n", state->cur_input_index);
-
+            PRINTF("Malformed PSBT_IN_SIGHASH_TYPE for input %u\n", state->cur_input_index);
             SEND_SW(dc, SW_INCORRECT_DATA);
             return;
         }
@@ -2921,12 +2996,14 @@ static void sign_process_input_map(dispatcher_context_t *dc) {
     state->cur.input.address_index = bip32_path[bip32_path_len - 1];
 
     if ((unsigned long)state->cur.input.address_index > LIQUID_LAST_ADDRESS_INDEX) {
+        PRINTF("Address index is outside the valid range %u\n",
+               (unsigned)state->cur.input.address_index);
         SEND_SW(dc, SW_INCORRECT_DATA);
         return;
     }
 
     // Sign as segwit input iff it has a witness utxo
-    if (!(state->cur.key_presence & HAS_WITNESSUTXO)) {
+    if (!(state->cur.key_presence & HAS_WITNESS_UTXO)) {
         dc->next(sign_legacy);
     } else {
         dc->next(sign_segwit);
@@ -2950,6 +3027,7 @@ static void sign_legacy(dispatcher_context_t *dc) {
                                   &state->cur.in_out.scriptPubKey_len,
                                   NULL, /* expected_prevout_hash */
                                   NULL /* issuance_hash_context */ )) {
+        PRINTF("Error parsing non-witness UTXO\n");
         SEND_SW(dc, SW_INCORRECT_DATA);
         return;
     }
@@ -2978,6 +3056,7 @@ static void sign_legacy_compute_sighash(dispatcher_context_t *dc) {
         if (i != state->cur_input_index) {
             int res = call_get_merkleized_map(dc, state->inputs_root, state->n_inputs, i, &ith_map);
             if (res < 0) {
+                PRINTF("Error fetching map for input %u\n", i);
                 SEND_SW(dc, SW_INCORRECT_DATA);
                 return;
             }
@@ -2995,6 +3074,7 @@ static void sign_legacy_compute_sighash(dispatcher_context_t *dc) {
                                                 1,
                                                 ith_prevout_hash,
                                                 32)) {
+            PRINTF("Error fetching prevout hash for input %u\n", i);
             SEND_SW(dc, SW_INCORRECT_DATA);
             return;
         }
@@ -3008,6 +3088,7 @@ static void sign_legacy_compute_sighash(dispatcher_context_t *dc) {
                                                1,
                                                ith_prevout_n_raw,
                                                4)) {
+            PRINTF("Error fetching output index for input %u\n", i);
             SEND_SW(dc, SW_INCORRECT_DATA);
             return;
         }
@@ -3018,7 +3099,7 @@ static void sign_legacy_compute_sighash(dispatcher_context_t *dc) {
             // empty scriptcode
             crypto_hash_update_u8(&sighash_context.header, 0x00);
         } else {
-            if (!(state->cur.key_presence & HAS_REDEEMSCRIPT)) {
+            if (!(state->cur.key_presence & HAS_REDEEM_SCRIPT)) {
                 // P2PKH, the script_code is the prevout's scriptPubKey
                 crypto_hash_update_varint(&sighash_context.header,
                                           state->cur.in_out.scriptPubKey_len);
@@ -3038,7 +3119,7 @@ static void sign_legacy_compute_sighash(dispatcher_context_t *dc) {
                                                  &sighash_context.header);
 
                 if (redeemScript_len < 0) {
-                    PRINTF("Error fetching redeemScript\n");
+                    PRINTF("Error fetching redeemScript for input %u\n", i);
                     SEND_SW(dc, SW_INCORRECT_DATA);
                     return;
                 }
@@ -3062,6 +3143,7 @@ static void sign_legacy_compute_sighash(dispatcher_context_t *dc) {
     // outputs
     crypto_hash_update_varint(&sighash_context.header, state->n_outputs);
     if (hash_outputs(dc, &sighash_context.header, NULL) == -1) {
+        PRINTF("Error hashing outputs\n");
         SEND_SW(dc, SW_INCORRECT_DATA);
         return;
     }
@@ -3097,6 +3179,7 @@ static void sign_segwit(dispatcher_context_t *dc) {
                                    &amount,
                                    state->cur.in_out.scriptPubKey,
                                    &state->cur.in_out.scriptPubKey_len)) {
+            PRINTF("Error parsing witness-utxo for input %u\n", state->cur_input_index);
             SEND_SW(dc, SW_INCORRECT_DATA);
             return;
         }
@@ -3113,7 +3196,7 @@ static void sign_segwit(dispatcher_context_t *dc) {
         }
         state->inputs_total_value += state->cur.in_out.value;
 
-        if (state->cur.key_presence & HAS_REDEEMSCRIPT) {
+        if (state->cur.key_presence & HAS_REDEEM_SCRIPT) {
             // Get redeemScript
             uint8_t redeemScript[64];
 
@@ -3125,7 +3208,7 @@ static void sign_segwit(dispatcher_context_t *dc) {
                                               redeemScript,
                                               sizeof(redeemScript));
             if (redeemScript_length < 0) {
-                PRINTF("Error fetching redeem script\n");
+                PRINTF("Error fetching redeem script for input %u\n", state->cur_input_index);
                 SEND_SW(dc, SW_INCORRECT_DATA);
                 return;
             }
@@ -3147,6 +3230,7 @@ static void sign_segwit(dispatcher_context_t *dc) {
                 state->cur.input.script_len = redeemScript_length;
                 memcpy(state->cur.input.script, redeemScript, redeemScript_length);
             } else {
+                PRINTF("Invalid redeem script for input %u\n", state->cur_input_index);
                 SEND_SW(dc, SW_INCORRECT_DATA);
                 return;
             }
@@ -3158,6 +3242,7 @@ static void sign_segwit(dispatcher_context_t *dc) {
                     state->cur.in_out.scriptPubKey,
                     state->cur.in_out.scriptPubKey_len);
             } else {
+                PRINTF("Invalid scriptPubKey for input %u\n", state->cur_input_index);
                 SEND_SW(dc, SW_INCORRECT_DATA);
                 return;
             }
@@ -3198,7 +3283,7 @@ static void sign_segwit_v0(dispatcher_context_t *dc) {
 
     if (sighash_base != SIGHASH_ALL && sighash_base != SIGHASH_NONE &&
         sighash_base != SIGHASH_SINGLE ) {
-        PRINTF("Invalid SIGHASH type");
+        PRINTF("Invalid SIGHASH type\n");
         SEND_SW(dc, SW_INCORRECT_DATA);
         return;
     }
@@ -3258,6 +3343,7 @@ static void sign_segwit_v0(dispatcher_context_t *dc) {
                                                 1,
                                                 prevout_hash,
                                                 32)) {
+            PRINTF("Error fetching prevout hash for input %u\n", state->cur_input_index);
             SEND_SW(dc, SW_INCORRECT_DATA);
             return;
         }
@@ -3273,6 +3359,7 @@ static void sign_segwit_v0(dispatcher_context_t *dc) {
                                                1,
                                                prevout_n_raw,
                                                4)) {
+            PRINTF("Error fetching output index for input %u\n", state->cur_input_index);
             SEND_SW(dc, SW_INCORRECT_DATA);
             return;
         }
@@ -3303,7 +3390,7 @@ static void sign_segwit_v0(dispatcher_context_t *dc) {
                                                              &sighash_context.header);
 
         if (witnessScript_len < 0) {
-            PRINTF("Error fetching witnessScript\n");
+            PRINTF("Error fetching witnessScript for input %u\n", state->cur_input_index);
             SEND_SW(dc, SW_INCORRECT_DATA);
             return;
         }
@@ -3315,8 +3402,7 @@ static void sign_segwit_v0(dispatcher_context_t *dc) {
         if (state->cur.input.script_len != 2 + 32 || state->cur.input.script[0] != 0x00 ||
             state->cur.input.script[1] != 0x20 ||
             memcmp(state->cur.input.script + 2, witnessScript_hash, 32) != 0) {
-            PRINTF("Mismatching witnessScript\n");
-
+            PRINTF("Mismatching witnessScript for input %u\n", state->cur_input_index);
             SEND_SW(dc, SW_INCORRECT_DATA);
             return;
         }
@@ -3336,7 +3422,6 @@ static void sign_segwit_v0(dispatcher_context_t *dc) {
                                                     1,
                                                     &parser_output,
                                                     NULL);
-
         if (res < 0) {
             PRINTF("Parsing witness UTXO failed\n");
             SEND_SW(dc, SW_INCORRECT_DATA);
@@ -3418,6 +3503,7 @@ static void sign_segwit_v0(dispatcher_context_t *dc) {
                                   &t.sha_output.header,
                                   NULL);
             if (res < 0) {
+                PRINTF("Error hashing output %u\n", state->cur_input_index);
                 SEND_SW(dc, SW_INCORRECT_DATA);
                 return;
             }
@@ -3436,6 +3522,7 @@ static void sign_segwit_v0(dispatcher_context_t *dc) {
                                   NULL,
                                   &t.sha_rangeproof.header);
             if (res < 0) {
+                PRINTF("Error hashing rangeproof for input %u\n", state->cur_input_index);
                 SEND_SW(dc, SW_INCORRECT_DATA);
                 return;
             }
@@ -3514,6 +3601,7 @@ static void sign_segwit_v1(dispatcher_context_t *dc) {
                                                 1,
                                                 tmp,
                                                 32)) {
+            PRINTF("Error fetching prevout hash for input %u\n", state->cur_input_index);
             SEND_SW(dc, SW_INCORRECT_DATA);
             return;
         }
@@ -3526,6 +3614,7 @@ static void sign_segwit_v1(dispatcher_context_t *dc) {
                                                1,
                                                tmp,
                                                4)) {
+            PRINTF("Error fetching output index for input %u\n", state->cur_input_index);
             SEND_SW(dc, SW_INCORRECT_DATA);
             return;
         }

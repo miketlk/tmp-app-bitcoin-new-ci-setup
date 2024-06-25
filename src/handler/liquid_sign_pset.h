@@ -191,10 +191,10 @@ typedef struct {
     uint64_t inputs_total_value;
     /// Total value of all outputs
     uint64_t outputs_total_value;
-    /// Total value of all internal inputs
-    uint64_t internal_inputs_total_value;
+#ifdef LIQUID_HAS_SWAP
     /// Total value of all change outputs
     uint64_t change_outputs_total_value;
+#endif
     /// Value of fee output
     uint64_t fee_value;
 

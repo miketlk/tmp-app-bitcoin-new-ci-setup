@@ -149,6 +149,15 @@ void print_hex(const char *msg, const void *buf, unsigned int len) {
     debug_write("\n");
 }
 
+void print_hex_reverse(const char *msg, const void *buf, unsigned int len) {
+    const uint8_t *bytes = (const uint8_t *)buf;
+    debug_write(msg);
+    for (int i = (int)(len - 1); i >= 0; --i) {
+        debug_write_hex(bytes[i], 1);
+    }
+    debug_write("\n");
+}
+
 void print_uint(const char *msg, unsigned int word) {
     debug_write(msg);
     debug_write_dec(word);
