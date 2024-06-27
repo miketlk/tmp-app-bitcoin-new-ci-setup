@@ -16,6 +16,10 @@
 #define SIGN_PSET_SHA_CONTEXT_POOL_SIZE 3
 /// Size of cache holding asset tags of confirmed assets
 #define ASSET_CACHE_SIZE 1
+/// Maximum supported number of transaction outputs
+#define MAX_N_OUTPUTS (UINT32_MAX - 1)
+/// A constant used for `fee_output_index` to indicate that fee index is unknown
+#define SIGN_PSET_FEE_INDEX_UNKNOWN UINT32_MAX
 
 #if ASSET_CACHE_SIZE > 254
 #error Requested size of asset cache is not supported
@@ -110,11 +114,11 @@ typedef struct {
     uint32_t locktime;
 
     /// Number of transaction inputs
-    unsigned int n_inputs;
+    uint32_t n_inputs;
     /// Merkle root of the vector of input maps commitments
     uint8_t inputs_root[32];
     /// Number of outputs
-    unsigned int n_outputs;
+    uint32_t n_outputs;
     /// Merkle root of the vector of output maps commitments
     uint8_t outputs_root[32];
 
@@ -197,6 +201,8 @@ typedef struct {
 #endif
     /// Value of fee output
     uint64_t fee_value;
+    /// Index of fee input
+    uint32_t fee_output_index;
 
     /// Count of external outputs that are shown to the user
     int external_outputs_count;

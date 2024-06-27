@@ -131,12 +131,6 @@ class PSET(PSBT):
         # Check if PSBT_OUTPUT_SCRIPT is present in all outputs except for the last one (fee).
         if output_count < 2:
             raise PSBTSerializationError("Number of outputs in PSET must be at least 2")
-        for i in range(output_count - 1):
-            if not self.outputs[i].script:
-                raise PSBTSerializationError("PSBT_OUTPUT_SCRIPT is required in PSET")
-        fee_idx = output_count - 1
-        if self.outputs[fee_idx].script is None or len(self.outputs[fee_idx].script) != 0:
-            raise PSBTSerializationError("Empty PSBT_OUTPUT_SCRIPT is required in fee output of PSET")
 
     def convert_to_v0(self) -> None:
         """

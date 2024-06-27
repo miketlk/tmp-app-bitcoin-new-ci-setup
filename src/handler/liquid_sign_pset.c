@@ -1429,6 +1429,11 @@ void handler_liquid_sign_pset(dispatcher_context_t *dc) {
         SEND_SW(dc, SW_INCORRECT_DATA);
         return;
     }
+    if (n_outputs > MAX_N_OUTPUTS) {
+        PRINTF("Maximum number of outputs is exceeded\n");
+        SEND_SW(dc, SW_INCORRECT_DATA);
+        return;
+    }
     state->n_outputs = (unsigned int) n_outputs;
 
     uint8_t wallet_id[32];
@@ -2110,6 +2115,8 @@ static void verify_outputs_init(dispatcher_context_t *dc) {
 
     state->external_outputs_count = 0;
 
+    state->fee_output_index = SIGN_PSET_FEE_INDEX_UNKNOWN;
+
     dc->next(process_output_map);
 }
 
@@ -2118,8 +2125,6 @@ static void process_output_map(dispatcher_context_t *dc) {
 
     LOG_PROCESSOR(dc, __FILE__, __LINE__, __func__);
 
-    // The last output is a "fee output" in Elements transactions
-    bool is_fee_output = (state->cur_output_index + 1 == state->n_outputs);
     // Reset cur struct
     memset(&state->cur, 0, sizeof(state->cur));
 
@@ -2149,23 +2154,58 @@ static void process_output_map(dispatcher_context_t *dc) {
         state->cur.key_presence = callback_state.key_presence;
     }
 
-    // read output amount and scriptpubkey
+    PRINTF("\nOutput[%u] key_presence=%04x\n", state->cur_output_index, state->cur.key_presence);
 
-    uint8_t raw_result[8];
-
-    // Read the output's amount
+    // Read the output's scriptPubKey
     int result_len = call_get_merkleized_map_value(dc,
                                                    &state->cur.in_out.map,
-                                                   (uint8_t[]){PSBT_OUT_AMOUNT},
+                                                   (uint8_t[]){PSBT_OUT_SCRIPT},
                                                    1,
-                                                   raw_result,
-                                                   sizeof(raw_result));
+                                                   state->cur.in_out.scriptPubKey,
+                                                   sizeof(state->cur.in_out.scriptPubKey));
+
+    if (result_len == -1 || result_len > (int) sizeof(state->cur.in_out.scriptPubKey)) {
+        PRINTF("Error while getting scriptPubKey for output %u\n", state->cur_output_index);
+        SEND_SW(dc, SW_INCORRECT_DATA);
+        return;
+    }
+    state->cur.in_out.scriptPubKey_len = result_len;
+
+    // Read the output's amount
+    uint8_t raw_result[8];
+    result_len = call_get_merkleized_map_value(dc,
+                                               &state->cur.in_out.map,
+                                               (uint8_t[]){PSBT_OUT_AMOUNT},
+                                               1,
+                                               raw_result,
+                                               sizeof(raw_result));
     if (result_len != 8) {
         PRINTF("Error while getting amount for output %u\n", state->cur_output_index);
         SEND_SW(dc, SW_INCORRECT_DATA);
         return;
     }
     uint64_t value = read_u64_le(raw_result, 0);
+
+    // Handle potential fee output
+    if (0 == state->cur.in_out.scriptPubKey_len) { // Fee output has an empty script
+        if (SIGN_PSET_FEE_INDEX_UNKNOWN == state->fee_output_index && value > 0) {
+            state->fee_output_index = state->cur_output_index;
+        } else {
+            PRINTF("Invalid or duplicating fee output %u\n", state->cur_output_index);
+            SEND_SW(dc, SW_INCORRECT_DATA);
+            return;
+        }
+    }
+
+    // Handle potential balancing output located after the fee output
+    if (state->cur_output_index > state->fee_output_index) {
+        if (!is_opreturn_burn(state->cur.in_out.scriptPubKey, state->cur.in_out.scriptPubKey_len) &&
+            value != 0) {
+            PRINTF("Invalid balancing output %u\n", state->cur_output_index);
+            SEND_SW(dc, SW_INCORRECT_DATA);
+            return;
+        }
+    }
 
     {
         tx_amount_t amount = { .is_blinded = false, .value = value };
@@ -2176,7 +2216,7 @@ static void process_output_map(dispatcher_context_t *dc) {
         }
     }
 
-    if (!is_fee_output) {
+    if (state->cur_output_index != state->fee_output_index) {
         state->outputs_total_value += value;
     } else {
         state->fee_value = value;
@@ -2201,35 +2241,25 @@ static void process_output_map(dispatcher_context_t *dc) {
         }
     }
 
-    // Read the output's scriptPubKey
-    result_len = call_get_merkleized_map_value(dc,
-                                               &state->cur.in_out.map,
-                                               (uint8_t[]){PSBT_OUT_SCRIPT},
-                                               1,
-                                               state->cur.in_out.scriptPubKey,
-                                               sizeof(state->cur.in_out.scriptPubKey));
-
-    if (result_len == -1 || result_len > (int) sizeof(state->cur.in_out.scriptPubKey) ||
-        (is_fee_output && result_len != 0)) {
-        PRINTF("Error while getting scriptPubKey for output %u\n", state->cur_output_index);
-        SEND_SW(dc, SW_INCORRECT_DATA);
-        return;
-    }
-    state->cur.in_out.scriptPubKey_len = result_len;
-
     if ( !(state->cur.key_read_status & HAS_ASSET) ) {
         PRINTF("Asset tag is not provided for output %u\n", state->cur_output_index);
         SEND_SW(dc, SW_INCORRECT_DATA);
         return;
     }
 
-    if (is_fee_output && !liquid_is_asset_bitcoin(state->cur.in_out.asset_tag)) {
+    if ( (state->cur_output_index == state->fee_output_index) &&
+         !liquid_is_asset_bitcoin(state->cur.in_out.asset_tag) ) {
         PRINTF("Fee output has non-Bitcoin asset\n");
         SEND_SW(dc, SW_INCORRECT_DATA);
         return;
     }
 
-    if (is_fee_output) {
+    if (state->cur_output_index + 1 == state->n_outputs) {
+        // All outputs are processed. Let's do the final checks
+        if (SIGN_PSET_FEE_INDEX_UNKNOWN == state->fee_output_index) {
+            PRINTF("Fee output is missing\n");
+            SEND_SW(dc, SW_INCORRECT_DATA);
+        }
         dc->next(confirm_transaction);
     } else {
         if('\0' == *state->cur.in_out.asset_info.ticker &&
@@ -2373,7 +2403,12 @@ static void check_output_commitments(dispatcher_context_t *dc) {
         }
     }
 
-    dc->next(check_output_owned);
+    if (state->cur_output_index < state->fee_output_index) {
+        dc->next(check_output_owned);
+    } else {
+        // We don't need to validate fee and balancing outputs
+        dc->next(output_next);
+    }
 }
 
 static void check_output_owned(dispatcher_context_t *dc) {
