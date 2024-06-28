@@ -68,6 +68,7 @@ typedef struct {
     char amount[MAX_AMOUNT_LENGTH + 1];
 #ifdef HAVE_LIQUID
     char tag_hex[LIQUID_ASSET_TAG_HEX_LEN + 1];
+    char token_ticker[sizeof("Of asset ") + MAX_ASSET_TICKER_LENGTH];
 #endif
 } ui_validate_output_state_t;
 
@@ -279,6 +280,14 @@ UX_STEP_NOCB(ux_review_step,
                  &C_icon_eye,
                  "Review",
                  g_ui_state.validate_output.index,
+             });
+
+// Step with "Amount" and an output amount
+UX_STEP_NOCB(ux_display_reissuance_token_step,
+             bnnn_paging,
+             {
+                 .title = "Reissuance token",
+                 .text = g_ui_state.validate_output.token_ticker,
              });
 
 // Step with "Amount" and an output amount
@@ -549,6 +558,21 @@ UX_FLOW(ux_display_output_address_amount_flow,
         &ux_display_approve_step,
         &ux_display_reject_step);
 
+// FLOW to validate a single output
+// #1 screen: eye icon + "Review" + index of output to validate
+// #2 screen: reissuance token notice and asset ticker
+// #3 screen: output amount
+// #4 screen: output address (paginated)
+// #5 screen: approve button
+// #6 screen: reject button
+UX_FLOW(ux_display_output_address_token_amount_flow,
+        &ux_review_step,
+        &ux_display_reissuance_token_step,
+        &ux_validate_amount_step,
+        &ux_validate_address_step,
+        &ux_display_approve_step,
+        &ux_display_reject_step);
+
 // Finalize see the transaction fees and finally accept signing
 // #1 screen: eye icon + "Confirm Transaction"
 // #2 screen: fee amount
@@ -581,6 +605,23 @@ UX_FLOW(ux_display_warning_unknown_asset_flow,
 // #6 screen: reject button
 UX_FLOW(ux_display_output_address_amount_asset_flow,
         &ux_review_step,
+        &ux_validate_amount_step,
+        &ux_output_asset_tag_step,
+        &ux_validate_address_step,
+        &ux_display_approve_step,
+        &ux_display_reject_step);
+
+// FLOW to validate a single output
+// #1 screen: eye icon + "Review" + index of output to validate
+// #2 screen: reissuance token notice and asset ticker
+// #3 screen: output amount
+// #4 screen: asset tag
+// #5 screen: output address (paginated)
+// #6 screen: approve button
+// #7 screen: reject button
+UX_FLOW(ux_display_output_address_token_amount_asset_flow,
+        &ux_review_step,
+        &ux_display_reissuance_token_step,
         &ux_validate_amount_step,
         &ux_output_asset_tag_step,
         &ux_validate_address_step,
@@ -771,6 +812,7 @@ void ui_validate_output(dispatcher_context_t *context,
 #ifdef HAVE_LIQUID
                         const uint8_t asset_tag[static 32],
                         bool display_asset_tag,
+                        bool asset_is_reissuance_token,
 #endif
                         command_processor_t on_success) {
     context->pause();
@@ -781,18 +823,31 @@ void ui_validate_output(dispatcher_context_t *context,
     strlcpy(state->address_or_description,
             address_or_description,
             sizeof(state->address_or_description));
-    format_amount(coin_name, amount, decimals, state->amount);
 
     g_next_processor = on_success;
 
 #ifdef HAVE_LIQUID
+    if (asset_is_reissuance_token) {
+        format_amount("token", amount, decimals, state->amount);
+        snprintf(state->token_ticker, sizeof(state->token_ticker), "of asset %s", coin_name);
+    } else {
+        format_amount(coin_name, amount, decimals, state->amount);
+    }
+
     if (display_asset_tag) {
         liquid_format_asset_tag(asset_tag, state->tag_hex);
-        ux_flow_init(0, ux_display_output_address_amount_asset_flow, NULL);
+        ux_flow_init(0, asset_is_reissuance_token ?
+                        ux_display_output_address_token_amount_asset_flow :
+                        ux_display_output_address_amount_asset_flow,
+                    NULL);
     } else {
-        ux_flow_init(0, ux_display_output_address_amount_flow, NULL);
+        ux_flow_init(0, asset_is_reissuance_token ?
+                        ux_display_output_address_token_amount_flow :
+                        ux_display_output_address_amount_flow,
+                    NULL);
     }
 #else
+    format_amount(coin_name, amount, decimals, state->amount);
     ux_flow_init(0, ux_display_output_address_amount_flow, NULL);
 #endif
 }

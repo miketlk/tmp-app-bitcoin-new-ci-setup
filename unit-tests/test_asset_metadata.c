@@ -18,6 +18,7 @@ typedef struct {
     const char *contract_str;
     uint8_t prevout_txid[SHA256_LEN];
     uint32_t prevout_index;
+    asset_class_t asset_class;
     asset_info_t asset_info;
 } asset_metadata_vector_t;
 
@@ -43,6 +44,7 @@ static const asset_metadata_vector_t asset_test_data[] = {
             0xa6, 0x33, 0x40, 0x94, 0x83, 0xba, 0x64, 0xe2,
             0x32, 0xb8, 0xba, 0x04, 0xce, 0x28, 0x86, 0x68
         },
+        .asset_class = ACLASS_ASSET,
         .prevout_index = 0,
         .asset_info = {
             .ticker = "USDt",
@@ -70,6 +72,7 @@ static const asset_metadata_vector_t asset_test_data[] = {
             0xd1, 0x38, 0xbb, 0xf0, 0x49, 0x9b, 0x28, 0xbf,
             0x48, 0x2f, 0xd7, 0xe6, 0xd3, 0xe9, 0x0b, 0x66
         },
+        .asset_class = ACLASS_ASSET,
         .prevout_index = 10,
         .asset_info = {
             .ticker = "ASP",
@@ -97,12 +100,69 @@ static const asset_metadata_vector_t asset_test_data[] = {
             0xb9, 0x91, 0x73, 0x47, 0x02, 0xb1, 0x3c, 0xbb,
             0x1e, 0xe7, 0x6e, 0x86, 0xb9, 0x57, 0xb7, 0x5b
         },
+        .asset_class = ACLASS_ASSET,
         .prevout_index = 1,
         .asset_info = {
             .ticker = "BTSE",
             .decimals = 8
         }
     },
+    // ELIP 100: example.com TEST (Testcoin)
+    {
+        .asset_tag = {
+            0x48, 0xf8, 0x35, 0x62, 0x2f, 0x34, 0xe8, 0xfd,
+            0xc3, 0x13, 0xc9, 0x0d, 0x4a, 0x86, 0x59, 0xaa,
+            0x4a, 0xfe, 0x99, 0x3e, 0x32, 0xdc, 0xb0, 0x3a,
+            0xe6, 0xec, 0x9c, 0xcd, 0xc6, 0xfc, 0xbe, 0x18
+        },
+        .contract_str =
+            "{\"entity\":{\"domain\":\"example.com\"},"\
+            "\"issuer_pubkey\":\"03455ee7cedc97b0ba435b80066fc92c963a34c600317981d135330c4ee43ac7a3\","\
+            "\"name\":\"Testcoin\","\
+            "\"precision\":2,"\
+            "\"ticker\":\"TEST\","\
+            "\"version\":0}",
+        .prevout_txid = {
+            0x35, 0x14, 0xa0, 0x7c, 0xf4, 0x81, 0x22, 0x72,
+            0xc2, 0x4a, 0x89, 0x8c, 0x48, 0x2f, 0x58, 0x7a,
+            0x51, 0x12, 0x6b, 0xee, 0xf8, 0xc9, 0xb7, 0x6a,
+            0x9e, 0x30, 0xbf, 0x41, 0xb0, 0xcb, 0xe5, 0x3c
+        },
+        .asset_class = ACLASS_ASSET,
+        .prevout_index = 1,
+        .asset_info = {
+            .ticker = "TEST",
+            .decimals = 2
+        }
+    },
+    // ELIP 100: reissuance token for example.com TEST (Testcoin)
+    {
+        .asset_tag = { // Tag of the reissuance token
+            0xd7, 0x39, 0x23, 0x40, 0x98, 0xf7, 0x71, 0x72,
+            0xcb, 0x22, 0xf0, 0xde, 0x8a, 0xff, 0xd6, 0x82,
+            0x6d, 0x6b, 0x9d, 0x23, 0xd9, 0x7e, 0x04, 0x57,
+            0x57, 0x64, 0x78, 0x6a, 0x5b, 0x00, 0x56, 0xe1
+        },
+        .contract_str =
+            "{\"entity\":{\"domain\":\"example.com\"},"\
+            "\"issuer_pubkey\":\"03455ee7cedc97b0ba435b80066fc92c963a34c600317981d135330c4ee43ac7a3\","\
+            "\"name\":\"Testcoin\","\
+            "\"precision\":2,"\
+            "\"ticker\":\"TEST\","\
+            "\"version\":0}",
+        .prevout_txid = {
+            0x35, 0x14, 0xa0, 0x7c, 0xf4, 0x81, 0x22, 0x72,
+            0xc2, 0x4a, 0x89, 0x8c, 0x48, 0x2f, 0x58, 0x7a,
+            0x51, 0x12, 0x6b, 0xee, 0xf8, 0xc9, 0xb7, 0x6a,
+            0x9e, 0x30, 0xbf, 0x41, 0xb0, 0xcb, 0xe5, 0x3c
+        },
+        .asset_class = ACLASS_REISSUANCE_TOKEN_CONFIDENTIAL,
+        .prevout_index = 1,
+        .asset_info = {
+            .ticker = "TEST",
+            .decimals = 2
+        }
+    }
 };
 
 extern bool asset_metadata_parser_init(asset_metadata_parser_context_t *ctx,
@@ -111,16 +171,18 @@ extern bool asset_metadata_parser_init(asset_metadata_parser_context_t *ctx,
 extern void asset_metadata_parser_process(asset_metadata_parser_context_t *ctx,
                                           buffer_t *data);
 extern bool asset_metadata_parser_finalize(asset_metadata_parser_context_t *ctx,
-                                           const uint8_t asset_tag[static LIQUID_ASSET_TAG_LEN]);
+                                           const uint8_t asset_tag[static LIQUID_ASSET_TAG_LEN],
+                                           asset_class_t asset_class);
 
 static asset_info_t* parse_metadata(buffer_t *data,
-                                    const uint8_t asset_tag[static LIQUID_ASSET_TAG_LEN]) {
+                                    const uint8_t asset_tag[static LIQUID_ASSET_TAG_LEN],
+                                    asset_class_t asset_class) {
     asset_metadata_parser_context_t ctx;
     asset_info_t *asset_info = malloc(sizeof(asset_info_t));
 
     if (asset_info && asset_metadata_parser_init(&ctx, asset_info, NULL)) {
         asset_metadata_parser_process(&ctx, data);
-        if (asset_metadata_parser_finalize(&ctx, asset_tag)) {
+        if (asset_metadata_parser_finalize(&ctx, asset_tag, asset_class)) {
             return asset_info;
         }
     }
@@ -191,7 +253,7 @@ static void test_metadata_parser_valid(void **state) {
         buffer_t *meta = create_metadata(p_vect);
         assert_non_null(meta);
 
-        asset_info_t *info = parse_metadata(meta, p_vect->asset_tag);
+        asset_info_t *info = parse_metadata(meta, p_vect->asset_tag, p_vect->asset_class);
         assert_non_null(info);
 
         if (info) {
@@ -216,7 +278,7 @@ static void test_metadata_parser_invalid_truncated(void **state) {
 
     // Test with truncated metadata
     {
-        asset_info_t *info = parse_metadata(meta, vect.asset_tag);
+        asset_info_t *info = parse_metadata(meta, vect.asset_tag, vect.asset_class);
         assert_null(info);
         free_s(info);
     }
@@ -227,7 +289,7 @@ static void test_metadata_parser_invalid_truncated(void **state) {
 
     // Re-test with full metadata and ensure it parses correctly
     {
-        asset_info_t * info = parse_metadata(meta, vect.asset_tag);
+        asset_info_t * info = parse_metadata(meta, vect.asset_tag, vect.asset_class);
         assert_non_null(info);
         if (info) {
             assert_string_equal(info->ticker, vect.asset_info.ticker);
@@ -250,7 +312,7 @@ static void test_metadata_parser_invalid_asset_tag(void **state) {
     // Corrupt first byte of asset tag and ensure parsing fails
     {
         vect.asset_tag[0] ^= 1;
-        asset_info_t *info = parse_metadata(meta, vect.asset_tag);
+        asset_info_t *info = parse_metadata(meta, vect.asset_tag, vect.asset_class);
         assert_null(info);
         free_s(info);
     }
@@ -260,7 +322,7 @@ static void test_metadata_parser_invalid_asset_tag(void **state) {
     // Restore asset tag by inverting the bit second time and re-test
     {
         vect.asset_tag[0] ^= 1;
-        asset_info_t * info = parse_metadata(meta, vect.asset_tag);
+        asset_info_t * info = parse_metadata(meta, vect.asset_tag, vect.asset_class);
         assert_non_null(info);
         if (info) {
             assert_string_equal(info->ticker, vect.asset_info.ticker);
@@ -314,7 +376,7 @@ static void test_metadata_parser_invalid_contract(void **state) {
     {
         buffer_t *meta = create_metadata(&vect);
         assert_non_null(meta);
-        asset_info_t *info = parse_metadata(meta, vect.asset_tag);
+        asset_info_t *info = parse_metadata(meta, vect.asset_tag, vect.asset_class);
         assert_null(info);
         free_s(info);
         free_buffer(meta);
@@ -327,7 +389,7 @@ static void test_metadata_parser_invalid_contract(void **state) {
     {
         buffer_t *meta = create_metadata(&vect);
         assert_non_null(meta);
-        asset_info_t * info = parse_metadata(meta, vect.asset_tag);
+        asset_info_t * info = parse_metadata(meta, vect.asset_tag, vect.asset_class);
         assert_non_null(info);
         if (info) {
             assert_string_equal(info->ticker, vect.asset_info.ticker);
@@ -348,7 +410,7 @@ static void test_metadata_parser_invalid_prevout_txid(void **state) {
     {
         buffer_t *meta = create_metadata(&vect);
         assert_non_null(meta);
-        asset_info_t *info = parse_metadata(meta, vect.asset_tag);
+        asset_info_t *info = parse_metadata(meta, vect.asset_tag, vect.asset_class);
         assert_null(info);
         free_s(info);
         free_buffer(meta);
@@ -359,7 +421,7 @@ static void test_metadata_parser_invalid_prevout_txid(void **state) {
     {
         buffer_t *meta = create_metadata(&vect);
         assert_non_null(meta);
-        asset_info_t * info = parse_metadata(meta, vect.asset_tag);
+        asset_info_t * info = parse_metadata(meta, vect.asset_tag, vect.asset_class);
         assert_non_null(info);
         if (info) {
             assert_string_equal(info->ticker, vect.asset_info.ticker);
@@ -380,7 +442,7 @@ static void test_metadata_parser_invalid_prevout_index(void **state) {
     {
         buffer_t *meta = create_metadata(&vect);
         assert_non_null(meta);
-        asset_info_t *info = parse_metadata(meta, vect.asset_tag);
+        asset_info_t *info = parse_metadata(meta, vect.asset_tag, vect.asset_class);
         assert_null(info);
         free_s(info);
         free_buffer(meta);
@@ -391,7 +453,7 @@ static void test_metadata_parser_invalid_prevout_index(void **state) {
     {
         buffer_t *meta = create_metadata(&vect);
         assert_non_null(meta);
-        asset_info_t * info = parse_metadata(meta, vect.asset_tag);
+        asset_info_t * info = parse_metadata(meta, vect.asset_tag, vect.asset_class);
         assert_non_null(info);
         if (info) {
             assert_string_equal(info->ticker, vect.asset_info.ticker);

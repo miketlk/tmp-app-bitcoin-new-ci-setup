@@ -179,28 +179,35 @@ STATIC_NO_TEST bool generate_asset_entropy(const uint8_t contract_hash[static SH
  *
  * @param[in] entropy
  *   Asset entropy, 32 bytes.
+ * @param[in] asset_class
+ *   Asset class, one of *asset_class_t* constants.
  * @param[out] asset_tag
  *   Pointer to a 32-byte output buffer receiving computed asset tag.
  *
  * @return true on success, false in case of error.
  */
 STATIC_NO_TEST bool compute_asset_tag_from_entropy(const uint8_t entropy[SHA256_LEN],
+                                                   asset_class_t asset_class,
                                                    uint8_t asset_tag[static LIQUID_ASSET_TAG_LEN]) {
     _Static_assert(LIQUID_ASSET_TAG_LEN == SHA256_LEN, "Wrong tag size");
 
     cx_sha256_t sha_ctx;
-    uint8_t tmp[SHA256_LEN];
-    memset(tmp, 0, sizeof(tmp));
 
-    return hash_init_sha256(&sha_ctx) &&
-           hash_update_reversed(&sha_ctx.header, entropy, SHA256_LEN) &&
-           hash_update(&sha_ctx.header, tmp, sizeof(tmp)) &&
-           sha256_midstate_reversed(&sha_ctx, asset_tag);
+    bool ok = hash_init_sha256(&sha_ctx) &&
+              hash_update_reversed(&sha_ctx.header, entropy, SHA256_LEN) &&
+              hash_update_u8(&sha_ctx.header, (uint8_t)asset_class);
+
+    for (int i = 0; i < SHA256_LEN - 1; ++i) {
+        ok = ok && hash_update_u8(&sha_ctx.header, 0);
+    }
+
+    return ok && sha256_midstate_reversed(&sha_ctx, asset_tag);
 }
 
 bool liquid_compute_asset_tag(const uint8_t contract_hash[static SHA256_LEN],
                               const uint8_t prevout_txid[static SHA256_LEN],
                               uint32_t prevout_index,
+                              asset_class_t asset_class,
                               uint8_t asset_tag[static LIQUID_ASSET_TAG_LEN]) {
     if (!contract_hash || !prevout_txid || !asset_tag) {
         return false;
@@ -208,7 +215,7 @@ bool liquid_compute_asset_tag(const uint8_t contract_hash[static SHA256_LEN],
 
     uint8_t entropy[SHA256_LEN];
     bool ok = generate_asset_entropy(contract_hash, prevout_txid, prevout_index, entropy);
-    ok = ok && compute_asset_tag_from_entropy(entropy, asset_tag);
+    ok = ok && compute_asset_tag_from_entropy(entropy, asset_class, asset_tag);
 
     return ok;
 }

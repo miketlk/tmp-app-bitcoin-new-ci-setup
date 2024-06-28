@@ -26,6 +26,16 @@
 /// Maximum length of asset domain
 #define MAX_ASSET_DOMAIN_LENGTH 31
 
+// Asset class, denoting ordinary assets, and reissuance tokens
+typedef enum {
+    /// Ordinary asset issued on the Liquid Network
+    ACLASS_ASSET = 0,
+    /// Reissuance token, non-confidential
+    ACLASS_REISSUANCE_TOKEN_NON_CONFIDENTIAL = 1,
+    /// Reissuance token, confidential
+    ACLASS_REISSUANCE_TOKEN_CONFIDENTIAL = 2
+} asset_class_t;
+
 /// Information about an asset
 typedef struct {
     /// Ticker, a text string
@@ -87,6 +97,8 @@ static inline bool liquid_is_asset_bitcoin(const uint8_t tag[static LIQUID_ASSET
  *   Prevout transaction hash, 32 bytes.
  * @param[in] prevout_index
  *   Zero-based index of the transaction output.
+ * @param[in] asset_class
+ *   Asset class, one of *asset_class_t* constants.
  * @param[out] asset_tag
  *   Pointer to a 32-byte output buffer receiving computed asset tag.
  *
@@ -95,6 +107,7 @@ static inline bool liquid_is_asset_bitcoin(const uint8_t tag[static LIQUID_ASSET
 WARN_UNUSED_RESULT bool liquid_compute_asset_tag(const uint8_t contract_hash[static SHA256_LEN],
                                                  const uint8_t prevout_txid[static SHA256_LEN],
                                                  uint32_t prevout_index,
+                                                 asset_class_t asset_class,
                                                  uint8_t asset_tag[static LIQUID_ASSET_TAG_LEN]);
 
 /**

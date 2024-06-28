@@ -13,6 +13,8 @@
 typedef enum {
     /// Asset metadata is ready
     ASSET_METADATA_READY = 0,
+    /// Asset metadata is ready for a corresponding reissuance token
+    ASSET_METADATA_TOKEN_READY = 1,
     /// Asset metadata is absent in PSET for the given asset tag
     ASSET_METADATA_ABSENT = -1,
     /// An error occurred while retreiving asset metadata or the metadata is invalid
@@ -47,12 +49,18 @@ typedef struct {
  * If parameter *ext_asset_info* is non-NULL, the parameter *asset_info* must point to the same
  * memory address or be NULL.
  *
+ * If the parameter *search_reissuance_token* is true, it permits the function to search for a
+ * reissuance token with a given tag when the asset is not found. In this case, the function returns
+ * `ASSET_METADATA_TOKEN_READY` instead of `ASSET_METADATA_READY` as a successful status code.
+ *
  * @param[in,out] dispatcher_context
  *   Dispatcher context used for I/O operations with host.
  * @param[in] global_map
  *   Commitment to merkleized key-value map of global PSET fields.
  * @param[in] asset_tag
  *   Asset tag used to search for metadata.
+ * @param[in] search_reissuance_token
+ *   If true, tries to find a reissuance token with the given tag if the asset is not found.
  * @param[out] asset_info
  *   Poiter to output asset information structure, may be NULL if *ext_asset_info* is provided.
  * @param[out] ext_asset_info
@@ -67,6 +75,7 @@ WARN_UNUSED_RESULT asset_metadata_status_t liquid_get_asset_metadata(
     dispatcher_context_t *dispatcher_context,
     const merkleized_map_commitment_t *global_map,
     const uint8_t asset_tag[static LIQUID_ASSET_TAG_LEN],
+    bool search_reissuance_token,
     asset_info_t *asset_info,
     asset_info_ext_t *ext_asset_info);
 

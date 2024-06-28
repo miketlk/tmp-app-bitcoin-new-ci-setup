@@ -10,6 +10,7 @@
 #include "stream_merkleized_map_value.h"
 #include "get_merkle_leaf_element.h"
 #include "stream_merkle_leaf_element.h"
+#include "get_merkleized_map_value.h"
 #endif
 
 #ifdef SKIP_FOR_CMOCKA
@@ -216,14 +217,17 @@ STATIC_NO_TEST void asset_metadata_parser_process(asset_metadata_parser_context_
  *
  * @param[out] ctx
  *   Parser context.
- * @param asset_tag
+ * @param[in] asset_tag
  *   Reference asset tag used to verify asset metadata.
+ * @param[in] asset_class
+ *   Asset class, one of *asset_class_t* constants.
  *
  * @return true on success, false in case of error or if parsed metadata is invalid.
  */
 STATIC_NO_TEST bool asset_metadata_parser_finalize(
     asset_metadata_parser_context_t *ctx,
-    const uint8_t asset_tag[static LIQUID_ASSET_TAG_LEN]) {
+    const uint8_t asset_tag[static LIQUID_ASSET_TAG_LEN],
+    asset_class_t asset_class) {
 
     uint8_t contract_hash[SHA256_LEN];
     uint8_t computed_asset_tag[LIQUID_ASSET_TAG_LEN];
@@ -233,6 +237,7 @@ STATIC_NO_TEST bool asset_metadata_parser_finalize(
         ok = ok && liquid_compute_asset_tag(contract_hash,
                                             ctx->prevout_txid,
                                             ctx->prevout_index,
+                                            asset_class,
                                             computed_asset_tag);
         // Verify that metadata produces the same asset tag
         ok = ok && 0 == memcmp(computed_asset_tag, asset_tag, LIQUID_ASSET_TAG_LEN);
@@ -245,6 +250,9 @@ STATIC_NO_TEST bool asset_metadata_parser_finalize(
 
 /// Key of PSET field containing asset metadata
 static const uint8_t pset_metadata_key[] = PSBT_ELEMENTS_HWW_GLOBAL_ASSET_METADATA;
+
+/// Key of PSET field containing reissuance token definition
+static const uint8_t pset_reissuance_token_key[] = PSBT_ELEMENTS_HWW_GLOBAL_REISSUANCE_TOKEN;
 
 /**
  * Callback function processing streamed asset metadata.
@@ -262,6 +270,7 @@ asset_metadata_status_t liquid_get_asset_metadata(
     dispatcher_context_t *dispatcher_context,
     const merkleized_map_commitment_t *global_map,
     const uint8_t asset_tag[static LIQUID_ASSET_TAG_LEN],
+    bool search_reissuance_token,
     asset_info_t *asset_info,
     asset_info_ext_t *ext_asset_info) {
     LOG_PROCESSOR(dispatcher_context, __FILE__, __LINE__, __func__);
@@ -272,24 +281,83 @@ asset_metadata_status_t liquid_get_asset_metadata(
         return ASSET_METADATA_ERROR;
     }
 
-    // Compose key with keydata
-    uint8_t key[sizeof(pset_metadata_key) + LIQUID_ASSET_TAG_LEN];
-    memcpy(key, pset_metadata_key, sizeof(pset_metadata_key));
-    reverse_copy(key + sizeof(pset_metadata_key), asset_tag, LIQUID_ASSET_TAG_LEN);
+    // Overlaid structure for PSET keys and returned data
+    union {
+        struct {
+            uint8_t id[sizeof(pset_metadata_key)];
+            uint8_t tag[LIQUID_ASSET_TAG_LEN];
+        } asset_key;
+        struct {
+            uint8_t id[sizeof(pset_reissuance_token_key)];
+            uint8_t tag[LIQUID_ASSET_TAG_LEN];
+        } token_key;
+        struct {
+            uint8_t issuance_blinded;
+            uint8_t asset_tag[LIQUID_ASSET_TAG_LEN];
+        } token_def;
+    } t;
 
+    // Request asset metadata
+    memcpy(t.asset_key.id, pset_metadata_key, sizeof(t.asset_key.id));
+    reverse_copy(t.asset_key.tag, asset_tag, sizeof(t.asset_key.tag));
     int len = call_stream_merkleized_map_value(dispatcher_context,
                                                global_map,
-                                               key,
-                                               sizeof(key),
+                                               (uint8_t *) &t.asset_key,
+                                               sizeof(t.asset_key),
                                                /* len_callback= */ NULL,
                                                cb_process_data,
                                                &context);
-    if (len < 0) {
+
+    if (len > 0) {
+        return asset_metadata_parser_finalize(&context, asset_tag, ACLASS_ASSET) ?
+            ASSET_METADATA_READY : ASSET_METADATA_ERROR;
+    } else if (!search_reissuance_token) {
         return ASSET_METADATA_ABSENT;
     }
 
-    return asset_metadata_parser_finalize(&context, asset_tag) ?
-        ASSET_METADATA_READY : ASSET_METADATA_ERROR;
+    // No metadata found, but we may try to seach for a reissuance token instead
+    // Request reissuance token definition
+    memcpy(t.token_key.id, pset_reissuance_token_key, sizeof(t.token_key.id));
+    reverse_copy(t.token_key.tag, asset_tag, sizeof(t.token_key.tag));
+
+    len = call_get_merkleized_map_value(dispatcher_context,
+                                        global_map,
+                                        (uint8_t *) &t.token_key,
+                                        sizeof(t.token_key),
+                                        (uint8_t *) &t.token_def,
+                                        sizeof(t.token_def));
+    if (len != sizeof(t.token_def)) {
+        return ASSET_METADATA_ABSENT;
+    }
+    // Preserve `issuanceBlinded` flag because the overlaid buffer will be reused for other things
+    uint8_t issuance_blinded = t.token_def.issuance_blinded;
+
+    // Reset the parser to make sure the previous unsuccessful try didn't affect it
+    if (!asset_metadata_parser_init(&context, asset_info, ext_asset_info)) {
+        return ASSET_METADATA_ERROR;
+    }
+
+    // Request asset metadata again, now with asset tag taken from reissuance token definition
+    memmove(t.asset_key.tag, t.token_def.asset_tag, sizeof(t.asset_key.tag));
+    memcpy(t.asset_key.id, pset_metadata_key, sizeof(t.asset_key.id));
+    len = call_stream_merkleized_map_value(dispatcher_context,
+                                           global_map,
+                                           (uint8_t *) &t.asset_key,
+                                           sizeof(t.asset_key),
+                                           /* len_callback= */ NULL,
+                                           cb_process_data,
+                                           &context);
+
+    if (len <= 0) {
+        return ASSET_METADATA_ABSENT;
+    }
+
+    return asset_metadata_parser_finalize(
+        &context,
+        asset_tag,
+        issuance_blinded ?
+            ACLASS_REISSUANCE_TOKEN_CONFIDENTIAL : ACLASS_REISSUANCE_TOKEN_NON_CONFIDENTIAL
+    ) ? ASSET_METADATA_TOKEN_READY : ASSET_METADATA_ERROR;
 }
 
 asset_metadata_status_t liquid_get_asset_metadata_by_leaf_index(
@@ -343,7 +411,7 @@ asset_metadata_status_t liquid_get_asset_metadata_by_leaf_index(
         return ASSET_METADATA_ABSENT;
     }
 
-    return asset_metadata_parser_finalize(&context, asset_tag) ?
+    return asset_metadata_parser_finalize(&context, asset_tag, ACLASS_ASSET) ?
         ASSET_METADATA_READY : ASSET_METADATA_ERROR;
 }
 

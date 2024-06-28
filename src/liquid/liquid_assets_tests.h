@@ -14,6 +14,7 @@ typedef struct {
     uint8_t prevout_txid[SHA256_LEN];
     uint32_t prevout_index;
     uint8_t entropy[SHA256_LEN];
+    asset_class_t asset_class;
 } asset_test_data_t;
 
 
@@ -44,7 +45,8 @@ static const asset_test_data_t asset_test_data[] = {
             0x98, 0x45, 0x31, 0x34, 0x42, 0x45, 0x28, 0x85,
             0xf6, 0x4b, 0xf5, 0x98, 0x5d, 0x36, 0x6f, 0x09,
             0xa2, 0x91, 0xe9, 0x49, 0xfa, 0x92, 0x96, 0x08
-        }
+        },
+        .asset_class = ACLASS_ASSET
     },
     // liquid.beer ASP (Atomic Swap Pint)
     {
@@ -72,7 +74,8 @@ static const asset_test_data_t asset_test_data[] = {
             0xa3, 0x90, 0xd5, 0x68, 0x3d, 0xa4, 0x26, 0xf0,
             0x53, 0x0c, 0x6c, 0x84, 0x6c, 0x6e, 0x0a, 0x89,
             0x26, 0x31, 0xc5, 0xa5, 0x2f, 0xf9, 0x04, 0xe3
-        }
+        },
+        .asset_class = ACLASS_ASSET
     },
     // assets.btse.com BTSE (BTSE Token)
     {
@@ -100,7 +103,8 @@ static const asset_test_data_t asset_test_data[] = {
             0xb9, 0xd2, 0x67, 0x35, 0x25, 0x12, 0xe1, 0xb7,
             0x0b, 0x30, 0xef, 0xaa, 0x6a, 0xe0, 0x9e, 0xe0,
             0x7e, 0x21, 0x5d, 0x53, 0x55, 0xb9, 0x38, 0xce
-        }
+        },
+        .asset_class = ACLASS_ASSET
     },
 };
 
@@ -138,7 +142,7 @@ void test_compute_asset_tag_from_entropy(test_ctx_t *test_ctx) {
     bool res;
 
     for(int i = 0; i < n_vectors; ++i, p_vect++) {
-        res = compute_asset_tag_from_entropy(p_vect->entropy, asset_tag);
+        res = compute_asset_tag_from_entropy(p_vect->entropy, ACLASS_ASSET, asset_tag);
         TEST_ASSERT(res);
         TEST_ASSERT_EQUAL_MEMORY(p_vect->asset_tag, asset_tag, sizeof(asset_tag));
     }
@@ -168,6 +172,7 @@ void test_liquid_compute_asset_tag(test_ctx_t *test_ctx) {
         bool res = liquid_compute_asset_tag(p_vect->contract_hash,
                                             p_vect->prevout_txid,
                                             p_vect->prevout_index,
+                                            p_vect->asset_class,
                                             asset_tag);
         TEST_ASSERT(res);
         TEST_ASSERT_EQUAL_MEMORY(p_vect->asset_tag, asset_tag, sizeof(asset_tag));

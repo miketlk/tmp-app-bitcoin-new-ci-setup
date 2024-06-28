@@ -69,7 +69,55 @@ static const contract_test_data_t contract_test_data[] = {
             .name = "Atomic Swap Pint",
             .domain = "liquid.beer"
         }
-    }
+    },
+    // ciao.it TTT
+    {
+        .contract_str =
+            "{\"entity\":{\"domain\":\"ciao.it\"},"\
+            "\"issuer_pubkey\":\"0337cceec0beea0232ebe14cba0197a9fbd45fcf2ec946749de920e71434c2b904\","\
+            "\"name\":\"name\","\
+            "\"precision\":8,"\
+            "\"ticker\":\"TTT\","\
+            "\"version\":0}",
+        .hash = {
+            0x25, 0x2a, 0x3a, 0xb4, 0x07, 0x19, 0x58, 0x3c,
+            0xaa, 0x5e, 0x88, 0x5c, 0x27, 0xe0, 0xa2, 0xa3,
+            0xe6, 0x2e, 0x32, 0xe7, 0x1d, 0xad, 0xf0, 0xb6,
+            0x50, 0xf8, 0xca, 0xee, 0x55, 0x87, 0x81, 0x53
+        },
+        .asset = {
+            .info = {
+                .ticker = "TTT",
+                .decimals = 8
+            },
+            .name = "name",
+            .domain = "ciao.it"
+        }
+    },
+    // ELIP 100: example.com TEST (Testcoin)
+    {
+        .contract_str =
+            "{\"entity\":{\"domain\":\"example.com\"},"\
+            "\"issuer_pubkey\":\"03455ee7cedc97b0ba435b80066fc92c963a34c600317981d135330c4ee43ac7a3\","\
+            "\"name\":\"Testcoin\","\
+            "\"precision\":2,"\
+            "\"ticker\":\"TEST\","\
+            "\"version\":0}",
+        .hash = {
+            0xd4, 0x0c, 0x36, 0x4f, 0x8b, 0x94, 0x3e, 0x43,
+            0x4f, 0x68, 0x27, 0x55, 0x6a, 0x5a, 0x04, 0xb3,
+            0x37, 0xbc, 0x62, 0x7b, 0x90, 0x4a, 0x04, 0x39,
+            0x5f, 0xee, 0xd0, 0x6d, 0x13, 0xae, 0x30, 0x37
+        },
+        .asset = {
+            .info = {
+                .ticker = "TEST",
+                .decimals = 2
+            },
+            .name = "Testcoin",
+            .domain = "example.com"
+        }
+    },
 };
 
 static bool parse_contract(const char *contract, parser_outputs_t *outs) {

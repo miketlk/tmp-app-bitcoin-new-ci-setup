@@ -70,6 +70,7 @@ void ui_validate_output(dispatcher_context_t *context,
 #ifdef HAVE_LIQUID
                         const uint8_t asset_tag[static 32],
                         bool display_asset_tag,
+                        bool asset_is_reissuance_token,
 #endif
                         command_processor_t on_success);
 

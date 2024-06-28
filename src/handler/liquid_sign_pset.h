@@ -25,6 +25,11 @@
 #error Requested size of asset cache is not supported
 #endif
 
+// Paranoid checks to make sure we can use uint8_t instead of bool to save memory
+#if (true < 0) || (true > UINT8_MAX) || (false < 0) || (false > UINT8_MAX)
+    #error Boolean constant is incompatible with uint8_t
+#endif
+
 /// Common information that applies to either an input or an output
 typedef struct {
     /// Commitment to a merkleized key-value map of this input or output
@@ -52,7 +57,9 @@ typedef struct {
     /// Information about the asset: ticher and precision
     asset_info_t asset_info;
     /// If true the asset is defined in internal asset list
-    bool built_in_asset;
+    uint8_t built_in_asset;
+    /// If true the asset is a reissuance token
+    uint8_t asset_is_reissuance_token;
 } in_out_info_t;
 
 /// Information specific to input
@@ -123,7 +130,7 @@ typedef struct {
     uint8_t outputs_root[32];
 
     /// If true the wallet is canonical
-    bool is_wallet_canonical;
+    uint8_t is_wallet_canonical;
     /// BIP 44 "purpose" deviation index, only relevant for canonical wallets
     int bip44_purpose;
 

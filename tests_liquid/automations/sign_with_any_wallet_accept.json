@@ -9,7 +9,7 @@
       ]
     },
     {
-      "regexp": "Asset name|Asset domain|The asset|Asset tag",
+      "regexp": "Asset name|Asset domain|The asset|Asset tag|Reissuance",
       "actions": [
         ["button", 2, true],
         ["button", 2, false]

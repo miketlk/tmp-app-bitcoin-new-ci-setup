@@ -133,7 +133,9 @@ typedef enum {
 /// Bits indicating presense (or status) of global field(s) in PSET
 typedef enum {
     /// PSBT_ELEMENTS_HWW_GLOBAL_ASSET_METADATA
-    GLOBAL_HAS_ASSET_METADATA = (1 << 0)
+    GLOBAL_HAS_ASSET_METADATA = (1 << 0),
+    /// PSBT_ELEMENTS_HWW_GLOBAL_REISSUANCE_TOKEN
+    GLOBAL_HAS_REISSUANCE_TOKEN = (1 << 1)
 } global_key_presence_flags_t;
 
 /// State of global_keys_callback()
@@ -478,6 +480,8 @@ static void global_keys_callback(global_keys_callback_state_t *state, buffer_t *
         if (keytype == PSBT_IN_PROPRIETARY) {
             if (test_proprietary_key(data, PSBT_ELEMENTS_HWW_GLOBAL_ASSET_METADATA)) {
                 state->key_presence |= GLOBAL_HAS_ASSET_METADATA;
+            } else if (test_proprietary_key(data, PSBT_ELEMENTS_HWW_GLOBAL_REISSUANCE_TOKEN)) {
+                state->key_presence |= GLOBAL_HAS_REISSUANCE_TOKEN;
             }
         }
     }
@@ -1247,7 +1251,7 @@ static bool set_in_out_amount(overlayed_in_out_info_t *p_info, tx_amount_t *amou
  */
 static bool set_in_out_asset(dispatcher_context_t *dc,
                              sign_pset_state_t *state,
-                             tx_asset_t *asset) {
+                             const tx_asset_t *asset) {
     if(!dc || !state || !asset) {
         return false;
     }
@@ -1272,6 +1276,7 @@ static bool set_in_out_asset(dispatcher_context_t *dc,
                                asset->tag,
                                sizeof(state->cur.in_out.asset_tag));
         } else {
+            state->cur.in_out.asset_is_reissuance_token = false;
             const asset_info_t *p_asset_info = liquid_get_asset_info(asset->tag);
             if (p_asset_info) {
                 state->cur.in_out.asset_info = *p_asset_info;
@@ -1280,14 +1285,19 @@ static bool set_in_out_asset(dispatcher_context_t *dc,
                 state->cur.in_out.built_in_asset = false;
                 asset_metadata_status_t stat = ASSET_METADATA_ABSENT;
                 if (state->global_key_presence & GLOBAL_HAS_ASSET_METADATA) {
-                    stat = liquid_get_asset_metadata(dc,
-                                                     &state->global_map,
-                                                     asset->tag,
-                                                     &state->cur.in_out.asset_info,
-                                                     NULL);
+                    stat = liquid_get_asset_metadata(
+                        dc,
+                        &state->global_map,
+                        asset->tag,
+                        !!(state->global_key_presence & GLOBAL_HAS_REISSUANCE_TOKEN),
+                        &state->cur.in_out.asset_info,
+                        /* ext_asset_info= */ NULL
+                    );
                 }
                 if (ASSET_METADATA_ABSENT == stat) {
                     memset(&state->cur.in_out.asset_info, 0, sizeof(state->cur.in_out.asset_info));
+                } else if(ASSET_METADATA_TOKEN_READY == stat) {
+                    state->cur.in_out.asset_is_reissuance_token = true;
                 } else if(ASSET_METADATA_READY != stat) {
                     return false;
                 }
@@ -2504,6 +2514,7 @@ static void output_validate_external(dispatcher_context_t *dc) {
                                state->cur.in_out.asset_info.decimals,
                                state->cur.in_out.asset_tag,
                                !state->cur.in_out.built_in_asset, /* display_asset_tag */
+                               state->cur.in_out.asset_is_reissuance_token,
                                output_next);
         } else { // Unknown asset
             ui_validate_output(dc,
@@ -2514,6 +2525,7 @@ static void output_validate_external(dispatcher_context_t *dc) {
                                UNKNOWN_ASSET_DECIMALS,
                                state->cur.in_out.asset_tag,
                                true, /* display_asset_tag */
+                               false, /* asset_is_reissuance_token */
                                output_next);
         }
         return;
