@@ -1020,7 +1020,7 @@ static void confirm_transaction(dispatcher_context_t *dc) {
         dc->next(sign_init);
     } else {
         // Show final user validation UI
-        ui_validate_transaction(dc, COIN_COINID_SHORT, fee, BITCOIN_DECIMALS, sign_init);
+        ui_validate_transaction(dc, COIN_COINID_SHORT, fee, BITCOIN_DECIMALS, NULL, sign_init);
     }
 }
 

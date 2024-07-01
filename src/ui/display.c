@@ -73,6 +73,7 @@ typedef struct {
 } ui_validate_output_state_t;
 
 typedef struct {
+    char transaction_type[MAX_TRANSACTION_TYPE_LEN + 1];
     char fee[MAX_AMOUNT_LENGTH + 1];
 } ui_validate_transaction_state_t;
 
@@ -306,7 +307,14 @@ UX_STEP_NOCB(ux_validate_address_step,
                  .text = g_ui_state.validate_output.address_or_description,
              });
 
-UX_STEP_NOCB(ux_confirm_transaction_step, pnn, {&C_icon_eye, "Confirm", "transaction"});
+UX_STEP_NOCB(ux_confirm_transaction_step,
+             pnn,
+             {
+                &C_icon_eye,
+                "Confirm",
+                g_ui_state.validate_transaction.transaction_type,
+            });
+
 UX_STEP_NOCB(ux_confirm_transaction_fees_step,
              bnnn_paging,
              {
@@ -856,6 +864,7 @@ void ui_validate_transaction(dispatcher_context_t *context,
                              const char *coin_name,
                              uint64_t fee,
                              uint8_t decimals,
+                             const char *transaction_type,
                              command_processor_t on_success) {
     context->pause();
 
@@ -864,6 +873,10 @@ void ui_validate_transaction(dispatcher_context_t *context,
     g_next_processor = on_success;
 
     format_amount(coin_name, fee, decimals, state->fee);
+
+    strlcpy(state->transaction_type,
+            (NULL != transaction_type) ? transaction_type : "transaction",
+            sizeof(state->transaction_type));
 
     ux_flow_init(0, ux_accept_transaction_flow, NULL);
 }

@@ -229,6 +229,9 @@ typedef struct {
 
     /// Asset cache, holding tags of confirmed assets
     asset_cache_t asset_cache;
+
+    /// A set of flags reflecting transaction type: issuance, reissuance or burn
+    uint8_t tx_type_flags;
 } sign_pset_state_t;
 
 /**

@@ -160,6 +160,16 @@ typedef struct {
     bool error;             ///< Flag indicating error during handling of keys
 } output_keys_callback_state_t;
 
+/// A set of flags reflecting transaction type: issuance, reissuance or burn
+typedef enum {
+    /// Asset issuance is performed in this transaction
+    TX_TYPE_ISSUANCE = (1 << 0),
+    /// Asset reissuance is performed in this transaction
+    TX_TYPE_REISSUANCE = (1 << 1),
+    /// Asset burn is performed in this transaction
+    TX_TYPE_BURN = (1 << 2)
+} transaction_type_flags_t;
+
 /*****************************************************************************
  * Asset validation
  *****************************************************************************/
@@ -1908,6 +1918,12 @@ static void process_input_map(dispatcher_context_t *dc) {
         return;
     }
 
+    if (input_has_issuance(state->cur.key_presence)) {
+        // No blinding nonce for new asset issuance
+        state->tx_type_flags |= (state->cur.key_presence & HAS_ISSUANCE_BLINDING_NONCE) ?
+            TX_TYPE_REISSUANCE : TX_TYPE_ISSUANCE;
+    }
+
     if('\0' == *state->cur.in_out.asset_info.ticker &&
        !asset_cache_find(&state->asset_cache, state->cur.in_out.asset_tag)) {
         // Warn the user about unknown asset
@@ -2467,8 +2483,10 @@ static void output_validate_external(dispatcher_context_t *dc) {
                                          sizeof(output_address));
     if (address_len < 0) {
         // script does not have an address; check if OP_RETURN
-        if (is_opreturn_burn(state->cur.in_out.scriptPubKey, state->cur.in_out.scriptPubKey_len)) {
+        if ( state->cur_output_index < state->fee_output_index &&
+             is_opreturn_burn(state->cur.in_out.scriptPubKey, state->cur.in_out.scriptPubKey_len) ) {
             strlcpy(output_address, "BURN", sizeof(output_address));
+            state->tx_type_flags |= TX_TYPE_BURN;
         } else if (is_opreturn(state->cur.in_out.scriptPubKey, state->cur.in_out.scriptPubKey_len)){
             int res = format_opscript_script(state->cur.in_out.scriptPubKey,
                                              state->cur.in_out.scriptPubKey_len,
@@ -2543,6 +2561,30 @@ static void output_next(dispatcher_context_t *dc) {
     dc->next(process_output_map);
 }
 
+/**
+ * Returns the text corresponding to transaction type depending of type flags.
+ *
+ * @param[in] flags
+ *   Type flags, a combination of *transaction_type_flags_t* constants.
+ *
+ * @return  pointer to constant text string or NULL for default transaction type.
+ */
+static const char* get_tx_type_by_flags(transaction_type_flags_t flags) {
+    switch (flags) {
+        case TX_TYPE_ISSUANCE:
+            return "issuance";
+
+        case TX_TYPE_REISSUANCE:
+            return "reissuance";
+
+        case TX_TYPE_BURN:
+            return "burn";
+
+        default:
+            return NULL;
+    }
+}
+
 // Performs any final checks if needed, then show the confirmation UI to the user
 // (except during swap)
 static void confirm_transaction(dispatcher_context_t *dc) {
@@ -2603,6 +2645,7 @@ static void confirm_transaction(dispatcher_context_t *dc) {
                                     state->cur.in_out.asset_info.ticker,
                                     state->fee_value,
                                     state->cur.in_out.asset_info.decimals,
+                                    get_tx_type_by_flags(state->tx_type_flags),
                                     sign_init);
         } else {
             PRINTF("Unknown asset in fee output\n");

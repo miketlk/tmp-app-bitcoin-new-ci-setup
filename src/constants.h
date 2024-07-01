@@ -113,3 +113,9 @@
  * Number of bytes in SHA-256 hash code
  */
 #define SHA256_LEN 32
+
+/**
+ * Maximum length (characters) of transaction type.
+ * Currently supported types: 'transaction', 'issuance', 'reissuance', 'burn'
+ */
+#define MAX_TRANSACTION_TYPE_LEN 15

@@ -78,6 +78,7 @@ void ui_validate_transaction(dispatcher_context_t *context,
                              const char *coin_name,
                              uint64_t fee,
                              uint8_t decimals,
+                             const char *transaction_type,
                              command_processor_t on_success);
 
 #ifdef HAVE_LIQUID
