@@ -2063,14 +2063,6 @@ static void check_input_owned(dispatcher_context_t *dc) {
         int segwit_version =
             get_segwit_version(state->cur.in_out.scriptPubKey, state->cur.in_out.scriptPubKey_len);
 
-        // For legacy inputs, the non-witness utxo must be present
-        if ((segwit_version == -1) &&
-             !(state->cur.key_presence & HAS_NONWITNESS_UTXO)) {
-            PRINTF("Non-witness utxo missing for legacy input\n");
-            SEND_SW(dc, SW_INCORRECT_DATA);
-            return;
-        }
-
         // For all segwit transactions, the witness utxo must be present
         if (segwit_version >= 0 && !(state->cur.key_presence & HAS_WITNESS_UTXO)) {
             PRINTF("Witness utxo missing for segwit input\n");
