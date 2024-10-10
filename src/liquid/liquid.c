@@ -1,17 +1,16 @@
+#ifdef HAVE_LIQUID
+
 #include <stdint.h>
 #include <string.h>
 #include "crypto.h"
 #include "liquid.h"
 #include "liquid_addr.h"
-#include "../common/wif.h"
 #include "../common/script.h"
+#include "../handler/lib/policy.h"
 #include "tests.h"
-
-#ifdef HAVE_LIQUID
 
 #ifdef SKIP_FOR_CMOCKA
 // disable problematic macros when compiling unit tests with CMOCKA
-#define PRINTF(...)
 #define PIC(x) (x)
 #endif // SKIP_FOR_CMOCKA
 
@@ -152,8 +151,8 @@ static bool __attribute__((noinline)) elip150_derive_public_key(
 /**
  * Derives blinding private key according to ELIP 151.
  *
- * @param[in] wildcard_id
- *   Identifier of public key wildcard, one of `policy_map_key_wildcard_id_t` values.
+ * @param[in] n_descriptors
+ *   Number single descriptors in the multipath scheme. Only 1 and 2 are supported.
  * @param[in] get_script_callback
  *   Callback function obtaining `scriptPubKey` of the processed descriptor.
  * @param[in,out] get_script_callback_state
@@ -164,37 +163,12 @@ static bool __attribute__((noinline)) elip150_derive_public_key(
  * @return true on success, false in case of error.
  */
 static bool __attribute__((noinline)) elip151_derive_private_key(
-    policy_map_key_wildcard_id_t wildcard_id,
+    uint32_t n_descriptors,
     liquid_get_script_callback_t get_script_callback,
     void *get_script_callback_state,
     uint8_t out_privkey[static 32]) {
-    if(!get_script_callback || !out_privkey) {
+    if(!get_script_callback || !out_privkey || !n_descriptors) {
         return false;
-    }
-
-    // Range of 'change' element of the derivation path in the multi-path
-    // descriptor. Only sequential values are supported currently.
-    struct change_range_s {
-        uint8_t first;
-        uint8_t last;
-    } change_range;
-
-    // Check if we have a proper wildcard and initialize range of 'change'.
-    switch(wildcard_id) {
-        case KEY_WILDCARD_STANDARD_CHAINS:
-            change_range = (struct change_range_s) { .first = 0, .last = 1 };
-            break;
-
-        case KEY_WILDCARD_EXTERNAL_CHAIN:
-            change_range = (struct change_range_s) { .first = 0, .last = 0 };
-            break;
-
-        case KEY_WILDCARD_INTERNAL_CHAIN:
-            change_range = (struct change_range_s) { .first = 1, .last = 1 };
-            break;
-
-        default:
-            return false;
     }
 
     // Prepare tagged hash context with tag `Deterministic-View-Key/1.0`
@@ -204,20 +178,18 @@ static bool __attribute__((noinline)) elip151_derive_private_key(
     // Expand multi-path to every single descriptor and process each
     // `scriptPubKey` at index 2^31-1.
     uint8_t script[MAX_PREVOUT_SCRIPTPUBKEY_LEN];
-    for(uint32_t change = change_range.first; change <= change_range.last; ++change) {
+    for(uint32_t descriptor_idx = 0; descriptor_idx < n_descriptors; ++descriptor_idx) {
         // Obtain scriptPubKey at index 2^31-1
         buffer_t script_buffer = buffer_create(script, sizeof(script));
         bool res = ((liquid_get_script_callback_t) PIC(get_script_callback))(
             get_script_callback_state,
-            change,
+            descriptor_idx,
             LIQUID_ELIP151_RESERVED_INDEX,
-            &script_buffer,
-            &wildcard_id
+            &script_buffer
         );
         if (!res) {
             return false;
         }
-
         // Hash scriptPubKey prepended with OP_INVALIDOPCODE
         crypto_hash_update_u8(&hash_context.header, 1); // Length of OP_INVALIDOPCODE
         crypto_hash_update_u8(&hash_context.header, OP_INVALIDOPCODE);
@@ -392,8 +364,8 @@ static pubkey_derivator_proto_t find_pubkey_derivator(PolicyNodeType node_type) 
 /**
  * Derives public blinding key according to ELIP 151.
  *
- * @param[in] pubkey_wildcard_id
- *   Identifier of public key wildcard, one of `policy_map_key_wildcard_id_t` values.
+ * @param[in] n_descriptors
+ *   Number single descriptors in the multipath scheme. Only 1 and 2 are supported.
  * @param[in] get_script_callback
  *   Callback function obtaining `scriptPubKey` of the processed descriptor.
  * @param[in,out] get_script_callback_state
@@ -405,13 +377,13 @@ static pubkey_derivator_proto_t find_pubkey_derivator(PolicyNodeType node_type) 
  */
 static bool get_blinding_public_key_elip151(const uint8_t *script,
                                             size_t script_length,
-                                            policy_map_key_wildcard_id_t pubkey_wildcard_id,
+                                            uint32_t n_descriptors,
                                             liquid_get_script_callback_t get_script_callback,
                                             void *get_script_callback_state,
                                             uint8_t pubkey[static 33]) {
     uint8_t privkey[32];
 
-    bool ok = elip151_derive_private_key(pubkey_wildcard_id,
+    bool ok = elip151_derive_private_key(n_descriptors,
                                          get_script_callback,
                                          get_script_callback_state,
                                          privkey);
@@ -422,10 +394,51 @@ static bool get_blinding_public_key_elip151(const uint8_t *script,
     return ok;
 }
 
+/**
+ * Returns the number of possible single descriptors in the multipath scheme of the policy.
+ *
+ * @param[in] policy
+ *   Pointer to the root node of the policy
+ *
+ * @return the number of possible descriptors or -1 in case of error.
+ */
+static int get_descriptor_number(const policy_node_t *policy) {
+    if (!policy) {
+        return -1;
+    }
+
+    int n_descriptors = -1;
+    int n_placeholders, i = 0;
+
+    do {
+        policy_node_key_placeholder_t placeholder;
+        n_placeholders = get_key_placeholder_by_index(policy, i, NULL, &placeholder);
+        if (n_placeholders < 1) {
+            // No public keys in policy
+            return -1;
+        }
+
+        if (policy_is_key_placeholder_empty(&placeholder) ||
+            placeholder.num_first >= BIP32_FIRST_HARDENED_CHILD ||
+            placeholder.num_second >= BIP32_FIRST_HARDENED_CHILD) {
+            // Expected <M;N> key placeholder with unhardened M and N
+            return -1;
+        }
+
+        int n_curr = placeholder.num_first == placeholder.num_second ? 1 : 2;
+        if (n_descriptors != -1 && n_curr != n_descriptors) {
+            // Mismatch in descriptor number among different public keys
+            return -1;
+        }
+        n_descriptors = n_curr;
+    } while(++i < n_placeholders);
+
+    return n_descriptors;
+}
+
 bool liquid_get_blinding_public_key(const policy_node_t *policy,
                                     const uint8_t *script,
                                     size_t script_length,
-                                    policy_map_key_wildcard_id_t pubkey_wildcard_id,
                                     liquid_get_script_callback_t get_script_callback,
                                     void *get_script_callback_state,
                                     uint8_t pubkey[static 33]) {
@@ -433,22 +446,28 @@ bool liquid_get_blinding_public_key(const policy_node_t *policy,
         return false;
     }
 
-    const policy_node_ct_t *ct = (const policy_node_ct_t*) policy;
-    if (!ct->mbk_script) {
+    const policy_node_t *mbk_script =
+        r_policy_node(&((const policy_node_ct_t *) policy)->mbk_script);
+    if (!mbk_script) {
         return false;
     }
 
-    if (TOKEN_ELIP151 == ct->mbk_script->type) {
+    if (TOKEN_ELIP151 == mbk_script->type) {
+        int n_descriptors =
+            get_descriptor_number(r_policy_node(&((const policy_node_ct_t *) policy)->script));
+        if(n_descriptors < 1) {
+            return false;
+        }
         return get_blinding_public_key_elip151(script,
                                                script_length,
-                                               pubkey_wildcard_id,
+                                               n_descriptors,
                                                get_script_callback,
                                                get_script_callback_state,
                                                pubkey);
     } else {
-        pubkey_derivator_proto_t derivator = find_pubkey_derivator(ct->mbk_script->type);
+        pubkey_derivator_proto_t derivator = find_pubkey_derivator(mbk_script->type);
         return NULL == derivator ?
-            false : (*derivator)(ct->mbk_script, script, script_length, pubkey);
+            false : (*derivator)(mbk_script, script, script_length, pubkey);
     }
 }
 
@@ -457,18 +476,19 @@ bool liquid_is_blinding_key_acceptable(const policy_node_t *policy) {
         return false;
     }
 
-    policy_node_ct_t *ct = (policy_node_ct_t *)policy;
-    if(ct->mbk_script) {
+    const policy_node_t *mbk_script =
+        r_policy_node(&((const policy_node_ct_t *) policy)->mbk_script);
+    if(mbk_script) {
         // Ensure we have an appropriate derivation function for this kind of key
-        if (NULL == find_pubkey_derivator(ct->mbk_script->type)) {
+        if (NULL == find_pubkey_derivator(mbk_script->type)) {
             return false;
         }
 
         // For SLIP-0077 derivation verify that the master key is ours, except for the multisig
         // descriptors
-        if (TOKEN_SLIP77 == ct->mbk_script->type && !policy_is_multisig(policy)) {
+        if (TOKEN_SLIP77 == mbk_script->type && !policy_is_multisig(policy)) {
             const policy_node_blinding_privkey_t *slip77 =
-                (const policy_node_blinding_privkey_t *)ct->mbk_script;
+                (const policy_node_blinding_privkey_t *)mbk_script;
             if (!liquid_is_master_blinding_key_ours(slip77->privkey)) {
                 return false;
             }

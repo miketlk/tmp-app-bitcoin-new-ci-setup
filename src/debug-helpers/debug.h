@@ -1,5 +1,20 @@
 #pragma once
 
+#include "os.h"
+
+// Define PRINTF() macro
+#if defined(SKIP_FOR_CMOCKA)
+    #ifdef PRINTF
+        #undef PRINTF
+    #endif
+    #define PRINTF(...)
+#elif defined(HAVE_SEMIHOSTED_PRINTF)
+    #ifdef PRINTF
+        #undef PRINTF
+    #endif
+    #define PRINTF semihosted_printf
+#endif
+
 void debug_write(const char *buf);
 void debug_write_hex(unsigned int word, unsigned int bytes);
 void debug_write_dec(unsigned int word);
@@ -38,3 +53,26 @@ void print_strn(const char *msg, const char *str, int len);
 #define PRINT_STR(msg, str)
 #define PRINT_STRN(msg, str, len)
 #endif // HAVE_PRINTF
+
+#ifdef HAVE_BOLOS_APP_STACK_CANARY
+void stack_fill_canary(void);
+unsigned int stack_unused_bytes(void);
+unsigned int stack_available_bytes(void);
+#define STACK_FILL_CANARY() stack_fill_canary()
+#else
+#define STACK_FILL_CANARY()
+#endif
+
+static inline int print_error_info(const char *error_msg,
+                                   const char *filename,
+                                   int line,
+                                   int retval) {
+    (void) error_msg;
+    (void) filename;
+    (void) line;
+
+    PRINTF("ERR (%s::%d): %s\n", filename, line, error_msg);
+    return retval;
+}
+
+#define WITH_ERROR(retval, error_msg) print_error_info(error_msg, __FILE__, __LINE__, retval)
